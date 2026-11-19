@@ -9,6 +9,8 @@ bench.json (paths relative to it):
                "material": "PETG, four heads", "credit": "Designed by ...",
                "parts": [["Red", "stl/test-card-red.stl", "#c8102e"], ...]}]}
 state is "check" (fit it first), "ready" or "later". Set "nobed": true on a model too big to sit on the bed.
+Optional: "download" (a base URL, e.g. raw GitHub files) gives every part a download link, and a model's
+"source" (its .scad path) a source link.
 Grams are estimated from the shape (1 mm skin, 15% infill, PETG 1.27 g/cm3): about 20% either way; your slicer wins.
 """
 import base64
@@ -54,23 +56,25 @@ def main():
         parts, allv = [], []
         for label, rel, colour in m["parts"]:
             v = triangles(os.path.join(base, rel))
-            parts.append((label, colour, v, None if m.get("nobed") else grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", ""))))
+            parts.append((label, rel, colour, v, None if m.get("nobed") else grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", ""))))
             allv.extend(v)
         lo = [min(allv[a::3]) for a in range(3)]
         hi = [max(allv[a::3]) for a in range(3)]
         cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
         packed = []
-        for label, colour, v, g in parts:
+        for label, rel, colour, v, g in parts:
             shifted = [v[i] - (cx, cy, lo[2])[i % 3] for i in range(len(v))]
             q0 = min(shifted) if shifted else 0.0          # 16-bit vertices: a quarter of the page size of floats
             step = max((max(shifted) - q0) / 65535, 1e-6) if shifted else 1.0
             ints = [round((x - q0) / step) for x in shifted]
-            packed.append({"label": label, "colour": colour, "grams": g, "q0": q0, "qs": step,
+            url = bench["download"].rstrip("/") + "/" + rel if bench.get("download") else None
+            packed.append({"label": label, "colour": colour, "grams": g, "url": url, "q0": q0, "qs": step,
                            "data": base64.b64encode(struct.pack(f"<{len(ints)}H", *ints)).decode()})
         models.append({"id": m["id"], "name": m["name"], "for": m.get("for", ""), "status": m.get("status", ""),
                        "state": m.get("state", "ready"), "material": m.get("material", ""), "credit": m.get("credit", ""),
                        "nobed": m.get("nobed", False), "size": [round(hi[a] - lo[a], 1) for a in range(3)],
-                       "parts": packed, "sliced": []})
+                       "parts": packed, "sliced": [],
+                       "source": bench["download"].rstrip("/") + "/" + m["source"] if bench.get("download") and m.get("source") else None})
         print(f"{m['name']}: {models[-1]['size']} mm, {len(allv) // 9} triangles")
     config = {k: bench[k] for k in ("title", "sub", "foot", "mark", "markLang", "bed") if k in bench}
     tpl = open(os.path.join(HERE, "print-bench-template.html"), encoding="utf-8").read()

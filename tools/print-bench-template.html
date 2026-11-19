@@ -56,6 +56,18 @@ h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.01em;text-wrap:balan
 .tools button:disabled{opacity:.4;cursor:default}
 .stage.full{position:fixed;inset:0;z-index:50;aspect-ratio:auto;border-radius:0;border:0;max-width:none}
 .hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--ink3)}
+.dimlayer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.dim{position:absolute;transform:translate(-50%,-50%);font:500 11.5px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);
+  background:var(--surface);border:1px solid var(--brass);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.dim.m{border-color:var(--ok);color:var(--ok)}
+.readout{position:absolute;left:12px;bottom:10px;font:500 12px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);
+  background:var(--surface);border:1px solid var(--hair);border-radius:6px;padding:6px 9px;max-width:calc(100% - 24px)}
+.files{display:flex;flex-wrap:wrap;gap:6px}
+.files a{font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--hair);border-radius:6px;padding:4px 8px}
+.files a:hover{border-color:var(--brass);color:var(--brass)}
+.partsizes{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px}
+.partsizes .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink2)}
+.stage.measuring canvas{cursor:crosshair}
 .info{background:var(--surface);border:1px solid var(--hair);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 24px}
 .info h2{grid-column:1/-1;margin:0;font-size:18px;font-weight:700;text-wrap:balance}
 .sliced{display:flex;flex-direction:column;gap:2px}
@@ -111,9 +123,13 @@ footer{font-size:12.5px;color:var(--ink3)}
           <button type="button" id="bedBtn" aria-pressed="true">Bed</button>
           <button type="button" id="edgeBtn" aria-pressed="true">Edges</button>
           <button type="button" id="resetBtn">Reset view</button>
+          <button type="button" id="sizeBtn" aria-pressed="true">Sizes</button>
+          <button type="button" id="measureBtn" aria-pressed="false">Measure</button>
           <button type="button" id="fullBtn" aria-pressed="false">Full view</button>
         </div>
         <span class="hint" id="hint">Drag to turn · pinch to zoom</span>
+        <div class="dimlayer" id="dimlayer" aria-hidden="true"></div>
+        <div class="readout" id="readout" hidden aria-live="polite"></div>
       </div>
       <section class="info" id="info" aria-live="polite"></section>
     </div>
@@ -204,7 +220,7 @@ if (!window.THREE || !THREE.OrbitControls) {
   bedPlate.position.z = -0.2; bed.add(bedPlate);
   var bedEdge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(CONFIG.bed, CONFIG.bed)), new THREE.LineBasicMaterial());
   bed.add(bedEdge); scene.add(bed);
-  var current = null, model = null, needs = true, bedOn = true, edgesOn = true;
+  var current = null, model = null, needs = true, bedOn = true, edgesOn = true, sizesOn = true, measuring = false;
 
   function theme() {
     scene.background = null;   // the stage's own gradient shows through
@@ -222,6 +238,83 @@ if (!window.THREE || !THREE.OrbitControls) {
     const ints = new Uint16Array(buf.buffer), out = new Float32Array(ints.length);
     for (let i = 0; i < ints.length; i++) out[i] = q0 + ints[i] * qs;
     return out;
+  }
+
+  // ---- Measurements ----
+  // Size lines: width, depth and height along the model's outside edges, labelled in mm, drawn over the model.
+  const dims = new THREE.Group(); scene.add(dims);
+  const dimMat = () => new THREE.LineBasicMaterial({color: new THREE.Color(css("--brass")), depthTest: false, transparent: true});
+  let labels = [];   // [{el, p: Vector3}]
+  function label(text, p, cls) {
+    const el = document.createElement("span"); el.className = "dim" + (cls ? " " + cls : ""); el.textContent = text;
+    $("#dimlayer").appendChild(el); labels.push({el, p}); return el;
+  }
+  function seg(grp, pts, mat) {
+    const g = new THREE.BufferGeometry().setFromPoints(pts.map(a => new THREE.Vector3(...a)));
+    const l = new THREE.LineSegments(g, mat); l.renderOrder = 10; grp.add(l);
+  }
+  function clearDims() { dims.clear(); labels.filter(l => !l.keep).forEach(l => l.el.remove()); labels = labels.filter(l => l.keep); }
+  function buildDims() {
+    clearDims();
+    if (!sizesOn || !current) return;
+    const [w, d, h] = current.size, m = Math.max(4, 0.07 * Math.max(w, d, h)), t = m * 0.35, mat = dimMat();
+    const x0 = -w / 2, x1 = w / 2, y0 = -d / 2, y1 = d / 2;
+    // width: in front of the front edge, on the bed
+    seg(dims, [[x0, y0 - m, 0], [x1, y0 - m, 0], [x0, y0 - m + t, 0], [x0, y0 - m - t, 0], [x1, y0 - m + t, 0], [x1, y0 - m - t, 0],
+               [x0, y0, 0], [x0, y0 - m - t, 0], [x1, y0, 0], [x1, y0 - m - t, 0]], mat);
+    label(current.size[0].toFixed(1) + " mm", new THREE.Vector3(0, y0 - m, 0));
+    // depth: right of the right edge
+    seg(dims, [[x1 + m, y0, 0], [x1 + m, y1, 0], [x1 + m - t, y0, 0], [x1 + m + t, y0, 0], [x1 + m - t, y1, 0], [x1 + m + t, y1, 0],
+               [x1, y1, 0], [x1 + m + t, y1, 0]], mat);
+    label(current.size[1].toFixed(1) + " mm", new THREE.Vector3(x1 + m, 0, 0));
+    // height: up the front-left corner, set out to the left
+    seg(dims, [[x0 - m, y0, 0], [x0 - m, y0, h], [x0 - m - t, y0, 0], [x0 - m + t, y0, 0], [x0 - m - t, y0, h], [x0 - m + t, y0, h],
+               [x0, y0, h], [x0 - m - t, y0, h]], mat);
+    label(current.size[2].toFixed(1) + " mm", new THREE.Vector3(x0 - m, y0, h / 2));
+    needs = true;
+  }
+  // Measure: tap two points on the print; the distance and its x, y, z parts show. A third tap starts again.
+  const ray = new THREE.Raycaster(), meas = new THREE.Group(); scene.add(meas);
+  let picks = [], down = null;
+  function clearMeasure() {
+    meas.clear(); picks = []; labels.filter(l => l.keep).forEach(l => l.el.remove()); labels = labels.filter(l => !l.keep);
+    $("#readout").hidden = !measuring; $("#readout").textContent = "Tap a point on the print";
+    needs = true;
+  }
+  function dot(p) {
+    const s = Math.max(current.size[0], current.size[1], current.size[2]) * 0.012 + 0.4;
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(s, 16, 12), new THREE.MeshBasicMaterial({color: new THREE.Color(css("--ok")), depthTest: false}));
+    mesh.position.copy(p); mesh.renderOrder = 11; meas.add(mesh);
+  }
+  function pick(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    ray.setFromCamera({x: (e.clientX - r.left) / r.width * 2 - 1, y: -(e.clientY - r.top) / r.height * 2 + 1}, camera);
+    const hit = ray.intersectObjects(model.children.filter(o => o.isMesh && o.visible), false)[0];
+    if (!hit) return;
+    if (picks.length === 2) clearMeasure();
+    picks.push(hit.point.clone()); dot(hit.point);
+    if (picks.length === 1) { $("#readout").textContent = "Now tap the second point"; }
+    else {
+      const [a, b] = picks, dv = b.clone().sub(a), dist = dv.length();
+      seg(meas, [a.toArray(), b.toArray()], new THREE.LineBasicMaterial({color: new THREE.Color(css("--ok")), depthTest: false}));
+      const el = label(dist.toFixed(1) + " mm", a.clone().add(b).multiplyScalar(0.5), "m"); labels[labels.length - 1].keep = true;
+      $("#readout").textContent = `${dist.toFixed(2)} mm · x ${Math.abs(dv.x).toFixed(1)} · y ${Math.abs(dv.y).toFixed(1)} · z ${Math.abs(dv.z).toFixed(1)}`;
+    }
+    needs = true;
+  }
+  renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerup", e => {
+    if (measuring && model && down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) pick(e);
+    down = null;
+  });
+  const v = new THREE.Vector3();
+  function placeLabels() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    labels.forEach(({el, p}) => {
+      v.copy(p).project(camera);
+      el.hidden = v.z > 1;
+      el.style.left = ((v.x + 1) / 2 * w) + "px"; el.style.top = ((1 - v.y) / 2 * h) + "px";
+    });
   }
 
   function frame() {
@@ -266,9 +359,12 @@ if (!window.THREE || !THREE.OrbitControls) {
     document.querySelectorAll(".item").forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
     if (model) { scene.remove(model); model.traverse(o => { if (o.material) o.material.dispose(); }); }
     model = buildModel(current, true);
-    scene.add(model); aimSun(current.size);
+    scene.add(model); aimSun(current.size); clearMeasure(); buildDims();
     $("#info").innerHTML = `<h2>${current.name}</h2><p class="for">${current.for}</p>
-      <div class="kv"><span class="k">Size</span><span class="v mono">${fmt(current.size)}</span></div>
+      <div class="kv"><span class="k">Size, width x depth x height</span><span class="v mono">${fmt(current.size)}</span></div>
+      ${current.parts.length > 1 ? `<div class="kv"><span class="k">Each part</span><span class="partsizes">${model.children.filter(o => o.isMesh).map(o => {
+        o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox, s = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
+        return `<span>${o.name}</span><span class="mono">${fmt(s)}</span>`; }).join("")}</span></div>` : ""}
       ${grams(current) ? `<div class="kv"><span class="k">Filament, estimate</span><span class="v mono">about ${grams(current)} g: ${current.parts.map(p => `${p.label} ${gtxt(p.grams)}`).join(", ")}</span></div>` : ""}
       ${(current.sliced || []).map(s => `<div class="kv sliced"><span class="k">Sliced in Orca${current.sliced.length > 1 ? `: ${s.name}` : ""}</span>
         <span class="v mono">${hm(s.secs)}${s.qty > 1 ? ` each, ${s.qty} to print` : ""} · ${s.grams.map((g, k) => `${Math.round(g)} g ${s.colours[k] || (k ? "white" : "black")}`).join(", ")}${s.cost != null ? ` · £${s.cost.toFixed(2)} of filament${s.qty > 1 ? " each" : ""}` : ""}</span>
@@ -276,6 +372,8 @@ if (!window.THREE || !THREE.OrbitControls) {
         ${s.png ? `<img class="plate" src="data:image/png;base64,${s.png}" alt="Orca's plate preview of ${s.name}" loading="lazy">` : ""}</div>`).join("")}
       <div class="kv"><span class="k">Status</span><span class="v">${current.status}</span></div>
       <div class="kv"><span class="k">Material and heads</span><span class="v">${current.material}</span></div>
+      ${current.parts.some(p => p.url) || current.source ? `<div class="kv"><span class="k">Download</span><span class="files">${current.parts.filter(p => p.url).map(p =>
+        `<a href="${p.url}" download>${p.label} STL</a>`).join("")}${current.source ? `<a href="${current.source}">Source (.scad)</a>` : ""}</span></div>` : ""}
       <div class="kv"><span class="k">Parts, one head each</span><span class="parts">${current.parts.map((p, k) =>
         `<label><input type="checkbox" id="part-${current.id}-${k}" checked data-k="${k}"><span class="sw" style="background:${p.colour}"></span>${p.label}</label>`).join("")}</span></div>
       <p class="credit">${current.credit}</p>`;
@@ -303,13 +401,18 @@ if (!window.THREE || !THREE.OrbitControls) {
     bedOn = !bedOn; bed.visible = bedOn && !current.nobed; e.currentTarget.setAttribute("aria-pressed", String(bedOn)); needs = true;
   });
   controls.addEventListener("change", () => { needs = true; $("#hint").hidden = true; });
+  $("#sizeBtn").addEventListener("click", e => { sizesOn = !sizesOn; e.currentTarget.setAttribute("aria-pressed", String(sizesOn)); buildDims(); needs = true; });
+  $("#measureBtn").addEventListener("click", e => {
+    measuring = !measuring; e.currentTarget.setAttribute("aria-pressed", String(measuring));
+    stage.classList.toggle("measuring", measuring); $("#hint").hidden = true; clearMeasure();
+  });
 
   function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); needs = true;
   }
   new ResizeObserver(resize).observe(stage);
-  (function loop() { requestAnimationFrame(loop); if (controls.update() || needs) { renderer.render(scene, camera); needs = false; } })();
+  (function loop() { requestAnimationFrame(loop); if (controls.update() || needs) { renderer.render(scene, camera); placeLabels(); needs = false; } })();
 
   const start = MODELS.findIndex(m => "#" + m.id === location.hash);
   show(start >= 0 ? start : 0);
@@ -324,13 +427,13 @@ if (!window.THREE || !THREE.OrbitControls) {
     if (ti >= MODELS.length) { tr.dispose(); return; }
     const m = MODELS[ti++], img = document.getElementById("t-" + m.id);
     const grp = buildModel(m, false); scene.add(grp); aimSun(m.size);
-    const was = model ? model.visible : false, bedWas = bed.visible; if (model) model.visible = false; bed.visible = false;
+    const was = model ? model.visible : false, bedWas = bed.visible; if (model) model.visible = false; bed.visible = false; dims.visible = meas.visible = false;
     const s = m.size, R = Math.max(0.5 * Math.hypot(s[0], s[1], s[2]), 20), d = R * 1.05 / Math.sin(tcam.fov * Math.PI / 360);
     const k = d / Math.hypot(0.55, 1.35, 0.95);
     tcam.position.set(0.55 * k, -1.35 * k, s[2] / 2 + 0.95 * k); tcam.lookAt(0, 0, s[2] / 2);
     tr.render(scene, tcam); img.src = tr.domElement.toDataURL("image/png"); img.alt = m.name;
     scene.remove(grp); grp.traverse(o => { if (o.material) o.material.dispose(); });
-    if (model) model.visible = was; bed.visible = bedWas; aimSun(current.size); needs = true;
+    if (model) model.visible = was; bed.visible = bedWas; dims.visible = meas.visible = true; aimSun(current.size); needs = true;
     setTimeout(thumbNext, 30);
   })();
 }

@@ -2,7 +2,16 @@
 
 How I design and check prints with Claude: describe the part, Claude writes it in OpenSCAD with every size as a named number, the tools export one STL per colour, a mesh check catches what a slicer would choke on, and a Print Bench page shows every design in its real colours before a gram of filament is used.
 
-Live example: [Print Bench demo](https://kalmehdar.github.io/claude-3d-printing/), built from `examples/`. Open it on your phone and turn the models round.
+**[Open the live Print Bench](https://kalmehdar.github.io/claude-3d-printing/)**: every example in 3D, with its sizes drawn on, a tap-to-measure tool and download links. It works on a phone.
+
+| | | |
+| --- | --- | --- |
+| ![Four-colour test card](docs/images/testcard.jpg) | ![Colour-coded Gridfinity bins](docs/images/bins.jpg) | ![Clip-on cable tags](docs/images/tags.jpg) |
+| Four-colour test card | Colour-coded Gridfinity bins | Cable tags, each clip sized to its cable |
+| ![A plain downloaded bin](docs/images/before.jpg) | ![The same bin upgraded](docs/images/after.jpg) | |
+| Before: a plain downloaded STL | After: Claude added a label, a red rim and magnet pockets | |
+
+Every picture here was made by `tools/render.py` from the same files you can download.
 
 ## What's here
 
@@ -10,11 +19,13 @@ Live example: [Print Bench demo](https://kalmehdar.github.io/claude-3d-printing/
 | --- | --- |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
-| `tools/print_bench.py` | Builds the Print Bench page from a `bench.json` (one HTML file you can open or publish; fine on a phone) |
+| `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
+| `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, for READMEs and posts |
+| `.github/workflows/pages.yml` | Rebuilds the Print Bench page and publishes it on GitHub Pages on every push |
 | `examples/models/` | Three designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable) and `upgrade-bin.scad`, which upgrades an existing STL |
 | `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
 | `examples/stl/`, `examples/bench.json` | Their exported parts and the demo page's list |
-| `skills/` | Claude Code skills: `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
+| `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
 
 ## Set up
@@ -33,6 +44,18 @@ cp claude-3d-printing/agents/*.md ~/.claude/agents/
 
 On Windows Git Bash the same commands work. Restart Claude Code afterwards.
 
+## Ask Claude
+
+With the skills installed, open Claude Code in a folder where you want the files and ask in plain words. The `print-workflow` skill runs the tools for you: model, export, mesh check, Print Bench, and a short hand-over with which file goes on which head.
+
+- "Design a Gridfinity bin, 2 x 1, 42 mm tall, for M3 screws, with the label printed in white. My printer is a Bambu A1 with the AMS."
+- "Here's an STL I downloaded. Add a printed-in label on the front and magnet pockets in the base."
+- "This phone stand is 2 mm too tight for my case. The case measures 11.4 mm. Fix the slot."
+- "Make this part print in two colours: the top 3 mm in red."
+- "Show me everything I've designed so far on a Print Bench, with renders for my README."
+
+Give Claude caliper numbers for anything that has to fit. It never guesses a fit size; it marks those `FIT` and asks.
+
 ## Try it
 
 ```bash
@@ -42,7 +65,13 @@ blender --background --factory-startup --python ../tools/mesh_audit.py -- stl --
 python ../tools/print_bench.py bench.json print-bench.html
 ```
 
-Open `print-bench.html` in a browser. To share it, put it on GitHub Pages: commit it as `index.html` on a `gh-pages` branch and turn Pages on in the repo settings (that is how the demo above is hosted).
+Open `print-bench.html` in a browser. For pictures:
+
+```bash
+blender --background --factory-startup --python ../tools/render.py -- bench.json renders
+```
+
+ To share it, fork this repo, set Settings, Pages, Source to "GitHub Actions", and point the `download` URL in `bench.json` at your fork: every push rebuilds your page.
 
 Set `OPENSCAD` to the binary if it isn't on your PATH. A model lists its colour parts on its first line (`// parts: red blue white black`); each becomes `<model>-<part>.stl`. In the slicer, load all of a model's parts as one object and give each part its own head.
 
