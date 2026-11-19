@@ -1,8 +1,30 @@
 # Claude 3D printing
 
-How I design and check prints with Claude: describe the part, Claude writes it in OpenSCAD with every size as a named number, the tools export one STL per colour, a mesh check catches what a slicer would choke on, and a Print Bench page shows every design in its real colours before a gram of filament is used.
+![Every example design, rendered in its print colours](docs/images/hero.jpg)
 
-**[Open the live Print Bench](https://kalmehdar.github.io/claude-3d-printing/)**: every example in 3D, with its sizes drawn on, a tap-to-measure tool and download links. It works on a phone.
+**Design and upgrade 3D prints by talking to Claude Code.** Describe a part, or hand over an STL you downloaded. Claude writes it in OpenSCAD with every size as a named number, exports one print file per colour, checks the meshes, and shows everything on a page you can turn round on your phone, with the sizes drawn on, before a gram of filament is used.
+
+[**Live demo**](https://kalmehdar.github.io/claude-3d-printing/) · [Start in a minute](#start-in-a-minute) · [What to ask Claude](#ask-claude) · [Upgrade a print you already have](#upgrade-a-print-you-already-have) · [Add your own design](CONTRIBUTING.md)
+
+## Start in a minute
+
+1. Install [Claude Code](https://claude.com/claude-code) and [OpenSCAD](https://openscad.org/downloads.html) (take a development snapshot: much faster).
+2. Copy the skills and agents into Claude:
+
+   ```bash
+   git clone https://github.com/kalmehdar/claude-3d-printing.git
+   mkdir -p ~/.claude/skills ~/.claude/agents
+   cp -R claude-3d-printing/skills/* ~/.claude/skills/
+   cp claude-3d-printing/agents/*.md ~/.claude/agents/
+   ```
+
+3. Restart Claude Code in an empty folder and ask: *"Design a Gridfinity bin, 2 x 1, 42 mm tall, for M3 screws, with the label printed in white. My printer is a Bambu A1 with the AMS."*
+
+Claude asks anything it needs (your printer, caliper numbers for parts that must fit), then hands back the print files, a checked mesh, a Print Bench page and which file goes on which head.
+
+## Examples
+
+Every example is on the [live demo](https://kalmehdar.github.io/claude-3d-printing/) in 3D with its source and STLs to download.
 
 | | | |
 | --- | --- | --- |
@@ -11,7 +33,7 @@ How I design and check prints with Claude: describe the part, Claude writes it i
 | ![A plain downloaded bin](docs/images/before.jpg) | ![The same bin upgraded](docs/images/after.jpg) | |
 | Before: a plain downloaded STL | After: Claude added a label, a red rim and magnet pockets | |
 
-Every picture here was made by `tools/render.py` from the same files you can download.
+These pictures come from `tools/render.py`, from the same files you can download.
 
 ## What's here
 
@@ -20,7 +42,7 @@ Every picture here was made by `tools/render.py` from the same files you can dow
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
-| `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, for READMEs and posts |
+| `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, or all of them in one line-up (`--lineup`), for READMEs and posts |
 | `.github/workflows/pages.yml` | Rebuilds the Print Bench page and publishes it on GitHub Pages on every push |
 | `examples/models/` | Three designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable) and `upgrade-bin.scad`, which upgrades an existing STL |
 | `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
@@ -28,21 +50,12 @@ Every picture here was made by `tools/render.py` from the same files you can dow
 | `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
 
-## Set up
+## Full setup
 
 1. Install [OpenSCAD](https://openscad.org/downloads.html). Take a development snapshot: it renders with the manifold backend, seconds instead of minutes.
 2. Install [Blender](https://www.blender.org/download/) for the mesh check (optional, but it catches problems early).
 3. Install your printer maker's slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, Snapmaker Orca).
-4. Give Claude the skills and agents:
-
-```bash
-git clone https://github.com/kalmehdar/claude-3d-printing.git
-mkdir -p ~/.claude/skills ~/.claude/agents
-cp -R claude-3d-printing/skills/* ~/.claude/skills/
-cp claude-3d-printing/agents/*.md ~/.claude/agents/
-```
-
-On Windows Git Bash the same commands work. Restart Claude Code afterwards.
+4. Copy the skills and agents into Claude as in [Start in a minute](#start-in-a-minute). On Windows, Git Bash runs the same commands.
 
 ## Ask Claude
 
