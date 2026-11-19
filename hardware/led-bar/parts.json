@@ -1,0 +1,634 @@
+[
+ {
+  "ref": "J1",
+  "value": "USB-C",
+  "footprint": "Connector_USB:USB_C_Receptacle_HCTL_HC-TYPE-C-16P-01A",
+  "lcsc": "C2894897",
+  "pins": {
+   "A1": "GND",
+   "A4": "VBUS",
+   "A5": "N$1",
+   "A6": "USB_DP",
+   "A7": "USB_DM",
+   "A8": "__NOCONNECT",
+   "A9": "VBUS",
+   "A12": "GND",
+   "B1": "GND",
+   "B4": "VBUS",
+   "B5": "N$2",
+   "B6": "USB_DP",
+   "B7": "USB_DM",
+   "B8": "__NOCONNECT",
+   "B9": "VBUS",
+   "B12": "GND",
+   "SH": "GND"
+  }
+ },
+ {
+  "ref": "R1",
+  "value": "5.1k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C23186",
+  "pins": {
+   "1": "N$1",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "R2",
+  "value": "5.1k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C23186",
+  "pins": {
+   "1": "N$2",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "U4",
+  "value": "USBLC6-2SC6",
+  "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+  "lcsc": "C7519",
+  "pins": {
+   "1": "USB_DP",
+   "2": "GND",
+   "3": "USB_DM",
+   "4": "USB_DM",
+   "5": "VBUS",
+   "6": "USB_DP"
+  }
+ },
+ {
+  "ref": "F1",
+  "value": "1.5A hold",
+  "footprint": "Fuse:Fuse_1206_3216Metric",
+  "lcsc": "C20802",
+  "pins": {
+   "1": "VBUS",
+   "2": "+5V"
+  }
+ },
+ {
+  "ref": "C1",
+  "value": "470uF 16V",
+  "footprint": "Capacitor_SMD:CP_Elec_8x10",
+  "lcsc": "C165531",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "U2",
+  "value": "AP2112K-3.3",
+  "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+  "lcsc": "C51118",
+  "pins": {
+   "1": "+5V",
+   "2": "GND",
+   "3": "+5V",
+   "4": null,
+   "5": "+3V3"
+  }
+ },
+ {
+  "ref": "C2",
+  "value": "1uF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C15849",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "C3",
+  "value": "1uF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C15849",
+  "pins": {
+   "1": "+3V3",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "U1",
+  "value": "ESP32-C3-WROOM-02-N4",
+  "footprint": "RF_Module:ESP32-C3-WROOM-02",
+  "lcsc": "C2934560",
+  "pins": {
+   "1": "+3V3",
+   "2": "EN",
+   "3": "LED_DATA_3V3",
+   "4": "__NOCONNECT",
+   "5": "__NOCONNECT",
+   "6": "__NOCONNECT",
+   "7": "N$4",
+   "8": "BOOT",
+   "9": "GND",
+   "10": "__NOCONNECT",
+   "11": "__NOCONNECT",
+   "12": "__NOCONNECT",
+   "13": "USB_DM",
+   "14": "USB_DP",
+   "15": "__NOCONNECT",
+   "16": "N$3",
+   "17": "__NOCONNECT",
+   "18": "__NOCONNECT",
+   "19": "GND"
+  }
+ },
+ {
+  "ref": "C4",
+  "value": "10uF",
+  "footprint": "Capacitor_SMD:C_0805_2012Metric",
+  "lcsc": "C15850",
+  "pins": {
+   "1": "+3V3",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "C5",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+3V3",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "R3",
+  "value": "10k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C25804",
+  "pins": {
+   "1": "+3V3",
+   "2": "EN"
+  }
+ },
+ {
+  "ref": "C6",
+  "value": "1uF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C15849",
+  "pins": {
+   "1": "EN",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "R4",
+  "value": "10k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C25804",
+  "pins": {
+   "1": "+3V3",
+   "2": "N$3"
+  }
+ },
+ {
+  "ref": "R5",
+  "value": "10k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C25804",
+  "pins": {
+   "1": "+3V3",
+   "2": "N$4"
+  }
+ },
+ {
+  "ref": "SW1",
+  "value": "RESET",
+  "footprint": "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
+  "lcsc": "C318884",
+  "pins": {
+   "1": "EN",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "SW2",
+  "value": "BOOT",
+  "footprint": "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
+  "lcsc": "C318884",
+  "pins": {
+   "1": "BOOT",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "U3",
+  "value": "74AHCT1G125",
+  "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+  "lcsc": "C7484",
+  "pins": {
+   "1": "GND",
+   "2": "LED_DATA_3V3",
+   "3": "GND",
+   "4": "N$5",
+   "5": "+5V"
+  }
+ },
+ {
+  "ref": "C7",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "R6",
+  "value": "390",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C23151",
+  "pins": {
+   "1": "N$5",
+   "2": "LED_DATA_5V"
+  }
+ },
+ {
+  "ref": "D1",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_1",
+   "3": "GND",
+   "4": "LED_DATA_5V"
+  }
+ },
+ {
+  "ref": "C8",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D2",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_2",
+   "3": "GND",
+   "4": "LED_CHAIN_1"
+  }
+ },
+ {
+  "ref": "C9",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D3",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_3",
+   "3": "GND",
+   "4": "LED_CHAIN_2"
+  }
+ },
+ {
+  "ref": "C10",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D4",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_4",
+   "3": "GND",
+   "4": "LED_CHAIN_3"
+  }
+ },
+ {
+  "ref": "C11",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D5",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_5",
+   "3": "GND",
+   "4": "LED_CHAIN_4"
+  }
+ },
+ {
+  "ref": "C12",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D6",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_6",
+   "3": "GND",
+   "4": "LED_CHAIN_5"
+  }
+ },
+ {
+  "ref": "C13",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D7",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_7",
+   "3": "GND",
+   "4": "LED_CHAIN_6"
+  }
+ },
+ {
+  "ref": "C14",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D8",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_8",
+   "3": "GND",
+   "4": "LED_CHAIN_7"
+  }
+ },
+ {
+  "ref": "C15",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D9",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_9",
+   "3": "GND",
+   "4": "LED_CHAIN_8"
+  }
+ },
+ {
+  "ref": "C16",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D10",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_10",
+   "3": "GND",
+   "4": "LED_CHAIN_9"
+  }
+ },
+ {
+  "ref": "C17",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D11",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_11",
+   "3": "GND",
+   "4": "LED_CHAIN_10"
+  }
+ },
+ {
+  "ref": "C18",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D12",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_12",
+   "3": "GND",
+   "4": "LED_CHAIN_11"
+  }
+ },
+ {
+  "ref": "C19",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D13",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_13",
+   "3": "GND",
+   "4": "LED_CHAIN_12"
+  }
+ },
+ {
+  "ref": "C20",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D14",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_14",
+   "3": "GND",
+   "4": "LED_CHAIN_13"
+  }
+ },
+ {
+  "ref": "C21",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D15",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "LED_CHAIN_15",
+   "3": "GND",
+   "4": "LED_CHAIN_14"
+  }
+ },
+ {
+  "ref": "C22",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "D16",
+  "value": "WS2812B",
+  "footprint": "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  "lcsc": "C2761795",
+  "pins": {
+   "1": "+5V",
+   "2": "__NOCONNECT",
+   "3": "GND",
+   "4": "LED_CHAIN_15"
+  }
+ },
+ {
+  "ref": "C23",
+  "value": "100nF",
+  "footprint": "Capacitor_SMD:C_0603_1608Metric",
+  "lcsc": "C14663",
+  "pins": {
+   "1": "+5V",
+   "2": "GND"
+  }
+ },
+ {
+  "ref": "H1",
+  "value": "M3",
+  "footprint": "MountingHole:MountingHole_3.2mm_M3",
+  "lcsc": "",
+  "pins": {}
+ },
+ {
+  "ref": "H2",
+  "value": "M3",
+  "footprint": "MountingHole:MountingHole_3.2mm_M3",
+  "lcsc": "",
+  "pins": {}
+ },
+ {
+  "ref": "H3",
+  "value": "M3",
+  "footprint": "MountingHole:MountingHole_3.2mm_M3",
+  "lcsc": "",
+  "pins": {}
+ },
+ {
+  "ref": "H4",
+  "value": "M3",
+  "footprint": "MountingHole:MountingHole_3.2mm_M3",
+  "lcsc": "",
+  "pins": {}
+ }
+]
