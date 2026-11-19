@@ -9,7 +9,7 @@ bench.json (paths relative to it):
                "material": "PETG, four heads", "credit": "Designed by ...",
                "parts": [["Red", "stl/test-card-red.stl", "#c8102e"], ...]}]}
 state is "check" (fit it first), "ready" or "later". Set "nobed": true on a model too big to sit on the bed.
-Optional: "download" (a base URL, e.g. raw GitHub files) gives every part a download link, and a model's
+Optional: "link": {"text": "Get it on GitHub", "url": "..."} puts a button in the header; "download" (a base URL, e.g. raw GitHub files) gives every part a download link, and a model's
 "source" (its .scad path) a source link.
 Grams are estimated from the shape (1 mm skin, 15% infill, PETG 1.27 g/cm3): about 20% either way; your slicer wins.
 """
@@ -76,12 +76,17 @@ def main():
                        "parts": packed, "sliced": [],
                        "source": bench["download"].rstrip("/") + "/" + m["source"] if bench.get("download") and m.get("source") else None})
         print(f"{m['name']}: {models[-1]['size']} mm, {len(allv) // 9} triangles")
-    config = {k: bench[k] for k in ("title", "sub", "foot", "mark", "markLang", "bed") if k in bench}
+    config = {k: bench[k] for k in ("title", "sub", "foot", "mark", "markLang", "bed", "link") if k in bench}
     tpl = open(os.path.join(HERE, "print-bench-template.html"), encoding="utf-8").read()
     html = (tpl.replace("/*MODELS*/[]", json.dumps(models, separators=(",", ":")))
             .replace("/*CONFIG*/{}", json.dumps(config, ensure_ascii=False))
             .replace("/*TITLE*/", bench.get("title", "Print Bench"))
             .replace("/*BUILT*/", datetime.datetime.now().strftime("%d %b %Y")))
+    # The template is a page body (Claude artifacts wrap it themselves); a standalone file needs its own document,
+    # above all the viewport tag, or phones lay it out at desktop width.
+    html = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+            '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+            '</head>\n<body>\n' + html.replace('<meta charset="utf-8">\n', '', 1) + '\n</body>\n</html>\n')
     open(out, "w", encoding="utf-8", newline="\n").write(html)
     print(f"wrote {out} ({os.path.getsize(out) // 1024} KB)")
 

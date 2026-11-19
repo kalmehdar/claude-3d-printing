@@ -1,0 +1,33 @@
+name: Share a print
+description: Show something you printed with these tools or skills
+title: "Print: "
+labels: ["shared-print"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What is it?
+      description: What it does, and what you asked Claude for.
+    validations:
+      required: true
+  - type: textarea
+    id: photo
+    attributes:
+      label: Photo of the real print
+      description: Drag a photo in here.
+    validations:
+      required: true
+  - type: input
+    id: printer
+    attributes:
+      label: Printer, material and colours
+      placeholder: "Bambu A1 + AMS, PETG, black and white"
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: Link to the .scad or STL if you're happy to share it, and the original model's link and licence if it's a remix.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything that went wrong or you'd change?

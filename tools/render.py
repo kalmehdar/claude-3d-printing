@@ -8,6 +8,7 @@ One PNG per model (<id>.png): a three-quarter view from the front right, soft st
 contact shadow. The colours are the bench's hex colours, so a render matches the Print Bench page.
 """
 import json
+import math
 import os
 import sys
 
@@ -68,6 +69,10 @@ def shot(models, name, gap=18.0):
             bpy.ops.wm.stl_import(filepath=os.path.join(base, rel))
             o = bpy.context.selected_objects[0]
             o.data.materials.append(material(colour))
+            try:   # STLs carry no smoothing: smooth the curves, keep edges sharper than 30 degrees
+                bpy.ops.object.shade_auto_smooth(angle=math.radians(30))
+            except (AttributeError, RuntimeError, TypeError):
+                pass
             group.append(o)
         bpy.context.view_layer.update()
         lo = Vector([min((o.matrix_world @ Vector(c))[i] for o in group for c in o.bound_box) for i in range(3)])

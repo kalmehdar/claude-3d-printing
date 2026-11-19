@@ -1,6 +1,6 @@
 {
   "title": "Print Bench",
-  "sub": "Example designs from claude-3d-printing, in their print colours. Drag to turn, pinch or scroll to zoom. The square under a print is a 270 x 270 mm bed.",
+  "sub": "Designs made with Claude Code and the claude-3d-printing tools, in their print colours. Turn them, measure them, download them.",
   "foot": "Built with <code>tools/print_bench.py</code> from github.com/kalmehdar/claude-3d-printing. Grams are an estimate from the shape (1 mm walls, 15% infill), about 20% either way; your slicer's figure wins.",
   "bed": 270,
   "models": [
@@ -121,6 +121,45 @@
       "source": "models/cable-tag.scad"
     },
     {
+      "id": "swatch",
+      "name": "Filament swatch card",
+      "for": "One card per spool: its name and the temperatures it printed well at, printed in, plus a 0.4 to 1.6 mm step strip that shows how see-through the colour is. A hole takes a keyring.",
+      "status": "Ready: set swatch_name, nozzle and bed for each spool",
+      "state": "ready",
+      "material": "Two heads: the spool's colour, and a contrasting one for the text",
+      "credit": "Designed with Claude in OpenSCAD",
+      "source": "models/swatch-card.scad",
+      "parts": [
+        [
+          "Card",
+          "stl/swatch-card-body.stl",
+          "#1f1f22"
+        ],
+        [
+          "Text",
+          "stl/swatch-card-text.stl",
+          "#ecebe6"
+        ]
+      ]
+    },
+    {
+      "id": "clip",
+      "name": "Desk cable clip",
+      "for": "Snaps over a cable and sticks to the desk edge with a 20 x 20 mm adhesive pad. Prints flat, no supports.",
+      "status": "Fit first: set cable_d to your cable's diameter",
+      "state": "check",
+      "material": "One colour",
+      "credit": "Designed with Claude in OpenSCAD",
+      "source": "models/desk-cable-clip.scad",
+      "parts": [
+        [
+          "Clip",
+          "stl/desk-cable-clip.stl",
+          "#1f1f22"
+        ]
+      ]
+    },
+    {
       "id": "before",
       "name": "Upgrade, before: a plain bin",
       "for": "Stands in for any STL you downloaded: one colour, no label, no magnets, and no source file to edit.",
@@ -164,5 +203,9 @@
       "source": "models/upgrade-bin.scad"
     }
   ],
-  "download": "https://raw.githubusercontent.com/kalmehdar/claude-3d-printing/main/examples"
+  "download": "https://raw.githubusercontent.com/kalmehdar/claude-3d-printing/main/examples",
+  "link": {
+    "text": "Get it on GitHub",
+    "url": "https://github.com/kalmehdar/claude-3d-printing"
+  }
 }

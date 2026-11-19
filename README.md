@@ -30,6 +30,8 @@ Every example is on the [live demo](https://kalmehdar.github.io/claude-3d-printi
 | --- | --- | --- |
 | ![Four-colour test card](docs/images/testcard.jpg) | ![Colour-coded Gridfinity bins](docs/images/bins.jpg) | ![Clip-on cable tags](docs/images/tags.jpg) |
 | Four-colour test card | Colour-coded Gridfinity bins | Cable tags, each clip sized to its cable |
+| ![Filament swatch card](docs/images/swatch.jpg) | ![Desk cable clip](docs/images/clip.jpg) | |
+| Filament swatch card with a see-through step strip | Desk cable clip, sized to your cable | |
 | ![A plain downloaded bin](docs/images/before.jpg) | ![The same bin upgraded](docs/images/after.jpg) | |
 | Before: a plain downloaded STL | After: Claude added a label, a red rim and magnet pockets | |
 
@@ -44,7 +46,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
 | `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, or all of them in one line-up (`--lineup`), for READMEs and posts |
 | `.github/workflows/pages.yml` | Rebuilds the Print Bench page and publishes it on GitHub Pages on every push |
-| `examples/models/` | Three designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable) and `upgrade-bin.scad`, which upgrades an existing STL |
+| `examples/models/` | Five designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable, a filament swatch card, a desk cable clip) and `upgrade-bin.scad`, which upgrades an existing STL |
 | `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
 | `examples/stl/`, `examples/bench.json` | Their exported parts and the demo page's list |
 | `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |

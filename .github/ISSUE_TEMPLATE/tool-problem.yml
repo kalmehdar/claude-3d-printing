@@ -1,0 +1,34 @@
+name: Something didn't work
+description: A tool failed, a page looks wrong, or Claude got stuck
+title: "Problem: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where?
+      options:
+        - export_parts.py
+        - mesh_audit.py
+        - print_bench.py or the Print Bench page
+        - render.py
+        - A skill (print-workflow, 3d-print-designer, ...)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The command you ran and its output
+      render: shell
+  - type: input
+    id: versions
+    attributes:
+      label: System and versions
+      placeholder: "Windows 11, OpenSCAD 2026.01 snapshot, Blender 5.2, Python 3.12"
