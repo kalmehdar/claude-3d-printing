@@ -2,6 +2,7 @@
  "width": 200.0,
  "height": 36.0,
  "corner_radius": 2.0,
+ "tallest": 10.0,
  "rules": {
   "track": 0.25,
   "clearance": 0.2,

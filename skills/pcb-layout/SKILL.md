@@ -5,7 +5,7 @@ description: 'Turns a reviewed circuit (SKiDL circuit.py from electronics-design
 
 # PCB layout
 
-Needs KiCad 10 (`kicad-cli`, and KiCad's own Python for the board steps) and Java for Freerouting. `tools/pcb.py` runs every step; `python tools/pcb.py --help` lists them. Read SPECS.md and circuit.py before starting.
+Needs KiCad 10 (`kicad-cli`, and KiCad's own Python for the board steps) and Java for Freerouting. `tools/pcb.py` runs every step; run it with no arguments to list them. Read SPECS.md and circuit.py before starting.
 
 ## Rules Claude follows on every board
 
@@ -18,11 +18,18 @@ Needs KiCad 10 (`kicad-cli`, and KiCad's own Python for the board steps) and Jav
 
 ## Steps
 
-1. `pcb.py new hardware/<name>` makes the KiCad project from circuit.py's netlist with every footprint, and draws the outline and holes from SPECS.md.
-2. Place parts: by script from a placement table in `hardware/<name>/placement.json` (reference, x, y, rotation, side), following the rules above. Show the person a render of the placement before routing.
-3. `pcb.py route hardware/<name>` exports the board to Freerouting, routes it, and imports the result. Then add the ground pours.
-4. `pcb.py check hardware/<name>`: ERC on the schematic and DRC on the board, both at zero errors. Unconnected nets count as errors. Fix and re-run; never waive a check without saying so to the person.
-5. `pcb.py fab hardware/<name>`: Gerbers, drill, BOM with LCSC numbers, pick-and-place, all zipped for upload, plus a STEP model and top and bottom renders.
+A project lives in `hardware/<name>/` with `SPECS.md`, `circuit.py` (from electronics-design) and `layout.py`. `hardware/led-bar` is the worked example: copy its shape.
+
+1. **Layout:** write `layout.py`: board size, rules, power track widths (from `tools/trace_width.py`), the ground-pour net, the tallest part, and a position and rotation for every part, following the rules above. It writes `board.json`.
+2. **Build and look:** `python tools/pcb.py build hardware/<name>`, then `kicad-cli pcb render` (or `pcb.py fab`) and look at the placement before routing: connectors at the edges, antenna keep-out clear, decoupling next to its pins.
+3. **Route:** `python tools/pcb.py route hardware/<name>` exports to Freerouting, routes, imports the result and pours ground on both layers.
+4. **Check:** `python tools/pcb.py check hardware/<name>` runs KiCad's DRC, removes dangling vias, joins starved thermal pads solidly, and must end `0 errors, 0 unconnected`. Read every warning too. If routing squeezes a track below the minimum, move parts to give it room rather than lowering the rule.
+5. **Fab:** `python tools/pcb.py fab hardware/<name>` writes `fab/`: the Gerbers zip, JLCPCB BOM and placement files, STEP, STL and renders. Every BOM line needs an LCSC number checked on JLCPCB's listing; the step lists any that are missing.
+6. **For the case:** `python tools/pcb.py dims hardware/<name>` writes `board_dims.scad` for enclosure-from-pcb.
+
+`python tools/pcb.py all hardware/<name>` runs the circuit check and steps 2 to 6 in order.
+
+Lessons from the first board, built into the tools: KiCad 7 and later keep net classes in the `.kicad_pro` file (the builder writes it, or the router ignores the power widths); SKiDL's no-connect net `__NOCONNECT` is not a real net; library footprints sometimes need their own clearances (record those in REVIEW.md, never hide them).
 
 ## Before anything is ordered (the gate)
 

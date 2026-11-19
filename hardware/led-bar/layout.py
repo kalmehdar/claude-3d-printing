@@ -49,7 +49,7 @@ place["R6"] = (184, 20, 90)
 for i, (x, y) in enumerate(((4, 4), (196, 4), (4, 32), (196, 32))):
     place[f"H{i + 1}"] = (x, y, 0)
 
-out = {"width": W, "height": H, "corner_radius": 2.0,
+out = {"width": W, "height": H, "corner_radius": 2.0, "tallest": 10.0,   # C1, the 470 uF capacitor (Samyoung 8 x 10 mm)
        "rules": {"track": 0.25, "clearance": 0.2, "via": 0.6, "drill": 0.3, "edge_clearance": 0.5,
                  "min_track": 0.15, "min_drill": 0.2, "hole_clearance": 0.18},   # JLCPCB standard allows 0.127 mm track; 0.2 mm drill and 0.18 mm hole clearance are the module and USB-C library footprints' own
        "power_nets": {"+5V": 0.8, "VBUS": 0.5, "GND": 0.5, "+3V3": 0.5},   # VBUS 0.5: reaches the USB-C pads, 1.3 A needs 0.43; GND is mostly the pour

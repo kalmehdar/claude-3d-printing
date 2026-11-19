@@ -65,7 +65,7 @@ def shot(models, name, gap=18.0):
     x, objs = 0.0, []
     for m in models:
         group = []
-        for label, rel, colour in m["parts"]:
+        for label, rel, colour in (e[:3] for e in m["parts"]):
             bpy.ops.wm.stl_import(filepath=os.path.join(base, rel))
             o = bpy.context.selected_objects[0]
             o.data.materials.append(material(colour))

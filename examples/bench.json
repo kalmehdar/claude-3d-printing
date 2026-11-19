@@ -5,6 +5,34 @@
   "bed": 270,
   "models": [
     {
+      "id": "ledbar",
+      "name": "Rack status LED bar",
+      "for": "A whole hardware project: 16 addressable LEDs and an ESP32-C3 on a board designed, routed and checked with Claude in KiCad, behind a printed 1U faceplate with a white diffuser window. Runs WLED. Shown as it prints, face down, with the board on its four standoffs above it.",
+      "status": "Fit first: board not yet ordered; read hardware/led-bar/REVIEW.md",
+      "state": "check",
+      "material": "Faceplate PETG black, diffuser PETG white; the board is made by JLCPCB",
+      "credit": "Designed with Claude: hardware/led-bar (circuit.py, layout.py, case.scad)",
+      "source": "../hardware/led-bar/case.scad",
+      "parts": [
+        [
+          "Faceplate",
+          "../hardware/led-bar/stl/case-panel.stl",
+          "#1f1f22"
+        ],
+        [
+          "Diffuser",
+          "../hardware/led-bar/stl/case-diffuser.stl",
+          "#ecebe6"
+        ],
+        [
+          "Circuit board",
+          "../hardware/led-bar/stl/case-board.stl",
+          "#2d5a3d",
+          "not printed"
+        ]
+      ]
+    },
+    {
       "id": "testcard",
       "name": "Four-colour test card",
       "for": "The first print on a new multi-head printer. Every colour borders every other colour once; if the edges stay crisp, purge and retraction are right.",

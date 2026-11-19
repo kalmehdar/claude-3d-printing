@@ -4,7 +4,7 @@ name: Print Bench page
 on:
   push:
     branches: [main]
-    paths: ["examples/**", "tools/print_bench.py", "tools/print-bench-template.html", ".github/workflows/pages.yml"]
+    paths: ["examples/**", "hardware/**", "tools/print_bench.py", "tools/print-bench-template.html", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read

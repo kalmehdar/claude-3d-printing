@@ -6,6 +6,7 @@
     python pcb.py route hardware/<name>     autoroute with Freerouting, add the ground pours
     python pcb.py check hardware/<name>     DRC (and ERC from circuit.py); removes dangling vias; exits 1 on any error
     python pcb.py fab   hardware/<name>     Gerbers, drill, BOM and placement for JLCPCB, a zip, STEP, STL, renders
+    python pcb.py dims  hardware/<name>     board_dims.scad: outline, holes, LED positions, for the case (enclosure-from-pcb)
 
 Freerouting: set FREEROUTING_JAR, or put freerouting-*.jar in ~/.local/share/freerouting/. Java: JAVA or PATH.
 """
@@ -22,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kicad_env  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+NL = chr(10)
 KCLI, KPY = kicad_env.KICAD_CLI, kicad_env.KICAD_PYTHON
 
 
@@ -152,8 +154,23 @@ def fab(d):
         print("  BOM lines with no LCSC number yet (pick them in JLCPCB's parts search):", ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
 
 
+def dims(d):
+    """Write the board's numbers as OpenSCAD variables, so the case is built from the same figures as the board."""
+    b = json.load(open(os.path.join(d, "board.json")))
+    holes = [b["place"][k][:2] for k in sorted(b["place"]) if k.startswith("H")]
+    leds = sorted(b["place"][k][:2] for k in b["place"] if k.startswith("D") and k[1:].isdigit())
+    lines = [f"// Written by tools/pcb.py dims from board.json. Do not edit: change layout.py and rerun.",
+             f"board_w = {b['width']}; board_h = {b['height']}; board_t = 1.6;",
+             f"board_holes = {json.dumps(holes)};   // [x, y] from the board's top-left, y down",
+             f"board_leds = {json.dumps(leds)};"]
+    if "tallest" in b:
+        lines.append(f"board_tallest = {b['tallest']};   // mm above the board's top side")
+    open(os.path.join(d, "board_dims.scad"), "w", newline=NL).write(NL.join(lines) + NL)
+    print(f"board_dims.scad: {len(holes)} holes, {len(leds)} LEDs")
+
+
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ("all", "circuit", "build", "route", "check", "fab"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("all", "circuit", "build", "route", "check", "fab", "dims"):
         sys.exit(__doc__)
     step, d = sys.argv[1], os.path.abspath(sys.argv[2])
     if step in ("all", "circuit") and not circuit(d):
@@ -166,6 +183,8 @@ def main():
         sys.exit(1)
     if step in ("all", "fab"):
         fab(d)
+    if step in ("all", "dims"):
+        dims(d)
 
 
 if __name__ == "__main__":

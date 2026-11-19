@@ -8,6 +8,7 @@ bench.json (paths relative to it):
    "models": [{"id": "card", "name": "Test card", "for": "what it is for", "status": "Ready", "state": "ready",
                "material": "PETG, four heads", "credit": "Designed by ...",
                "parts": [["Red", "stl/test-card-red.stl", "#c8102e"], ...]}]}
+A part may have a fourth item, "not printed" (a circuit board shown in its case): no grams, no filament.
 state is "check" (fit it first), "ready" or "later". Set "nobed": true on a model too big to sit on the bed.
 Optional: "link": {"text": "Get it on GitHub", "url": "..."} puts a button in the header; "download" (a base URL, e.g. raw GitHub files) gives every part a download link, and a model's
 "source" (its .scad path) a source link.
@@ -47,6 +48,17 @@ def grams(v, pla=False):
     return round(g) if g >= 10 else round(g, 1)
 
 
+def link(bench, rel):
+    """A download URL for a file given relative to bench.json; '..' is resolved, which raw file hosts don't do."""
+    if not bench.get("download") or not rel:
+        return None
+    import posixpath
+    base = bench["download"].rstrip("/")
+    scheme, _, rest = base.partition("://")
+    host, _, path = rest.partition("/")
+    return f"{scheme}://{host}/" + posixpath.normpath(posixpath.join(path, rel)).lstrip("/")
+
+
 def main():
     src, out = sys.argv[1], sys.argv[2]
     bench = json.load(open(src, encoding="utf-8"))
@@ -54,9 +66,11 @@ def main():
     models = []
     for m in bench["models"]:
         parts, allv = [], []
-        for label, rel, colour in m["parts"]:
+        for entry in m["parts"]:
+            label, rel, colour = entry[:3]
+            printed = not (len(entry) > 3 and entry[3] == "not printed")   # e.g. a circuit board shown in its case
             v = triangles(os.path.join(base, rel))
-            parts.append((label, rel, colour, v, None if m.get("nobed") else grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", ""))))
+            parts.append((label, rel, colour, v, grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", "")) if printed and not m.get("nobed") else None))
             allv.extend(v)
         lo = [min(allv[a::3]) for a in range(3)]
         hi = [max(allv[a::3]) for a in range(3)]
@@ -67,14 +81,14 @@ def main():
             q0 = min(shifted) if shifted else 0.0          # 16-bit vertices: a quarter of the page size of floats
             step = max((max(shifted) - q0) / 65535, 1e-6) if shifted else 1.0
             ints = [round((x - q0) / step) for x in shifted]
-            url = bench["download"].rstrip("/") + "/" + rel if bench.get("download") else None
+            url = link(bench, rel)
             packed.append({"label": label, "colour": colour, "grams": g, "url": url, "q0": q0, "qs": step,
                            "data": base64.b64encode(struct.pack(f"<{len(ints)}H", *ints)).decode()})
         models.append({"id": m["id"], "name": m["name"], "for": m.get("for", ""), "status": m.get("status", ""),
                        "state": m.get("state", "ready"), "material": m.get("material", ""), "credit": m.get("credit", ""),
                        "nobed": m.get("nobed", False), "size": [round(hi[a] - lo[a], 1) for a in range(3)],
                        "parts": packed, "sliced": [],
-                       "source": bench["download"].rstrip("/") + "/" + m["source"] if bench.get("download") and m.get("source") else None})
+                       "source": link(bench, m.get("source"))})
         print(f"{m['name']}: {models[-1]['size']} mm, {len(allv) // 9} triangles")
     config = {k: bench[k] for k in ("title", "sub", "foot", "mark", "markLang", "bed", "link") if k in bench}
     tpl = open(os.path.join(HERE, "print-bench-template.html"), encoding="utf-8").read()

@@ -5,7 +5,7 @@ description: 'Designs a 3D printed case around a real circuit board, from its Ki
 
 # Enclosure from a PCB
 
-The case is built from the board's own numbers, so they cannot drift apart: outline, hole positions, connector positions and the tallest part come from the KiCad board (`pcb.py dims hardware/<name>` writes them to `hardware/<name>/board.json`) or, for a bought board, from the person's caliper numbers and the maker's drawing.
+The case is built from the board's own numbers, so they cannot drift apart: outline, hole positions, connector positions and the tallest part come from the KiCad board (`pcb.py dims hardware/<name>` writes them to `hardware/<name>/board_dims.scad`) or, for a bought board, from the person's caliper numbers and the maker's drawing.
 
 ## Design rules
 

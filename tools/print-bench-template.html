@@ -157,7 +157,7 @@ const STATE_LABEL = {ready:"Ready", check:"Check first", later:"Later"};
 const $ = s => document.querySelector(s);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const fmt = s => s.map(n => n.toFixed(1)).join(" x ") + " mm";
-const grams = m => m.parts.every(p => p.grams != null) ? Math.round(m.parts.reduce((t, p) => t + p.grams, 0)) : 0;
+const grams = m => Math.round(m.parts.reduce((t, p) => t + (p.grams || 0), 0));   // printed parts only
 
 // Next up first: Check first, then Ready, then Later; each keeps its own order.
 const RANK = {check: 0, ready: 1, later: 2};
@@ -371,7 +371,7 @@ if (!window.THREE || !THREE.OrbitControls) {
       ${current.parts.length > 1 ? `<div class="kv"><span class="k">Each part</span><span class="partsizes">${model.children.filter(o => o.isMesh).map(o => {
         o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox, s = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
         return `<span>${o.name}</span><span class="mono">${fmt(s)}</span>`; }).join("")}</span></div>` : ""}
-      ${grams(current) ? `<div class="kv"><span class="k">Filament, estimate</span><span class="v mono">about ${grams(current)} g: ${current.parts.map(p => `${p.label} ${gtxt(p.grams)}`).join(", ")}</span></div>` : ""}
+      ${grams(current) ? `<div class="kv"><span class="k">Filament, estimate</span><span class="v mono">about ${grams(current)} g: ${current.parts.filter(p => p.grams != null).map(p => `${p.label} ${gtxt(p.grams)}`).join(", ")}</span></div>` : ""}
       ${(current.sliced || []).map(s => `<div class="kv sliced"><span class="k">Sliced in Orca${current.sliced.length > 1 ? `: ${s.name}` : ""}</span>
         <span class="v mono">${hm(s.secs)}${s.qty > 1 ? ` each, ${s.qty} to print` : ""} · ${s.grams.map((g, k) => `${Math.round(g)} g ${s.colours[k] || (k ? "white" : "black")}`).join(", ")}${s.cost != null ? ` · £${s.cost.toFixed(2)} of filament${s.qty > 1 ? " each" : ""}` : ""}</span>
         <span class="v ${s.face_down ? "" : "warn"}">${s.face_down ? "Visible face is down on the plate" : "Check the orientation in Orca before printing"}</span>
