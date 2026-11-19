@@ -31,6 +31,8 @@ Designs made with Claude are welcome: useful household and workshop parts, Gridf
 
    Save it as `docs/images/<id>.jpg`, about 1200 x 750.
 
+Printed something but not ready to add it? Open a "Share a print" issue with a photo.
+
 Then build the bench locally (`python ../tools/print_bench.py bench.json print-bench.html`), open it, turn your design round and measure one critical size. Open a pull request saying what you printed it on and how it came out. A photo of the real print helps.
 
 ## Rules
