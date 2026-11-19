@@ -2,7 +2,7 @@
 
 How I design and check prints with Claude: describe the part, Claude writes it in OpenSCAD with every size as a named number, the tools export one STL per colour, a mesh check catches what a slicer would choke on, and a Print Bench page shows every design in its real colours before a gram of filament is used.
 
-Live example: [Print Bench demo](https://claude.ai/code/artifact/473d4b53-a14b-4b78-b0e5-df214c37158f), built from `examples/`.
+Live example: [Print Bench demo](https://kalmehdar.github.io/claude-3d-printing/), built from `examples/`. Open it on your phone and turn the models round.
 
 ## What's here
 
@@ -11,7 +11,8 @@ Live example: [Print Bench demo](https://claude.ai/code/artifact/473d4b53-a14b-4
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json` (one HTML file you can open or publish; fine on a phone) |
-| `examples/models/` | Three designs: a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable |
+| `examples/models/` | Three designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable) and `upgrade-bin.scad`, which upgrades an existing STL |
+| `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
 | `examples/stl/`, `examples/bench.json` | Their exported parts and the demo page's list |
 | `skills/` | Claude Code skills: `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
@@ -41,9 +42,30 @@ blender --background --factory-startup --python ../tools/mesh_audit.py -- stl --
 python ../tools/print_bench.py bench.json print-bench.html
 ```
 
-Open `print-bench.html` in a browser. To share it, ask Claude to publish it as an artifact.
+Open `print-bench.html` in a browser. To share it, put it on GitHub Pages: commit it as `index.html` on a `gh-pages` branch and turn Pages on in the repo settings (that is how the demo above is hosted).
 
 Set `OPENSCAD` to the binary if it isn't on your PATH. A model lists its colour parts on its first line (`// parts: red blue white black`); each becomes `<model>-<part>.stl`. In the slicer, load all of a model's parts as one object and give each part its own head.
+
+## Upgrade a print you already have
+
+Most prints start as someone else's STL. Claude can improve one without the original source file: OpenSCAD's `import()` loads the STL as a solid, and three operations do the rest. `difference()` cuts into it, `union()` adds to it, `intersection()` pulls a region out so it can print in another colour. `examples/models/upgrade-bin.scad` does all three to a plain bin in about 30 lines. In the demo, compare "before" and "after".
+
+Things to ask for:
+
+| Upgrade | How Claude does it |
+| --- | --- |
+| A label printed into it | A 0.6 mm text pocket cut into a face; the same text, clipped to the part, becomes a second-colour STL that fills it |
+| A second colour on a part that has one | `intersection()` with a slab or shape takes that region out as its own STL; `difference()` removes it from the body |
+| A better fit | Grow or shrink a hole by cutting a new cylinder through it; `resize()` or `scale()` in one axis for a part that is a few percent off |
+| Magnets, screws, heat-set inserts | Pockets cut at measured positions (magnet size plus 0.2 mm clearance) |
+| Mount it somewhere | `union()` a hook, a Skadis peg, a screw tab or a Gridfinity foot onto it |
+| Stronger | Fill a thin wall, or add a rib along the part that snapped |
+| Too big for your bed | Cut it into pieces with `intersection()`, and add a dovetail or alignment pins at the joint |
+| Broken mesh | Run `mesh_audit.py`. If it is non-manifold, re-export it from Blender's 3D Print Toolbox, or have Claude rebuild the part in OpenSCAD from measurements |
+
+How to ask: give Claude the STL, say what is wrong with it or what you want added, and give caliper numbers for anything it has to fit. Claude reads the STL's size and bounds first (`export_parts.py` and `mesh_audit.py` both print them), writes the upgrade with each position as a named number, exports the parts, audits them, and adds a before and after to your Print Bench. For bigger changes it is often cleaner to have Claude redraw the part in OpenSCAD from measurements, which makes every later change one number.
+
+Check the licence first. Many models on Printables, MakerWorld and Thingiverse allow remixes for personal use only (CC BY-NC); credit the original in anything you share.
 
 ## The way I work with Claude
 
