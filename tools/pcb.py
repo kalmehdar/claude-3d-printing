@@ -156,6 +156,8 @@ def fab(d):
             z.write(os.path.join(g, f), f)
     run([k, "pcb", "export", "step", "-o", os.path.join(out, f"{name}.step"), "--subst-models", "--force", pcb])
     run([k, "pcb", "export", "stl", "-o", os.path.join(out, f"{name}.stl"), "--subst-models", "--force", pcb])
+    run([k, "pcb", "export", "glb", "-o", os.path.join(out, f"{name}.glb"), "--subst-models", "--include-pads",
+         "--include-silkscreen", "--include-soldermask", "--force", pcb])   # in colour, with every part: the Print Bench shows it
     for side in ("top", "bottom"):
         run([k, "pcb", "render", "--side", side, "--width", "2400", "--height", "640", "--zoom", "3.8", "--quality", "high",
              "--background", "opaque", "-o", os.path.join(out, f"{name}-{side}.png"), pcb])

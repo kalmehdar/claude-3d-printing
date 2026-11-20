@@ -70,6 +70,14 @@
     ],
     "total_g": 35.1,
     "changes": 0
+   },
+   "fitcard": {
+    "time": "22m 17s",
+    "grams": [
+     6.0
+    ],
+    "total_g": 6.0,
+    "changes": 0
    }
   }
  },
@@ -144,6 +152,14 @@
     ],
     "total_g": 29.2,
     "changes": 31
+   },
+   "fitcard": {
+    "time": "16m 21s",
+    "grams": [
+     6.0
+    ],
+    "total_g": 6.0,
+    "changes": 0
    }
   }
  }

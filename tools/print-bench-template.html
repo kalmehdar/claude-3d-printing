@@ -147,6 +147,7 @@ footer{font-size:12.5px;color:var(--ink3)}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 const MODELS = /*MODELS*/[];
 const CONFIG = Object.assign({title: "Print Bench", sub: "", mark: "", markLang: "", foot: "", bed: 270, link: null}, /*CONFIG*/{});
@@ -347,13 +348,23 @@ if (!window.THREE || !THREE.OrbitControls) {
       const mesh = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({color: col, roughness: 0.6, metalness: p.colour === "#c9a24a" ? 0.35 : 0.0,
         clearcoat: 0.08, clearcoatRoughness: 0.6, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1}));
       mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = p.label; grp.add(mesh);
+      if (p.glb && THREE.GLTFLoader) {   // a circuit board in full colour from KiCad; the flat board stays if it can't load
+        (p._glb || (p._glb = new Promise((ok, no) => new THREE.GLTFLoader().load(p.glb.url, ok, undefined, no)))).then(gltf => {
+          const root = gltf.scene.clone(true);
+          root.matrixAutoUpdate = false; root.matrix.fromArray(p.glb.matrix);
+          root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          mesh.material.visible = false; mesh.add(root);   // inside the mesh, so the part's checkbox still hides it
+          const e = grp.children.find(o => o.userData.edge && o.userData.part === mesh); if (e) e.userData.off = true, e.visible = false;
+          needs = true;
+        }).catch(() => {});
+      }
       if (withEdges) {
         // Edge lines: creases sharper than 28 degrees, so holes, slots and chamfers read on black prints
         const c = new THREE.Color(p.colour), lum = 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
         const edges = new THREE.LineSegments(p._e || (p._e = new THREE.EdgesGeometry(g, 28)),
           new THREE.LineBasicMaterial({color: lum < 0.12 ? new THREE.Color(0x8e949e) : c.clone().multiplyScalar(lum < 0.5 ? 0.55 : 0.7),
             transparent: true, opacity: lum < 0.12 ? 0.5 : 0.8}));   // grey on black parts, a deeper shade of the part's own colour on the rest
-        edges.visible = edgesOn; edges.userData.edge = true; grp.add(edges);
+        edges.visible = edgesOn; edges.userData.edge = true; edges.userData.part = mesh; grp.add(edges);
       }
     });
     return grp;
@@ -389,7 +400,7 @@ if (!window.THREE || !THREE.OrbitControls) {
       <p class="credit">${current.credit}</p>`;
     $("#info").querySelectorAll("[data-printer]").forEach(b => b.addEventListener("click", () => { printer = +b.dataset.printer; show(MODELS.indexOf(current)); }));
     $("#info").querySelectorAll("input").forEach(cb => cb.addEventListener("change", () => {
-      const k = +cb.dataset.k; model.children.filter(o => o.isMesh)[k].visible = cb.checked; const e = model.children.filter(o => o.userData.edge)[k]; if (e) e.visible = cb.checked && edgesOn; needs = true;
+      const k = +cb.dataset.k; model.children.filter(o => o.isMesh)[k].visible = cb.checked; const e = model.children.filter(o => o.userData.edge)[k]; if (e) e.visible = cb.checked && edgesOn && !e.userData.off; needs = true;
     }));
     bed.visible = bedOn && !current.nobed;
     $("#bedBtn").disabled = !!current.nobed;
@@ -400,7 +411,7 @@ if (!window.THREE || !THREE.OrbitControls) {
   $("#resetBtn").addEventListener("click", () => current && frame());
   $("#edgeBtn").addEventListener("click", e => {
     edgesOn = !edgesOn; e.currentTarget.setAttribute("aria-pressed", String(edgesOn));
-    if (model) model.traverse(o => { if (o.userData.edge) o.visible = edgesOn; }); needs = true;
+    if (model) model.traverse(o => { if (o.userData.edge) o.visible = edgesOn && !o.userData.off; }); needs = true;
   });
   function setFull(on) {
     stage.classList.toggle("full", on); $("#fullBtn").setAttribute("aria-pressed", String(on));
