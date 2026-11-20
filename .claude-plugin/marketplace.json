@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "print-bench",
+  "description": "3D printing with Claude Code: design, check, preview and slice-ready multi-colour prints.",
+  "owner": { "name": "Khalid Mohamed", "url": "https://github.com/kalmehdar" },
+  "plugins": [
+    {
+      "name": "print-bench",
+      "description": "Design and upgrade 3D prints: OpenSCAD per-colour parts, mesh checks, Print Bench previews, renders, colour-assigned 3MF projects, 3D skills and agents.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

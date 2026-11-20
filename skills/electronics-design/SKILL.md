@@ -5,6 +5,8 @@ description: 'Designs small low-voltage electronics with the person: requirement
 
 # Electronics design
 
+Tools: `tools/` two folders above this skill's base directory (the plugin root, or the repo root in a clone).
+
 Scope: low-voltage DC projects (USB, 5 V, 12 V, batteries with a proper protection board). **Never mains**: anything wired to the wall goes through a certified, enclosed power supply, and Claude does not design the mains side. Say so plainly if asked.
 
 The order: **requirements, spec sheet, power budget, parts, schematic as code, review.** Nothing goes to a PCB until the spec sheet and the power budget agree.

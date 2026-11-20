@@ -9,14 +9,14 @@
 ## Start in a minute
 
 1. Install [Claude Code](https://claude.com/claude-code) and [OpenSCAD](https://openscad.org/downloads.html) (take a development snapshot: much faster).
-2. Copy the skills and agents into Claude:
+2. In Claude Code, add this repo as a plugin marketplace and install the plugin:
 
-   ```bash
-   git clone https://github.com/kalmehdar/claude-3d-printing.git
-   mkdir -p ~/.claude/skills ~/.claude/agents
-   cp -R claude-3d-printing/skills/* ~/.claude/skills/
-   cp claude-3d-printing/agents/*.md ~/.claude/agents/
+   ```text
+   /plugin marketplace add kalmehdar/claude-3d-printing
+   /plugin install print-bench@print-bench
    ```
+
+   That brings the skills, the agents and the tools in one go, and `/plugin` updates them later. (Prefer files? Clone the repo and copy `skills/` and `agents/` into `~/.claude/`.)
 
 3. Restart Claude Code in an empty folder and ask: *"Design a Gridfinity bin, 2 x 1, 42 mm tall, for M3 screws, with the label printed in white. My printer is a Bambu A1 with the AMS."*
 
@@ -24,7 +24,7 @@ Claude asks anything it needs (your printer, caliper numbers for parts that must
 
 ## Examples
 
-Every example is on the [live demo](https://kalmehdar.github.io/claude-3d-printing/) in 3D with its source and STLs to download.
+Every example is on the [live demo](https://kalmehdar.github.io/claude-3d-printing/) in 3D, with its source, its STLs and a 3MF project that opens in Bambu Studio or OrcaSlicer with the colours already on their filaments.
 
 | | | |
 | --- | --- | --- |
@@ -44,6 +44,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
+| `tools/make_3mf.py` | Packs a design's per-colour STLs into one 3MF project that Bambu Studio and OrcaSlicer open with every part on its filament and the colours set |
 | `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, or all of them in one line-up (`--lineup`), for READMEs and posts |
 | `.github/workflows/pages.yml` | Rebuilds the Print Bench page and publishes it on GitHub Pages on every push |
 | `examples/models/` | Five designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable, a filament swatch card, a desk cable clip) and `upgrade-bin.scad`, which upgrades an existing STL |
@@ -59,7 +60,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 1. Install [OpenSCAD](https://openscad.org/downloads.html). Take a development snapshot: it renders with the manifold backend, seconds instead of minutes.
 2. Install [Blender](https://www.blender.org/download/) for the mesh check (optional, but it catches problems early).
 3. Install your printer maker's slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, Snapmaker Orca).
-4. Copy the skills and agents into Claude as in [Start in a minute](#start-in-a-minute). On Windows, Git Bash runs the same commands.
+4. Install the plugin as in [Start in a minute](#start-in-a-minute), or copy `skills/` and `agents/` into `~/.claude/`.
 
 ## Ask Claude
 

@@ -7,7 +7,7 @@ description: 'Takes a 3D print from idea or existing STL to a checked, multi-col
 
 The loop: **ask, model, export, audit, preview, hand over.** Design rules (wall thickness, overhangs, tolerances, materials) come from the `3d-print-designer` skill; this skill is the pipeline around them and the house style that makes the result look finished.
 
-Tools live in a clone of github.com/kalmehdar/claude-3d-printing (`tools/`). Find it before starting; if there is none, clone it.
+The tools ship with this skill: `tools/` sits two folders above this skill's base directory (the plugin root, or the repo root in a clone). Use that path in every command below; if the skill was copied on its own without `tools/`, clone github.com/kalmehdar/claude-3d-printing and use its `tools/`.
 
 ## 1. Ask (one message, then stop)
 
@@ -53,7 +53,15 @@ Use these colours so every bench looks like one set: black `#1f1f22`, white `#ec
 
 ## 6. Hand over
 
-- Which file goes on which head, the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
+Make the slicer project so nobody maps colours by hand:
+
+```bash
+python tools/make_3mf.py bench.json <model id> <name>.3mf      # or: --part body.stl:#1f1f22 --part label.stl:#ecebe6
+```
+
+It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with every part on its filament slot and the slot colours set. The person still picks the printer, process and filament types in the slicer. If the parts plus a prime tower don't fit the bed, split them across two projects.
+
+- The 3MF project, and which slot is which colour (the tool prints the list), the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
 - Slice in the printer maker's slicer with its own profile; its time and grams beat the bench's estimate (about 20% either way).
 - The person starts the print and watches the first layer. Never start a print for someone who has not said the bed is clear and they are there.
 
