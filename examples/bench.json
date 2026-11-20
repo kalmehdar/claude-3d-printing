@@ -69,6 +69,28 @@
       "source": "models/test-card.scad"
     },
     {
+      "id": "fitcard",
+      "name": "Fit card",
+      "for": "Your printer's real clearances in one short print. Six holes, each 8 mm plus the clearance printed under it, and an 8 mm peg. The smallest hole the peg turns in is your slide fit; the smallest it presses into is your press fit. Tell Claude both and every design after uses them.",
+      "status": "Check first: not yet printed",
+      "state": "check",
+      "material": "Any, one head; print it in the material you design for",
+      "credit": "Designed with Claude in OpenSCAD (models/fit-card.scad); stored with tools/fit.py",
+      "parts": [
+        [
+          "Card",
+          "stl/fit-card-card.stl",
+          "#1f1f22"
+        ],
+        [
+          "Peg",
+          "stl/fit-card-peg.stl",
+          "#1f1f22"
+        ]
+      ],
+      "source": "models/fit-card.scad"
+    },
+    {
       "id": "bins",
       "name": "Colour-coded Gridfinity bins",
       "for": "Eleven bins that fill a 5 x 5 Gridfinity tray, 42 mm tall, each name printed into a band in its category colour: red power, blue network, white storage, plain black for the rest.",

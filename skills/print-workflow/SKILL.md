@@ -13,6 +13,7 @@ The tools ship with this skill: `tools/` sits two folders above this skill's bas
 
 - The printer and its bed size, the nozzle, how many colours it can print and the material. Skip what the user already said.
 - What the part must fit. Anything that clips on, slides in, screws to or holds something real needs a caliper number from the person. Never guess a fit size: write it as a named variable marked `// FIT: measure ...` and say so.
+- Clearances come from the printer, not the material: run `python tools/fit.py show`. Measured fits replace the designer skill's material defaults (`python tools/fit.py scad` gives the two lines to paste). If it says "not measured" and the design has a moving or press-fit part, say so once and offer the fit card (`examples/models/fit-card.scad`, about 20 minutes); when the person reports the smallest hole the peg turns in and the smallest it presses into, store them with `python tools/fit.py set --slide <mm> --press <mm> --printer "<printer, material>"`.
 - For an upgrade: the STL, what is wrong with it or what to add, and its licence (remixes of CC BY-NC models are personal use only; credit the original).
 
 ## 2. Model (OpenSCAD, one file)
