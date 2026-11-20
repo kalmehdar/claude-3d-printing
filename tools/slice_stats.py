@@ -20,61 +20,18 @@ import argparse
 import glob
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-HOME = os.path.expanduser("~")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import orca   # noqa: E402  (the one place OrcaSlicer is found and its profiles read)
 
-
-def find(env, patterns):
-    if os.environ.get(env):
-        return os.environ[env]
-    for p in patterns:
-        hits = sorted(glob.glob(os.path.join(HOME, "tools", p), recursive=True), reverse=True)
-        if hits:
-            return hits[0]
-    sys.exit(f"set {env}: nothing found for {patterns}")
-
-
-def flatten(folder, name, kind):
-    """Follow an OrcaSlicer system profile's "inherits" chain and merge it into one complete profile."""
-    index = {}
-    for f in glob.glob(os.path.join(folder, kind, "*.json")):
-        try:
-            index[json.load(open(f, encoding="utf-8")).get("name")] = f
-        except (ValueError, OSError):
-            pass
-    chain, n = [], name
-    while n:
-        if n not in index:
-            sys.exit(f"no {kind} profile named {n!r} in {folder}")
-        d = json.load(open(index[n], encoding="utf-8"))
-        chain.append(d)
-        n = d.get("inherits")
-    out = {}
-    for d in reversed(chain):
-        out.update(d)
-    out.pop("inherits", None)
-    out["name"] = name
-    return out
 
 
 def bambu(material, tmp):
-    base = os.environ.get("ORCA_PROFILES") or os.path.dirname(find("ORCA_PROFILES_BBL", ["**/resources/profiles/BBL/machine"]))
-    mat = "PETG" if "PETG" in material.upper() and "PLA" not in material.upper().split("PETG")[0] else "PLA"
-    files = {"machine": flatten(base, "Bambu Lab P1S 0.4 nozzle", "machine"),
-             "process": flatten(base, "0.20mm Standard @BBL X1C", "process"),
-             "filament": flatten(base, f"Generic {mat}", "filament")}
-    files["process"]["curr_bed_type"] = "Textured PEI Plate"   # the default Cool Plate refuses PETG
-    paths = {}
-    for k, d in files.items():
-        d["from"] = "system" if k != "filament" else d.get("from", "system")
-        paths[k] = os.path.join(tmp, k + ".json")
-        json.dump(d, open(paths[k], "w", encoding="utf-8"))
-    return paths["machine"], paths["process"], paths["filament"]
+    folder = orca.bambu(material, tmp)
+    return custom(folder, material)
 
 
 def custom(folder, material):
@@ -91,14 +48,7 @@ def bed_of(machine):
 
 
 def stats(gcode):
-    head = open(gcode, encoding="utf-8", errors="replace").read()
-    t = re.search(r"; estimated printing time \(normal mode\) = (.+)", head) or re.search(r"total estimated time: ([^;\n]+)", head)   # Bambu headers use the second
-    g = re.search(r"; filament used \[g\] = (.+)", head)
-    c = re.search(r"; total filament change = (\d+)", head)
-    if not (t and g):
-        return {"error": "no time or grams in the G-code"}
-    grams = [round(float(x), 1) for x in g.group(1).split(",")]
-    return {"time": t.group(1).strip(), "grams": grams, "total_g": round(sum(grams), 1), "changes": int(c.group(1)) if c else 0}
+    return orca.stats(open(gcode, encoding="utf-8", errors="replace").read())
 
 
 def main():
@@ -111,8 +61,7 @@ def main():
     a = ap.parse_args()
     if a.printer != "bambu-p1s" and not a.profiles:
         sys.exit("--profiles is needed for any printer but bambu-p1s")
-    orca = find("ORCA_CLI", ["orcaslicer-*/orca-slicer.exe", "OrcaSlicer*/orca-slicer.exe"])
-    sys.path.insert(0, HERE)
+    exe = orca.orca_cli()
     import make_3mf
 
     bench = json.load(open(a.bench, encoding="utf-8"))
@@ -134,7 +83,7 @@ def main():
             p3 = os.path.join(tmp, m["id"] + ".3mf")
             open(p3, "wb").write(data)
             n = max(1, len(slots) if isinstance(slots, (list, tuple)) else int(slots or 1))
-            cmd = [orca, "--slice", "0", "--load-settings", f"{machine};{process}",
+            cmd = [exe, "--slice", "0", "--load-settings", f"{machine};{process}",
                    "--load-filaments", ";".join([filament] * n), "--outputdir", tmp, p3]
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)

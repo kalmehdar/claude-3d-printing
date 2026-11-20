@@ -63,7 +63,13 @@ python tools/make_3mf.py bench.json <model id> <name>.3mf      # or: --part body
 It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with every part on its filament slot and the slot colours set. The person still picks the printer, process and filament types in the slicer. If the parts plus a prime tower don't fit the bed, split them across two projects.
 
 - The 3MF project, and which slot is which colour (the tool prints the list), the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
-- Slice in the printer maker's slicer with its own profile; its time and grams beat the bench's estimate (about 20% either way).
+- Slice it yourself when OrcaSlicer is installed, and give its time and grams, never a guess:
+  `python tools/orca.py slice <name>.3mf --printer <setup> --material petg-black,petg-red --preset standard [--set infill=30 walls=4 supports=on]`.
+  Presets: draft, standard, strong (load-bearing), fine, low-waste (multi-colour on a tool changer). `python tools/orca.py settings` lists the
+  plain names; any other OrcaSlicer key works too and a misspelt one is refused with suggestions. `orca.py open` does the same and opens the
+  result in the app for the person to check or send. A printer setup is a folder of exported presets (`orca.py printers`); add a filament
+  with `orca.py add-material "<part of its name>" --printer <setup>`, and `orca.py install --printer <setup>` puts the presets in the app's menus.
+  No OrcaSlicer: say so, and the slicer's numbers beat the bench's estimate (about 20% either way).
 - The person starts the print and watches the first layer. Never start a print for someone who has not said the bed is clear and they are there.
 
 ## Done means
