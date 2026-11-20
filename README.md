@@ -43,6 +43,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | --- | --- |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
+| `tools/slice_stats.py` | Slices every bench design with OrcaSlicer's command line and records real print time and grams per printer in `slice-stats.json`; the bench shows them with a printer switch |
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
 | `tools/make_3mf.py` | Packs a design's per-colour STLs into one 3MF project that Bambu Studio and OrcaSlicer open with every part on its filament and the colours set |
 | `tools/render.py` | Runs inside Blender: a studio picture of every design in its print colours, or all of them in one line-up (`--lineup`), for READMEs and posts |

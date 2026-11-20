@@ -76,6 +76,9 @@ h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.01em;text-wrap:balan
 .info h2{grid-column:1/-1;margin:0;font-size:18px;font-weight:700;text-wrap:balance}
 .sliced{display:flex;flex-direction:column;gap:2px}
 .sliced .warn{color:#b4531f}
+.sliced .pick{display:inline-flex;gap:4px;margin-left:6px;flex-wrap:wrap}
+.sliced .pick button{font:inherit;font-size:12px;padding:2px 8px;border:1px solid var(--hair);border-radius:999px;background:transparent;color:inherit;cursor:pointer}
+.sliced .pick button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:transparent}
 .sliced .plate{margin-top:6px;width:100%;max-width:220px;aspect-ratio:1;object-fit:contain;border:1px solid var(--hair);border-radius:8px;background:#fff}
 .info .for{grid-column:1/-1;margin:-6px 0 0;color:var(--ink2)}
 .kv{display:flex;flex-direction:column;gap:2px}
@@ -162,7 +165,8 @@ const grams = m => Math.round(m.parts.reduce((t, p) => t + (p.grams || 0), 0)); 
 // Next up first: Check first, then Ready, then Later; each keeps its own order.
 const RANK = {check: 0, ready: 1, later: 2};
 const gtxt = g => g < 1 ? "under 1 g" : Math.round(g) + " g";
-const hm = s => `${Math.floor(s / 3600)} h ${String(Math.round(s % 3600 / 60)).padStart(2, "0")} min`;
+let printer = 0;   // which printer's slicer numbers to show, when a design was sliced for more than one
+const hm = s => s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.floor(s / 3600)} h ${String(Math.round(s % 3600 / 60)).padStart(2, "0")} min`;
 MODELS.sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3));
 // Filament per spool for everything not marked Later, from each part's colour and the design's material.
 const COLOUR = {"#1f1f22": "Black", "#ecebe6": "White", "#c9a24a": "Gold", "#1d2533": "Navy", "#e8ecf3": "Pale", "#8a8f98": "Grey", "#c8102e": "Red", "#002fa7": "Klein blue"};
@@ -372,9 +376,9 @@ if (!window.THREE || !THREE.OrbitControls) {
         o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox, s = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
         return `<span>${o.name}</span><span class="mono">${fmt(s)}</span>`; }).join("")}</span></div>` : ""}
       ${grams(current) ? `<div class="kv"><span class="k">Filament, estimate</span><span class="v mono">about ${grams(current)} g: ${current.parts.filter(p => p.grams != null).map(p => `${p.label} ${gtxt(p.grams)}`).join(", ")}</span></div>` : ""}
-      ${(current.sliced || []).map(s => `<div class="kv sliced"><span class="k">Sliced in Orca${current.sliced.length > 1 ? `: ${s.name}` : ""}</span>
+      ${(current.sliced || []).filter((s, i, all) => i === Math.min(printer, all.length - 1)).map(s => `<div class="kv sliced"><span class="k">Sliced in Orca${current.sliced.length > 1 ? `<span class="pick" role="group" aria-label="Printer">${current.sliced.map((o, i) => `<button type="button" data-printer="${i}" aria-pressed="${o === s}">${o.name}</button>`).join("")}</span>` : `: ${s.name}`}</span>
         <span class="v mono">${hm(s.secs)}${s.qty > 1 ? ` each, ${s.qty} to print` : ""} · ${s.grams.map((g, k) => `${Math.round(g)} g ${s.colours[k] || (k ? "white" : "black")}`).join(", ")}${s.cost != null ? ` · £${s.cost.toFixed(2)} of filament${s.qty > 1 ? " each" : ""}` : ""}</span>
-        <span class="v ${s.face_down ? "" : "warn"}">${s.face_down ? "Visible face is down on the plate" : "Check the orientation in Orca before printing"}</span>
+        ${s.face_down == null ? "" : `<span class="v ${s.face_down ? "" : "warn"}">${s.face_down ? "Visible face is down on the plate" : "Check the orientation in Orca before printing"}</span>`}
         ${s.png ? `<img class="plate" src="data:image/png;base64,${s.png}" alt="Orca's plate preview of ${s.name}" loading="lazy">` : ""}</div>`).join("")}
       <div class="kv"><span class="k">Status</span><span class="v">${current.status}</span></div>
       <div class="kv"><span class="k">Material and heads</span><span class="v">${current.material}</span></div>
@@ -383,6 +387,7 @@ if (!window.THREE || !THREE.OrbitControls) {
       <div class="kv"><span class="k">Parts, one head each</span><span class="parts">${current.parts.map((p, k) =>
         `<label><input type="checkbox" id="part-${current.id}-${k}" checked data-k="${k}"><span class="sw" style="background:${p.colour}"></span>${p.label}</label>`).join("")}</span></div>
       <p class="credit">${current.credit}</p>`;
+    $("#info").querySelectorAll("[data-printer]").forEach(b => b.addEventListener("click", () => { printer = +b.dataset.printer; show(MODELS.indexOf(current)); }));
     $("#info").querySelectorAll("input").forEach(cb => cb.addEventListener("change", () => {
       const k = +cb.dataset.k; model.children.filter(o => o.isMesh)[k].visible = cb.checked; const e = model.children.filter(o => o.userData.edge)[k]; if (e) e.visible = cb.checked && edgesOn; needs = true;
     }));

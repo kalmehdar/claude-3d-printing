@@ -76,6 +76,26 @@ def make_project(bench, src, m, out, folder):
     return f"{folder.strip('/')}/{m['id']}.3mf"
 
 
+def secs(t):
+    """OrcaSlicer's "1d 2h 3m 4s" style to seconds."""
+    return sum(int(n) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[u] for n, u in re.findall(r"(\d+)\s*([dhms])", t))
+
+
+def sliced_rows(stats, m):
+    """Rows for the bench's "Sliced in Orca" line, one per printer in slice-stats.json (tools/slice_stats.py)."""
+    names = {}
+    for e in m["parts"]:
+        if not (len(e) > 3 and e[3] == "not printed"):
+            names.setdefault(e[2].lower(), e[0])   # filament slots follow the order colours first appear
+    rows = []
+    for key, p in stats.items():
+        s = p.get("designs", {}).get(m["id"])
+        if s and "time" in s:
+            rows.append({"name": p.get("label", key), "secs": secs(s["time"]), "grams": s["grams"],
+                         "colours": list(names.values()), "changes": s.get("changes", 0)})
+    return rows
+
+
 def main():
     args = sys.argv[1:]
     projects = None
@@ -86,6 +106,8 @@ def main():
     src, out = args[0], args[1]
     bench = json.load(open(src, encoding="utf-8"))
     base = os.path.dirname(os.path.abspath(src))
+    stats_path = os.path.join(base, "slice-stats.json")
+    stats = json.load(open(stats_path, encoding="utf-8")) if os.path.exists(stats_path) else {}
     models = []
     for m in bench["models"]:
         parts, allv = [], []
@@ -110,7 +132,7 @@ def main():
         models.append({"id": m["id"], "name": m["name"], "for": m.get("for", ""), "status": m.get("status", ""),
                        "state": m.get("state", "ready"), "material": m.get("material", ""), "credit": m.get("credit", ""),
                        "nobed": m.get("nobed", False), "size": [round(hi[a] - lo[a], 1) for a in range(3)],
-                       "parts": packed, "sliced": [],
+                       "parts": packed, "sliced": sliced_rows(stats, m),
                        "source": link(bench, m.get("source")),
                        "project": make_project(bench, src, m, out, projects)})
         print(f"{m['name']}: {models[-1]['size']} mm, {len(allv) // 9} triangles")

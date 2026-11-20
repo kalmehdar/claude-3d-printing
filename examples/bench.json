@@ -1,7 +1,7 @@
 {
   "title": "Print Bench",
   "sub": "Designs made with Claude Code and the claude-3d-printing tools, in their print colours. Turn them, measure them, download them.",
-  "foot": "Built with <code>tools/print_bench.py</code> from github.com/kalmehdar/claude-3d-printing. Grams are an estimate from the shape (1 mm walls, 15% infill), about 20% either way; your slicer's figure wins.",
+  "foot": "Built with <code>tools/print_bench.py</code> from github.com/kalmehdar/claude-3d-printing. Sliced in Orca: real time and grams from OrcaSlicer's command line (tools/slice_stats.py), for a Bambu Lab P1S with AMS and a Snapmaker U1 tool changer. The other grams are a shape estimate, about 20% either way.",
   "bed": 270,
   "models": [
     {
