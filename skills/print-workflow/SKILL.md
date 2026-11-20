@@ -53,7 +53,15 @@ Use these colours so every bench looks like one set: black `#1f1f22`, white `#ec
 
 ## 6. Hand over
 
-- Which file goes on which head, the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
+Make the slicer project so nobody maps colours by hand:
+
+```bash
+python tools/make_3mf.py bench.json <model id> <name>.3mf      # or: --part body.stl:#1f1f22 --part label.stl:#ecebe6
+```
+
+It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with every part on its filament slot and the slot colours set. The person still picks the printer, process and filament types in the slicer. If the parts plus a prime tower don't fit the bed, split them across two projects.
+
+- The 3MF project, and which slot is which colour (the tool prints the list), the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
 - Slice in the printer maker's slicer with its own profile; its time and grams beat the bench's estimate (about 20% either way).
 - The person starts the print and watches the first layer. Never start a print for someone who has not said the bed is clear and they are there.
 

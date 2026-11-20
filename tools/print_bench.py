@@ -1,7 +1,7 @@
 """Build a Print Bench: one self-contained web page that shows every design in its print colours, with a rendered
 picture of each in the list and a 3D viewer you can turn on a phone. Publish it as a Claude artifact or open it locally.
 
-    python print_bench.py bench.json print-bench.html
+    python print_bench.py bench.json print-bench.html [--3mf 3mf]   # --3mf: a colour-set 3MF project per design
 
 bench.json (paths relative to it):
   {"title": "Print Bench", "sub": "intro line", "foot": "footer, HTML allowed", "bed": 256,
@@ -59,8 +59,31 @@ def link(bench, rel):
     return f"{scheme}://{host}/" + posixpath.normpath(posixpath.join(path, rel)).lstrip("/")
 
 
+def make_project(bench, src, m, out, folder):
+    """A 3MF that Bambu Studio and OrcaSlicer open with each part on its filament (tools/make_3mf.py)."""
+    if not folder or m.get("nobed"):
+        return None
+    sys.path.insert(0, HERE)
+    import make_3mf
+    base = os.path.dirname(os.path.abspath(src))
+    parts = [(e[0], os.path.join(base, e[1]), e[2]) for e in m["parts"] if not (len(e) > 3 and e[3] == "not printed")]
+    if not parts:
+        return None
+    data, _ = make_3mf.build(parts, m["name"], float(bench.get("bed", 256)))
+    dest = os.path.join(os.path.dirname(os.path.abspath(out)), folder)
+    os.makedirs(dest, exist_ok=True)
+    open(os.path.join(dest, m["id"] + ".3mf"), "wb").write(data)
+    return f"{folder.strip('/')}/{m['id']}.3mf"
+
+
 def main():
-    src, out = sys.argv[1], sys.argv[2]
+    args = sys.argv[1:]
+    projects = None
+    if "--3mf" in args:   # also write a colour-assigned 3MF project per design into this folder (next to the page)
+        i = args.index("--3mf")
+        projects = args[i + 1]
+        del args[i:i + 2]
+    src, out = args[0], args[1]
     bench = json.load(open(src, encoding="utf-8"))
     base = os.path.dirname(os.path.abspath(src))
     models = []
@@ -88,7 +111,8 @@ def main():
                        "state": m.get("state", "ready"), "material": m.get("material", ""), "credit": m.get("credit", ""),
                        "nobed": m.get("nobed", False), "size": [round(hi[a] - lo[a], 1) for a in range(3)],
                        "parts": packed, "sliced": [],
-                       "source": link(bench, m.get("source"))})
+                       "source": link(bench, m.get("source")),
+                       "project": make_project(bench, src, m, out, projects)})
         print(f"{m['name']}: {models[-1]['size']} mm, {len(allv) // 9} triangles")
     config = {k: bench[k] for k in ("title", "sub", "foot", "mark", "markLang", "bed", "link") if k in bench}
     tpl = open(os.path.join(HERE, "print-bench-template.html"), encoding="utf-8").read()

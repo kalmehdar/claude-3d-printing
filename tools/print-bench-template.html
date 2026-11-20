@@ -378,8 +378,8 @@ if (!window.THREE || !THREE.OrbitControls) {
         ${s.png ? `<img class="plate" src="data:image/png;base64,${s.png}" alt="Orca's plate preview of ${s.name}" loading="lazy">` : ""}</div>`).join("")}
       <div class="kv"><span class="k">Status</span><span class="v">${current.status}</span></div>
       <div class="kv"><span class="k">Material and heads</span><span class="v">${current.material}</span></div>
-      ${current.parts.some(p => p.url) || current.source ? `<div class="kv"><span class="k">Download</span><span class="files">${current.parts.filter(p => p.url).map(p =>
-        `<a href="${p.url}" download>${p.label} STL</a>`).join("")}${current.source ? `<a href="${current.source}">Source (.scad)</a>` : ""}</span></div>` : ""}
+      ${current.parts.some(p => p.url) || current.source || current.project ? `<div class="kv"><span class="k">Download</span><span class="files">${current.parts.filter(p => p.url).map(p =>
+        `<a href="${p.url}" download>${p.label} STL</a>`).join("")}${current.source ? `<a href="${current.source}">Source (.scad)</a>` : ""}${current.project ? `<a href="${current.project}" download><b>3MF project, colours set</b></a>` : ""}</span></div>` : ""}
       <div class="kv"><span class="k">Parts, one head each</span><span class="parts">${current.parts.map((p, k) =>
         `<label><input type="checkbox" id="part-${current.id}-${k}" checked data-k="${k}"><span class="sw" style="background:${p.colour}"></span>${p.label}</label>`).join("")}</span></div>
       <p class="credit">${current.credit}</p>`;

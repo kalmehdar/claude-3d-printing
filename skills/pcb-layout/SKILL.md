@@ -5,6 +5,8 @@ description: 'Turns a reviewed circuit (SKiDL circuit.py from electronics-design
 
 # PCB layout
 
+Tools: `tools/` two folders above this skill's base directory (the plugin root, or the repo root in a clone).
+
 Needs KiCad 10 (`kicad-cli`, and KiCad's own Python for the board steps) and Java for Freerouting. `tools/pcb.py` runs every step; run it with no arguments to list them. Read SPECS.md and circuit.py before starting.
 
 ## Rules Claude follows on every board
