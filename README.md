@@ -2,9 +2,9 @@
 
 ![Every example design, rendered in its print colours](docs/images/hero.jpg)
 
-**Design and upgrade 3D prints by talking to Claude Code.** Describe a part, or hand over an STL you downloaded. Claude writes it in OpenSCAD with every size as a named number, exports one print file per colour, checks the meshes, and shows everything on a page you can turn round on your phone, with the sizes drawn on, before a gram of filament is used.
+**Design and upgrade 3D prints, and the electronics inside them, by talking to Claude Code.** Describe a part, or hand over an STL you downloaded. Claude writes it in OpenSCAD with every size as a named number, exports one print file per colour, checks the meshes, and shows everything on a page you can turn round on your phone, with the sizes drawn on, before a gram of filament is used.
 
-[**Live demo**](https://kalmehdar.github.io/claude-3d-printing/) · [Start in a minute](#start-in-a-minute) · [What to ask Claude](#ask-claude) · [Upgrade a print you already have](#upgrade-a-print-you-already-have) · [Add your own design](CONTRIBUTING.md)
+[**Live demo**](https://kalmehdar.github.io/claude-3d-printing/) · [Start in a minute](#start-in-a-minute) · [Hardware: circuits and PCBs](#hardware-circuits-boards-and-the-case-around-them) · [What to ask Claude](#ask-claude) · [Upgrade a print you already have](#upgrade-a-print-you-already-have) · [Add your own design](CONTRIBUTING.md)
 
 ## Start in a minute
 
@@ -49,7 +49,9 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `examples/models/` | Five designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable, a filament swatch card, a desk cable clip) and `upgrade-bin.scad`, which upgrades an existing STL |
 | `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
 | `examples/stl/`, `examples/bench.json` | Their exported parts and the demo page's list |
-| `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
+| `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `electronics-design`, `pcb-layout` and `enclosure-from-pcb` (circuits to boards to cases), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
+| `tools/pcb.py` and friends | Circuit to orderable PCB: ERC, KiCad board from code, autorouting, DRC, JLCPCB files, 3D models (`pcb_kicad.py`, `kicad_env.py`, `trace_width.py`) |
+| `hardware/` | Electronics projects, each with specs, circuit, board, fab files and a printed case. First one: `hardware/led-bar` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
 
 ## Full setup
@@ -68,8 +70,28 @@ With the skills installed, open Claude Code in a folder where you want the files
 - "This phone stand is 2 mm too tight for my case. The case measures 11.4 mm. Fix the slot."
 - "Make this part print in two colours: the top 3 mm in red."
 - "Show me everything I've designed so far on a Print Bench, with renders for my README."
+- "I want a USB-C powered board with an ESP32 and 16 addressable LEDs for my rack, running WLED. Spec it, design the PCB and a case."
 
 Give Claude caliper numbers for anything that has to fit. It never guesses a fit size; it marks those `FIT` and asks.
+
+## Hardware: circuits, boards and the case around them
+
+| | |
+| --- | --- |
+| ![The LED bar's PCB, rendered by KiCad](docs/images/ledbar-pcb.jpg) | ![The board on its printed 1U faceplate](docs/images/ledbar.jpg) |
+| A board Claude specced, laid out, routed and checked | The same board on the printed faceplate built from its numbers |
+
+Claude can design the electronics too, as far as an order-ready board, and then a printed case that fits the board exactly. The worked example is the [rack status LED bar](hardware/led-bar): an ESP32-C3 and 16 addressable LEDs behind a 1U faceplate, running WLED.
+
+The steps, each a skill:
+
+1. **`electronics-design`**: requirements, a specs sheet, a power budget, parts checked against their datasheets (never from memory), protection, then the circuit written as Python with [SKiDL](https://github.com/devbisme/skidl) and an electrical rules check.
+2. **`pcb-layout`**: `python tools/pcb.py all hardware/<name>` builds the KiCad board from that code, places the parts from a layout file, autoroutes with Freerouting, pours ground, runs KiCad's design-rules check and writes Gerbers, a BOM and a placement file in JLCPCB's format, plus STEP and STL models.
+3. **`enclosure-from-pcb`**: the board's outline, holes and parts heights go into OpenSCAD (`pcb.py dims`), the case is designed around them, and the Print Bench shows the board inside it.
+
+**An autorouted board from Claude is a first pass, not something to order blind.** Every project has a REVIEW.md that a person works through in KiCad before ordering, and Claude never places an order. The DRC passing proves the rules were met, not that the circuit is right.
+
+Extra setup for hardware: [KiCad 10](https://www.kicad.org/download/), Java 25 ([Temurin](https://adoptium.net/)) and the [Freerouting](https://github.com/freerouting/freerouting/releases) jar in `~/.local/share/freerouting/`, then `pip install skidl schemdraw`. No mains voltage: the skills stop at low-voltage DC and say so.
 
 ## Try it
 
