@@ -1,0 +1,10 @@
+{
+  "name": "print-bench",
+  "version": "1.0.0",
+  "description": "Design and upgrade 3D prints with Claude Code: OpenSCAD parts one STL per colour, mesh checks, a Print Bench preview page with sizes and a measure tool, studio renders, colour-assigned 3MF projects for Bambu Studio and OrcaSlicer, plus 3D modelling skills and agents.",
+  "author": { "name": "Khalid Mohamed", "url": "https://github.com/kalmehdar" },
+  "homepage": "https://kalmehdar.github.io/claude-3d-printing/",
+  "repository": "https://github.com/kalmehdar/claude-3d-printing",
+  "license": "MIT",
+  "keywords": ["3d-printing", "openscad", "gridfinity", "multicolor", "bambu", "orcaslicer", "blender", "stl", "3mf"]
+}

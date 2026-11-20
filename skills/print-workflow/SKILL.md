@@ -7,7 +7,7 @@ description: 'Takes a 3D print from idea or existing STL to a checked, multi-col
 
 The loop: **ask, model, export, audit, preview, hand over.** Design rules (wall thickness, overhangs, tolerances, materials) come from the `3d-print-designer` skill; this skill is the pipeline around them and the house style that makes the result look finished.
 
-Tools live in a clone of github.com/kalmehdar/claude-3d-printing (`tools/`). Find it before starting; if there is none, clone it.
+The tools ship with this skill: `tools/` sits two folders above this skill's base directory (the plugin root, or the repo root in a clone). Use that path in every command below; if the skill was copied on its own without `tools/`, clone github.com/kalmehdar/claude-3d-printing and use its `tools/`.
 
 ## 1. Ask (one message, then stop)
 
