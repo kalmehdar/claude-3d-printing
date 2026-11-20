@@ -41,7 +41,7 @@ The faceplate is 254 mm wide, so it needs a printer bed of 255 mm or more.
 2. Upload `fab/led-bar-gerbers.zip` to JLCPCB (2 layers, 1.6 mm), choose top-side assembly, then upload the BOM and CPL files. All the parts are in JLCPCB's stock list; the passives are Basic parts.
 3. Print the faceplate face down: `case-panel` in black PETG, `case-diffuser` in white PETG on a second head. Fix the board to the standoffs with four M3 x 6 self-tapping screws.
 4. Plug in USB-C, open [install.wled.me](https://install.wled.me) in Chrome or Edge, and flash WLED.
-5. In WLED: LED Preferences, data GPIO **4**, 16 LEDs, type WS281x. Set the brightness limiter to **400 mA** on a laptop USB port, or **1400 mA** on a 2 A or better USB-C charger.
+5. In WLED: LED Preferences, data GPIO **4**, 16 LEDs, type WS281x. Set the brightness limiter to **400 mA** on a laptop USB port, or **1100 mA** on a 2 A or better USB-C charger (the fuse runs warm in a rack, so stay under it).
 
 ## What Claude got wrong on the way (kept so the skills learn)
 

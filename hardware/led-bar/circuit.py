@@ -97,6 +97,9 @@ io9 += u1["IO9"]
 dp += u1["IO19"]       # GPIO19 is USB D+ (datasheet table 3-1)
 dm += u1["IO18"]       # GPIO18 is USB D-
 data3 += u1["IO4"]     # LED data; set "GPIO 4" in WLED's LED preferences
+r_pd = R("10k", "R7")  # holds the data line low while the ESP32 boots, so the LEDs don't flash garbage (review P2-6)
+r_pd[1] += data3
+r_pd[2] += gnd
 for net, val, ref in ((v33, "10uF", "C4"), (v33, "100nF", "C5")):   # bulk and high-frequency decoupling at the module
     c = C(val, ref, C0805 if val == "10uF" else C0603)
     c[1] += net
@@ -113,8 +116,12 @@ for io, ref in (("IO2", "R4"), ("IO8", "R5")):   # strapping pins: both high so 
     r[2] += u1[io]
 for io in ("IO0", "IO1", "IO3", "IO5", "IO6", "IO7", "IO10"):
     u1[io] += NC    # spare GPIO, marked no-connect
-for num, name in ((11, "RXD"), (12, "TXD")):   # UART0, unused (the ESP32-C3 talks over native USB)
-    u1[num] += NC
+# UART0 to test pads: a way back in if native USB is ever wedged (review P2-7). Bare pads, nothing to buy.
+for num, name, tp in ((11, "RXD", "TP1"), (12, "TXD", "TP2")):
+    n = Net(name)
+    n += u1[num]
+    n += part("Connector", "TestPoint", "TestPoint:TestPoint_Pad_D1.5mm", name, ref=tp)[1]
+gnd += part("Connector", "TestPoint", "TestPoint:TestPoint_Pad_D1.5mm", "GND", ref="TP3")[1]
 
 sw_reset = part("Switch", "SW_Push", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A", "RESET", "C318884", ref="SW1")
 sw_reset[1] += en
@@ -151,6 +158,11 @@ for i in range(N_LEDS):
     c[1] += v5
     c[2] += gnd
 
+# KiCad's convention for rails fed through a connector or a fuse: a PWR_FLAG says "this net is powered"
+for n in (vbus, v5, gnd):
+    flag = Part("power", "PWR_FLAG")
+    flag[1] += n
+
 # ---- mounting holes (no electrical connection) ----
 for i in range(4):
     part("Mechanical", "MountingHole", "MountingHole:MountingHole_3.2mm_M3", "M3", ref=f"H{i + 1}")
@@ -161,7 +173,22 @@ if __name__ == "__main__":
     default_circuit = builtins.default_circuit
     parts = []
     for p in default_circuit.parts:
+        if not p.footprint:
+            continue   # PWR_FLAG and the like: schematic only
         pins = {str(pin.num): (pin.net.name if pin.net else None) for pin in p.pins}
         parts.append({"ref": p.ref, "value": str(p.value), "footprint": p.footprint, "lcsc": p.fields.get("LCSC", ""), "pins": pins})
     json.dump(parts, open(os.path.join(HERE, "parts.json"), "w"), indent=1)
     print(f"{len(parts)} parts, written led-bar.net and parts.json")
+    # The KiCad schematic, laid out automatically: netlist-accurate, not hand-arranged. The mounting holes have no pins
+    # and stay off it (the layout engine can't place a part with no pins).
+    if not os.environ.get("SCHEMATIC"):
+        sys.exit(0)   # the schematic is its own step: python tools/pcb.py schematic hardware/led-bar
+    for p in list(default_circuit.parts):
+        if not p.pins:
+            default_circuit.rmv_parts(p)
+    try:   # the layout engine is randomised and sometimes fails to route; retry, and never block the board on it
+        default_circuit.generate_schematic(filepath=os.path.join(HERE, "schematic"), top_name="led-bar",
+                                           title="Rack status LED bar", retries=3)
+        print("written schematic/led-bar.kicad_sch")
+    except Exception as e:
+        print(f"schematic NOT regenerated ({type(e).__name__}); the board files are unaffected")

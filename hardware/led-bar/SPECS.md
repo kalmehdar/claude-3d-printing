@@ -34,7 +34,7 @@ No other connectors: the LEDs are on the board.
 | **Total** | **1268 mA** | |
 | Supply needed (x 1.25) | 1585 mA | a 5 V / 2 A or better USB-C charger |
 
-On a plain USB port (500 mA) WLED's automatic brightness limiter must be set to **400 mA**; with a 2 A or better charger, **1400 mA**. WLED applies this in software (Settings, LED Preferences).
+On a plain USB port (500 mA) WLED's automatic brightness limiter must be set to **400 mA**; with a 2 A or better charger, **1100 mA**: F1 holds 1.5 A at 25 C but only about 1.2 A warm inside a rack, so the limiter stays under it. WLED applies this in software (Settings, LED Preferences).
 
 Power traces: 1.3 A needs 0.43 mm at a 10 C rise (`tools/trace_width.py 1.3`); the board uses 0.8 mm for +5V and GND feeds. F1 is a 1.5 A hold polyfuse.
 
@@ -62,7 +62,7 @@ Power traces: 1.3 A needs 0.43 mm at a 10 C rise (`tools/trace_width.py 1.3`); t
 
 | J1 | HCTL HC-TYPE-C-16P-01A USB-C | C2894897 | |
 | F1 | Ruilon SMD1206P150TF, 1.5 A hold, 6 V | C20802 | |
-| C1 | Samyoung 470 uF 16 V, 8 x 10 mm (10 mm tall: the tallest part) | C165531 | |
+| C1 | MVK 470 uF 16 V, 8 x 10 mm (10 mm tall: the tallest part) | C165531 | |
 | SW1, SW2 | XKB TS-1187A tactile switch | C318884 | |
 
 Passives, all 0603 unless noted and all JLCPCB Basic parts: 100 nF C14663 (one per LED and per IC), 1 uF C15849 (LDO in and out, EN), 10 uF 0805 C15850 (3V3), 10 kOhm C25804 (EN and the strapping pull-ups on GPIO2 and GPIO8), 5.1 kOhm C23186 (CC1, CC2), 390 Ohm C23151 (data line). The shifter's OE is tied to GND so it always drives. Every LCSC number was checked on JLCPCB's listing on 19 Nov 2026; stock changes, so check again before ordering.

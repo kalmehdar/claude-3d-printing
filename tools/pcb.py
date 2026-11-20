@@ -5,6 +5,7 @@
     python pcb.py build hardware/<name>     run layout.py, then build <name>.kicad_pcb with the parts placed
     python pcb.py route hardware/<name>     autoroute with Freerouting, add the ground pours
     python pcb.py check hardware/<name>     DRC (and ERC from circuit.py); removes dangling vias; exits 1 on any error
+    python pcb.py schematic hardware/<name> a KiCad schematic laid out automatically (slow, randomised; 10 minute limit)
     python pcb.py fab   hardware/<name>     Gerbers, drill, BOM and placement for JLCPCB, a zip, STEP, STL, renders
     python pcb.py dims  hardware/<name>     board_dims.scad: outline, holes, LED positions, for the case (enclosure-from-pcb)
 
@@ -66,6 +67,16 @@ def circuit(d):
     return all("No errors or warnings" in l or "0 errors" in l for l in erc if l.startswith("ERC INFO"))
 
 
+def schematic(d):
+    # Separate from "all": the layout engine is randomised and can grind for a long time, so it never blocks the board.
+    try:
+        r = subprocess.run([sys.executable, os.path.join(d, "circuit.py")], cwd=d, capture_output=True, text=True,
+                           env={**os.environ, "SCHEMATIC": "1"}, timeout=600)
+        print(NL.join(l for l in r.stdout.splitlines() if "schematic" in l))
+    except subprocess.TimeoutExpired:
+        print("schematic NOT regenerated: the layout engine ran past 10 minutes; try again (it is randomised)")
+
+
 def build(d):
     print(run([sys.executable, os.path.join(d, "layout.py")], cwd=d).strip())
     for f in glob.glob(os.path.join(d, "*.kicad_pr[ol]")):
@@ -118,18 +129,20 @@ def fab(d):
     run([k, "pcb", "export", "gerbers", "-o", g + os.sep, "--layers", "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts", pcb])
     run([k, "pcb", "export", "drill", "-o", g + os.sep, "--format", "excellon", "--excellon-separate-th", pcb])
     run([k, "pcb", "export", "pos", "-o", os.path.join(out, f"{name}-cpl.csv"), "--format", "csv", "--units", "mm", "--side", "both", pcb])
+    # Bare copper (mounting holes, test pads): nothing to buy or place, so kept out of the BOM and the placement file
+    parts = json.load(open(os.path.join(d, "parts.json")))
+    bare = {p["ref"] for p in parts if p["footprint"].split(":")[0] in ("MountingHole", "TestPoint")}
     # JLCPCB's placement columns
-    rows = list(csv.DictReader(open(os.path.join(out, f"{name}-cpl.csv"), encoding="utf-8")))
+    rows = [r for r in csv.DictReader(open(os.path.join(out, f"{name}-cpl.csv"), encoding="utf-8")) if r["Ref"] not in bare]
     with open(os.path.join(out, f"{name}-cpl-jlcpcb.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
         for r in rows:
             w.writerow([r["Ref"], r["PosX"] + "mm", r["PosY"] + "mm", "Top" if r["Side"] == "top" else "Bottom", r["Rot"]])
     # BOM grouped by value and footprint, with LCSC numbers, in JLCPCB's columns
-    parts = json.load(open(os.path.join(d, "parts.json")))
     groups = {}
     for p in parts:
-        if p["footprint"].startswith("MountingHole"):
+        if p["ref"] in bare:
             continue
         key = (p["value"], p["footprint"].split(":")[1], p.get("lcsc", ""))
         groups.setdefault(key, []).append(p["ref"])
@@ -162,7 +175,8 @@ def dims(d):
     lines = [f"// Written by tools/pcb.py dims from board.json. Do not edit: change layout.py and rerun.",
              f"board_w = {b['width']}; board_h = {b['height']}; board_t = 1.6;",
              f"board_holes = {json.dumps(holes)};   // [x, y] from the board's top-left, y down",
-             f"board_leds = {json.dumps(leds)};"]
+             f"board_leds = {json.dumps(leds)};",
+             f"board_buttons = {json.dumps(sorted(b['place'][k][:2] for k in b['place'] if k.startswith('SW')))};   // pushed through the case with a pin"]
     if "tallest" in b:
         lines.append(f"board_tallest = {b['tallest']};   // mm above the board's top side")
     open(os.path.join(d, "board_dims.scad"), "w", newline=NL).write(NL.join(lines) + NL)
@@ -170,11 +184,13 @@ def dims(d):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ("all", "circuit", "build", "route", "check", "fab", "dims"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("all", "circuit", "schematic", "build", "route", "check", "fab", "dims"):
         sys.exit(__doc__)
     step, d = sys.argv[1], os.path.abspath(sys.argv[2])
     if step in ("all", "circuit") and not circuit(d):
         sys.exit("ERC has errors: fix circuit.py first")
+    if step == "schematic":
+        schematic(d)
     if step in ("all", "build"):
         build(d)
     if step in ("all", "route"):

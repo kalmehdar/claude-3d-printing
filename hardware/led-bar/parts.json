@@ -127,8 +127,8 @@
    "8": "BOOT",
    "9": "GND",
    "10": "__NOCONNECT",
-   "11": "__NOCONNECT",
-   "12": "__NOCONNECT",
+   "11": "RXD",
+   "12": "TXD",
    "13": "USB_DM",
    "14": "USB_DP",
    "15": "__NOCONNECT",
@@ -136,6 +136,16 @@
    "17": "__NOCONNECT",
    "18": "__NOCONNECT",
    "19": "GND"
+  }
+ },
+ {
+  "ref": "R7",
+  "value": "10k",
+  "footprint": "Resistor_SMD:R_0603_1608Metric",
+  "lcsc": "C25804",
+  "pins": {
+   "1": "LED_DATA_3V3",
+   "2": "GND"
   }
  },
  {
@@ -196,6 +206,33 @@
   "pins": {
    "1": "+3V3",
    "2": "N$4"
+  }
+ },
+ {
+  "ref": "TP1",
+  "value": "RXD",
+  "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+  "lcsc": "",
+  "pins": {
+   "1": "RXD"
+  }
+ },
+ {
+  "ref": "TP2",
+  "value": "TXD",
+  "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+  "lcsc": "",
+  "pins": {
+   "1": "TXD"
+  }
+ },
+ {
+  "ref": "TP3",
+  "value": "GND",
+  "footprint": "TestPoint:TestPoint_Pad_D1.5mm",
+  "lcsc": "",
+  "pins": {
+   "1": "GND"
   }
  },
  {

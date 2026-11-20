@@ -2,7 +2,7 @@
 // 1U faceplate for the rack status LED bar, for a 10-inch rack (254 mm wide, 44.45 mm tall). Prints face down: the
 // black panel with the white diffuser printed into its window in the same print. The board hangs behind it on four
 // standoffs with its LEDs facing the window. Every board figure comes from board_dims.scad (tools/pcb.py dims).
-//   part = "panel"     black: plate, rack ear slots, standoffs
+//   part = "panel"     black: plate, rack ear slots, standoffs, pin holes over the RESET and BOOT buttons
 //   part = "diffuser"  white: fills the window, 0.8 mm thick at the front
 //   part = "board"     the PCB from KiCad, placed where it mounts (for the Print Bench only, not printed)
 //   part = "all"       preview
@@ -42,6 +42,7 @@ module panel() difference() {
   ear_slots();
   window(plate + 1);
   for (h = board_holes) translate([px(h[0]), py(h[1]), plate + 1]) cylinder(d = pilot_d, h = gap + 1);
+  for (b = board_buttons) translate([px(b[0]), py(b[1]), -1]) cylinder(d = 2.2, h = plate + 2);   // RESET and BOOT: press with a straightened paperclip
 }
 module diffuser() window(diff_t);
 

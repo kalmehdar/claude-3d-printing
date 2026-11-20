@@ -17,7 +17,7 @@ An autorouted board designed with Claude is a first pass. A person ticks every l
 
 ## Power
 
-- [ ] +5V and GND feeds at least 0.8 mm wide from F1 to the LED row and the LDO
+- [ ] +5V and GND feeds at least 0.8 mm wide from F1 to the LED row and the LDO (short 0.6 mm neck-downs into a pad are fine)
 - [ ] 470 uF bulk capacitor polarity matches its silkscreen
 - [ ] 100 nF next to every LED's VDD pin
 

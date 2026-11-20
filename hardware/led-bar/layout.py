@@ -12,7 +12,7 @@ import os
 W, H = 200.0, 36.0
 place = {}
 
-# LEDs: 16 in a row, 12 mm apart, centred. D1 is the right-most so the data path from the level shifter is short.
+# LEDs: 16 in a row, 11.5 mm apart, centred. D1 is the right-most so the data path from the level shifter is short.
 for i in range(16):
     x = 186 - 11.5 * i   # 11.5 mm apart: the end LEDs clear the corner holes
     place[f"D{i + 1}"] = (x, 7.0, 0)
@@ -25,14 +25,18 @@ place["U1"] = (100, 17.6, 180)
 place["J1"] = (4.2, 22, 270)
 place["R1"] = (13, 16.5, 0)
 place["R2"] = (13, 27.5, 0)
-place["U4"] = (16, 22, 0)
-place["F1"] = (24, 22, 90)
+place["F1"] = (13, 22, 90)      # straight after the connector: VBUS stays short (review P2-1)
+place["U4"] = (20, 28, 0)
 place["C1"] = (36, 22, 0)
 place["U2"] = (76, 21, 0)
 place["C2"] = (71, 21, 90)
 place["C3"] = (81, 21, 90)
-place["C4"] = (78, 27, 0)
-place["C5"] = (78, 30.5, 0)
+place["C4"] = (117.5, 22, 90)   # 10 uF and 100 nF beside the module's 3V3 pin, not the regulator (review P2-4)
+place["C5"] = (117.5, 26, 90)
+place["R7"] = (166, 24, 90)     # data-line pull-down by the level shifter's input
+place["TP1"] = (128, 33, 0)     # RXD, TXD, GND test pads in a row along the bottom edge
+place["TP2"] = (132, 33, 0)
+place["TP3"] = (136, 33, 0)
 
 # Control and data: reset and boot buttons, strapping pull-ups, the level shifter and its series resistor
 place["R3"] = (121, 18, 90)

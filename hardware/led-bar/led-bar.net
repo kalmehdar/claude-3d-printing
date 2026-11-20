@@ -2,7 +2,7 @@
   (version "D")
   (design
     (source "circuit.py")
-    (date "11/19/2026 09:43 PM")
+    (date "11/20/2026 06:10 AM")
     (tool "SKiDL (3.0.0)")
     (sheet
       (number 1)
@@ -43,6 +43,78 @@
           (value "")))))
   (components
     (comp
+      (ref "#FLG1")
+      (value "PWR_FLAG")
+      (description "Special symbol for telling ERC where power comes from")
+      (footprint "")
+      (fields
+        (field
+          (name "Description") "Special symbol for telling ERC where power comes from")
+        (field
+          (name "Footprint"))
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "IgyqLg7nql")
+        (field
+          (name "SKiDL Line") "circuit.py:163"))
+      (libsource
+        (lib "power")
+        (part "PWR_FLAG"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "6ab3493c-8c35-5d3f-8bb6-ef9ec03a102c"))
+    (comp
+      (ref "#FLG2")
+      (value "PWR_FLAG")
+      (description "Special symbol for telling ERC where power comes from")
+      (footprint "")
+      (fields
+        (field
+          (name "Description") "Special symbol for telling ERC where power comes from")
+        (field
+          (name "Footprint"))
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "miImdVKphV")
+        (field
+          (name "SKiDL Line") "circuit.py:163"))
+      (libsource
+        (lib "power")
+        (part "PWR_FLAG"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "9c994729-db49-583a-beed-88bb86514cde"))
+    (comp
+      (ref "#FLG3")
+      (value "PWR_FLAG")
+      (description "Special symbol for telling ERC where power comes from")
+      (footprint "")
+      (fields
+        (field
+          (name "Description") "Special symbol for telling ERC where power comes from")
+        (field
+          (name "Footprint"))
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "NHQ9f7thMB")
+        (field
+          (name "SKiDL Line") "circuit.py:163"))
+      (libsource
+        (lib "power")
+        (part "PWR_FLAG"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "b66e5494-fc84-5493-bacf-0fe5b400b55a"))
+    (comp
       (ref "C1")
       (value "470uF 16V")
       (description "Polarized capacitor")
@@ -57,7 +129,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "kWAEs1RZHp")
+          (name "SKiDL Tag") "DpzptgLWhj")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -67,7 +139,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "9f808cd1-89eb-5384-bd4b-2cfc7cd16fb6"))
+      (tstamps "cd659c76-f605-5d08-aac8-ad504d9775bf"))
     (comp
       (ref "C10")
       (value "100nF")
@@ -83,7 +155,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "MEFfS3uqib")
+          (name "SKiDL Tag") "afhAoYU2fL")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -93,7 +165,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "f5846158-6ad7-5025-af90-88a865e9e2a3"))
+      (tstamps "03f2f73d-aac3-5e4a-bf46-fd54da06cb34"))
     (comp
       (ref "C11")
       (value "100nF")
@@ -109,7 +181,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "wsp4paqORI")
+          (name "SKiDL Tag") "3n0tb0Qc4u")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -119,7 +191,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "ee3de80f-e8c7-5015-a68f-1adcd79c8088"))
+      (tstamps "7c96774a-4e8b-52d5-a3d9-2de74909bdb7"))
     (comp
       (ref "C12")
       (value "100nF")
@@ -135,7 +207,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "a4nY1Zrw7Y")
+          (name "SKiDL Tag") "1iQP9aXJQu")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -145,7 +217,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "9e783084-a436-53f2-a110-abb1f8a0bb0f"))
+      (tstamps "3303bf76-c133-5822-9387-26650898c487"))
     (comp
       (ref "C13")
       (value "100nF")
@@ -161,7 +233,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "7I3ENXukuD")
+          (name "SKiDL Tag") "tXPEIPSgsU")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -171,7 +243,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "d27516d9-effc-5bbe-9cd3-5848f6e10ef5"))
+      (tstamps "a0af47a6-264f-5dce-8c29-474f037e4430"))
     (comp
       (ref "C14")
       (value "100nF")
@@ -187,7 +259,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "HdzjMbQFfi")
+          (name "SKiDL Tag") "S52AuPkvdU")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -197,7 +269,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "58c2a0af-482b-5842-9b7e-74e7ab5df916"))
+      (tstamps "991cd2e0-57a8-5829-ae4f-7f966b1e2d10"))
     (comp
       (ref "C15")
       (value "100nF")
@@ -213,7 +285,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "WQX_Yhl_DP")
+          (name "SKiDL Tag") "e3UTBljLet")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -223,7 +295,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "d05d81fb-8801-5827-ac65-d6e2ac3d7f23"))
+      (tstamps "3ebdee33-8d25-5c60-9821-50f216497cf5"))
     (comp
       (ref "C16")
       (value "100nF")
@@ -239,7 +311,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "S9JWlRnW8H")
+          (name "SKiDL Tag") "rIj_Z8hgZl")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -249,7 +321,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "a9c5982d-ba24-5277-bbf6-b28f9e15bad3"))
+      (tstamps "b314c73f-8d24-52ba-a4af-12f3c07977b7"))
     (comp
       (ref "C17")
       (value "100nF")
@@ -265,7 +337,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "PDj3f5uCST")
+          (name "SKiDL Tag") "iJBdKqC51i")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -275,7 +347,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "e6a1518a-10b4-586e-93ad-f39e5701ae05"))
+      (tstamps "0757859b-8790-5d50-a35f-f52e47b87b37"))
     (comp
       (ref "C18")
       (value "100nF")
@@ -291,7 +363,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "WTRPWoKMq3")
+          (name "SKiDL Tag") "DIp4fYG22f")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -301,7 +373,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5958e792-5f18-57da-9f41-2c3e00970d94"))
+      (tstamps "5ecfa90f-5c39-56f4-a3e2-eea5591e3aab"))
     (comp
       (ref "C19")
       (value "100nF")
@@ -317,7 +389,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "M6sXhvEdv4")
+          (name "SKiDL Tag") "KmSC6wfZPd")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -327,7 +399,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "3a362c50-8f02-598f-849e-c9c6b2beb80b"))
+      (tstamps "22556755-6de6-5f94-8f89-d05f0697552c"))
     (comp
       (ref "C2")
       (value "1uF")
@@ -343,7 +415,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "mm_YiyTuCj")
+          (name "SKiDL Tag") "F7OmLvYRZM")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -353,7 +425,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "ee75698a-a620-5093-829a-f8c6995b6b22"))
+      (tstamps "7776deea-6847-58af-9b93-92977c298663"))
     (comp
       (ref "C20")
       (value "100nF")
@@ -369,7 +441,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "T9UliNBb4F")
+          (name "SKiDL Tag") "3N_DAh7N3w")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -379,7 +451,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "dbbf3f0e-e7d4-5063-9af6-92d62ecd22ca"))
+      (tstamps "e86d61ab-1666-54b5-bd27-33d7139dd760"))
     (comp
       (ref "C21")
       (value "100nF")
@@ -395,7 +467,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "AYKRJ5mu0P")
+          (name "SKiDL Tag") "bkhGzxfbUC")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -405,7 +477,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "af5dd875-e1b4-5d50-979a-f8121a15cd26"))
+      (tstamps "3b211222-7670-5178-8a8d-62e662b4530a"))
     (comp
       (ref "C22")
       (value "100nF")
@@ -421,7 +493,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "iKurvTLtmD")
+          (name "SKiDL Tag") "3ynCt7Gh8r")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -431,7 +503,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "500a1b8b-99df-553d-99b0-ae37d01a602c"))
+      (tstamps "0fbb5e82-43b2-5b56-8acb-9cae1622db30"))
     (comp
       (ref "C23")
       (value "100nF")
@@ -447,7 +519,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "jmRCZOno8G")
+          (name "SKiDL Tag") "jKwMrYL282")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -457,7 +529,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "3c1a98c6-63ae-54ec-800a-bbd6229f2640"))
+      (tstamps "240e4d81-69c3-5073-b1b5-1985926361c5"))
     (comp
       (ref "C3")
       (value "1uF")
@@ -473,7 +545,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "2RmcUlRwes")
+          (name "SKiDL Tag") "oZ1KTy8UOy")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -483,7 +555,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "c1e99e93-f841-5496-ad04-c526a02bafde"))
+      (tstamps "fd621518-1b85-5537-ad4a-32bec43d12b5"))
     (comp
       (ref "C4")
       (value "10uF")
@@ -499,7 +571,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "qOH6MTgTIr")
+          (name "SKiDL Tag") "MqsHOuN4tF")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -509,7 +581,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "56df3c9f-ef64-5c59-9aff-ac677219d451"))
+      (tstamps "e0d22d0a-06fd-5ab9-9104-0204ba8c0079"))
     (comp
       (ref "C5")
       (value "100nF")
@@ -525,7 +597,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "FW2bWeScBN")
+          (name "SKiDL Tag") "QIwDwwlmMA")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -535,7 +607,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "2c31d76b-e942-5921-b868-d906b5551c94"))
+      (tstamps "9b966ab4-2f2a-52df-8d78-8d70aead4781"))
     (comp
       (ref "C6")
       (value "1uF")
@@ -551,7 +623,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "JhYTbwN8Ak")
+          (name "SKiDL Tag") "H4HNeM0NFU")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -561,7 +633,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "61d24a92-2076-58fd-8988-43d112587fb9"))
+      (tstamps "9e2f402d-c581-5bfb-afc3-6b972f70e22e"))
     (comp
       (ref "C7")
       (value "100nF")
@@ -577,7 +649,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "AJZxstTC4F")
+          (name "SKiDL Tag") "1uC3hZoRw0")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -587,7 +659,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "6ece1cf8-2e6c-5df1-a256-6ad4a2f40035"))
+      (tstamps "7a2fea2b-fc89-57fd-befe-519f8ee74019"))
     (comp
       (ref "C8")
       (value "100nF")
@@ -603,7 +675,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "Cd4XVQQ9wN")
+          (name "SKiDL Tag") "RrGQA43RNW")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -613,7 +685,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "7d66ecb5-5862-56c2-9847-150e480d888a"))
+      (tstamps "4efede81-0717-582a-945e-36e32c9f7e28"))
     (comp
       (ref "C9")
       (value "100nF")
@@ -629,7 +701,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "_EF3EFLYg8")
+          (name "SKiDL Tag") "Pp1_ddBFeG")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -639,7 +711,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "8e11bef5-4988-5258-b490-202f3b8ba334"))
+      (tstamps "c8c28b86-9875-5c1c-909b-1eee85316880"))
     (comp
       (ref "D1")
       (value "WS2812B")
@@ -655,7 +727,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "glMPaJUuXh")
+          (name "SKiDL Tag") "woyuFBd8aM")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -665,7 +737,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "31004bbb-df37-5ddf-b7e7-c06f46387cf4"))
+      (tstamps "7746a0f6-e7a2-5305-9c48-2f086ddffbac"))
     (comp
       (ref "D10")
       (value "WS2812B")
@@ -681,7 +753,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "88UqerncMn")
+          (name "SKiDL Tag") "eqUXGGfA86")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -691,7 +763,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "89ab1317-dbcf-55e3-91ff-e61174ef14f1"))
+      (tstamps "c194a8dd-1847-5a73-b8a7-ae25ba2da31c"))
     (comp
       (ref "D11")
       (value "WS2812B")
@@ -707,7 +779,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "qefkyGl0Hj")
+          (name "SKiDL Tag") "H7k2I_cM99")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -717,7 +789,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "02677375-7a89-594a-9472-5ced91bf0852"))
+      (tstamps "8322bace-bbab-5fe0-bbc1-09c0896d573b"))
     (comp
       (ref "D12")
       (value "WS2812B")
@@ -733,7 +805,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "6IGQpW6AHf")
+          (name "SKiDL Tag") "GqvwhxkU0c")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -743,7 +815,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "4fb2eeb9-b712-5a1c-b314-7481b87b1b4f"))
+      (tstamps "0311c71b-ad33-54c5-9b14-c82fa89e62c5"))
     (comp
       (ref "D13")
       (value "WS2812B")
@@ -759,7 +831,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "zfN3rDQMVw")
+          (name "SKiDL Tag") "YCHd7SGfRj")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -769,7 +841,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "7b3ba363-541b-5193-9cd4-05137d014b6b"))
+      (tstamps "0a8c8e45-fff0-5f5a-be6b-82fe38425c35"))
     (comp
       (ref "D14")
       (value "WS2812B")
@@ -785,7 +857,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "kiZqkZgq2O")
+          (name "SKiDL Tag") "Rre6Px5dE6")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -795,7 +867,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "a23a4738-74be-5461-bf9b-335d7b57c061"))
+      (tstamps "6827c319-aff5-5614-8495-424196db9a9d"))
     (comp
       (ref "D15")
       (value "WS2812B")
@@ -811,7 +883,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "LxfWpzxChh")
+          (name "SKiDL Tag") "FGSExDaTCJ")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -821,7 +893,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "b4f35a42-d560-57de-a80d-82e7538b789a"))
+      (tstamps "896fbea7-e165-51c7-8aa9-b2b71b1f4a51"))
     (comp
       (ref "D16")
       (value "WS2812B")
@@ -837,7 +909,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "7XM5TdeZsL")
+          (name "SKiDL Tag") "QZvnyY8G4j")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -847,7 +919,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "ca0835d9-a8e8-5e15-9eb8-089504669d64"))
+      (tstamps "a82d692a-0fc2-51b8-8563-9580b14d711f"))
     (comp
       (ref "D2")
       (value "WS2812B")
@@ -863,7 +935,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "OKBEfbxG6n")
+          (name "SKiDL Tag") "8J1FIDHF4B")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -873,7 +945,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "6e3b2e83-4bad-5f9b-945d-52f9cc470d89"))
+      (tstamps "5fef58f8-9b7e-5359-8079-e1de3a4e325e"))
     (comp
       (ref "D3")
       (value "WS2812B")
@@ -889,7 +961,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "NaQqHOC6y6")
+          (name "SKiDL Tag") "bGu5_gWxnT")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -899,7 +971,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5094da2d-40f6-5cce-a020-24e38d6a9523"))
+      (tstamps "ac12f544-fd5a-5439-9d9f-d8109c6475b1"))
     (comp
       (ref "D4")
       (value "WS2812B")
@@ -915,7 +987,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "Z6g4mSzspa")
+          (name "SKiDL Tag") "Vv8UGljolS")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -925,7 +997,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "aa06e51b-b362-55ae-8daf-0a4f63151e89"))
+      (tstamps "d57632be-b406-557f-bab0-92c18f15a6e1"))
     (comp
       (ref "D5")
       (value "WS2812B")
@@ -941,7 +1013,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "hUmkhxQI9R")
+          (name "SKiDL Tag") "7Io8kgw5YE")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -951,7 +1023,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "029d6ec6-4511-536a-84dc-46fab4f99b40"))
+      (tstamps "1e3f29fb-9184-5497-94ab-129f360f3101"))
     (comp
       (ref "D6")
       (value "WS2812B")
@@ -967,7 +1039,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "kLuwB6I59Z")
+          (name "SKiDL Tag") "4FofY_TmVd")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -977,7 +1049,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5042b40c-c704-57b5-bb81-85697a38ad07"))
+      (tstamps "5c8fb972-ba00-5e4b-8d7d-f6a8f195150a"))
     (comp
       (ref "D7")
       (value "WS2812B")
@@ -993,7 +1065,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "YKZWugbAN_")
+          (name "SKiDL Tag") "R7HalYxK2f")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1003,7 +1075,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "76375366-75fc-57ef-8206-fecccf818a57"))
+      (tstamps "3e70e841-62c7-5eae-a7d8-1553267a8b08"))
     (comp
       (ref "D8")
       (value "WS2812B")
@@ -1019,7 +1091,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "K2GWOLmeMO")
+          (name "SKiDL Tag") "uqiXmwFGOD")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1029,7 +1101,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "67075955-9571-5802-968e-cd801b5aef87"))
+      (tstamps "dde5ab88-0224-53e3-8fce-0c17d57ebb7c"))
     (comp
       (ref "D9")
       (value "WS2812B")
@@ -1045,7 +1117,7 @@
         (field
           (name "Datasheet") "https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf")
         (field
-          (name "SKiDL Tag") "_aY3ADf9iw")
+          (name "SKiDL Tag") "dGXPS4M0xJ")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1055,7 +1127,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5cdedc78-0dc5-54bd-987c-dad9463acfb0"))
+      (tstamps "536d1def-b8a5-5e06-8a38-d6e9277bb443"))
     (comp
       (ref "F1")
       (value "1.5A hold")
@@ -1071,7 +1143,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "CLE9BIVRnL")
+          (name "SKiDL Tag") "TVxpt9QXyv")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1081,7 +1153,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "c1a232f2-0949-5967-a6ac-629393853c1f"))
+      (tstamps "e20532c6-f9ef-5b8d-94b2-74120887cd8b"))
     (comp
       (ref "H1")
       (value "M3")
@@ -1097,7 +1169,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "Bjo5NUTeIV")
+          (name "SKiDL Tag") "VYvTV3udRo")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1107,7 +1179,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "33d7ebc0-645c-5b63-aa96-bd2b4c994a40"))
+      (tstamps "26ccd55b-5813-5944-aa0b-bad260f86996"))
     (comp
       (ref "H2")
       (value "M3")
@@ -1123,7 +1195,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "gatYyAMRUi")
+          (name "SKiDL Tag") "pRf5SlTnha")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1133,7 +1205,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "b552a3f4-389e-56a5-9854-26d518f7ba91"))
+      (tstamps "fd3f65db-b717-5552-86c0-88fa5a9521de"))
     (comp
       (ref "H3")
       (value "M3")
@@ -1149,7 +1221,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "AwW2eDe8tS")
+          (name "SKiDL Tag") "lC1F0PHEAl")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1159,7 +1231,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "0cbae8c2-fb8d-5670-bcda-4fd583394805"))
+      (tstamps "425585b0-19d1-5396-b913-bb4e6dcc3f41"))
     (comp
       (ref "H4")
       (value "M3")
@@ -1175,7 +1247,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "aJutN_oXja")
+          (name "SKiDL Tag") "tefcbhadlQ")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1185,7 +1257,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "11b93c2e-3e4f-57e6-8324-f87c6aaf686e"))
+      (tstamps "40d203a3-feca-55c9-8d72-608f3103d0b7"))
     (comp
       (ref "J1")
       (value "USB-C")
@@ -1201,7 +1273,7 @@
         (field
           (name "Datasheet") "https://www.usb.org/sites/default/files/documents/usb_type-c.zip")
         (field
-          (name "SKiDL Tag") "C_egYjDTP3")
+          (name "SKiDL Tag") "W9UADt0IMm")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1211,7 +1283,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "5728404e-6ab0-5d3a-bcd0-6fe2e1c0d248"))
+      (tstamps "b40067bc-79a1-5cc1-9387-7f2c9dcd1936"))
     (comp
       (ref "R1")
       (value "5.1k")
@@ -1227,7 +1299,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "bNINsiPyGO")
+          (name "SKiDL Tag") "wQhNpJbGyw")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1237,7 +1309,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "bc586196-9c40-5703-9cac-776b03c68609"))
+      (tstamps "04a590c4-365a-55e2-a185-8978fb190ba1"))
     (comp
       (ref "R2")
       (value "5.1k")
@@ -1253,7 +1325,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "MvdvOSqfqO")
+          (name "SKiDL Tag") "NEC1gvo_Hs")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1263,7 +1335,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "83a85a7d-436f-50d3-9668-bc8186f3779e"))
+      (tstamps "75e294e2-e925-50d7-85fc-045a61fff25f"))
     (comp
       (ref "R3")
       (value "10k")
@@ -1279,7 +1351,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "P1o8q5UKsq")
+          (name "SKiDL Tag") "dd4_7XZwPe")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1289,7 +1361,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "2c7f8d3d-cd7f-5eaa-b82a-949963f61a65"))
+      (tstamps "0bd28fd4-6974-5b1c-8f65-ba67751fa6d2"))
     (comp
       (ref "R4")
       (value "10k")
@@ -1305,7 +1377,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "TaZVK2yiyY")
+          (name "SKiDL Tag") "WeieaaLzNo")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1315,7 +1387,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "109e7936-3e4b-5f35-b1a4-6c1332a61d58"))
+      (tstamps "91a78403-3ba5-5cd6-ad2d-fcf85ab92358"))
     (comp
       (ref "R5")
       (value "10k")
@@ -1331,7 +1403,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "asQoWoeaaS")
+          (name "SKiDL Tag") "fHkEaQF4sT")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1341,7 +1413,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "b74ccfc1-a14d-556a-bdbd-5c3f293bfda0"))
+      (tstamps "f7903943-e5fd-50d6-9a21-97377bddc366"))
     (comp
       (ref "R6")
       (value "390")
@@ -1357,7 +1429,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "7bjgD4Akey")
+          (name "SKiDL Tag") "HZ5NXiMnPn")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1367,7 +1439,33 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "0cf8ce45-203f-5cee-b1f3-58c1e4657674"))
+      (tstamps "063b2db9-8798-59f8-9cde-37353f0ad9e7"))
+    (comp
+      (ref "R7")
+      (value "10k")
+      (description "Resistor")
+      (footprint "Resistor_SMD:R_0603_1608Metric")
+      (fields
+        (field
+          (name "LCSC") "C25804")
+        (field
+          (name "Description") "Resistor")
+        (field
+          (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "K_P0hZif8u")
+        (field
+          (name "SKiDL Line") "circuit.py:27"))
+      (libsource
+        (lib "Device")
+        (part "R"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "9505ce2b-a43c-5e00-b605-8edd8dece4c3"))
     (comp
       (ref "SW1")
       (value "RESET")
@@ -1383,7 +1481,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "A1GVYHSqLU")
+          (name "SKiDL Tag") "m3cxCjp_pq")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1393,7 +1491,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "20ab1c4f-8cb9-5c04-b7cb-e716db138e7f"))
+      (tstamps "98c52aff-f742-50ef-98f7-15949bb6cc1b"))
     (comp
       (ref "SW2")
       (value "BOOT")
@@ -1409,7 +1507,7 @@
         (field
           (name "Datasheet"))
         (field
-          (name "SKiDL Tag") "4Kzr85Q5dR")
+          (name "SKiDL Tag") "wSq5Z6WX8U")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1419,7 +1517,85 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "3782b29a-c0b5-5c66-bbc7-c78b2fc200f7"))
+      (tstamps "dfb14921-10ea-5615-8dde-bc250329ec20"))
+    (comp
+      (ref "TP1")
+      (value "RXD")
+      (description "test point")
+      (footprint "TestPoint:TestPoint_Pad_D1.5mm")
+      (fields
+        (field
+          (name "LCSC"))
+        (field
+          (name "Description") "test point")
+        (field
+          (name "Footprint") "TestPoint:TestPoint_Pad_D1.5mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "H8g_8fzDp3")
+        (field
+          (name "SKiDL Line") "circuit.py:27"))
+      (libsource
+        (lib "Connector")
+        (part "TestPoint"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "bacf6766-5824-51f8-9597-083a46091de6"))
+    (comp
+      (ref "TP2")
+      (value "TXD")
+      (description "test point")
+      (footprint "TestPoint:TestPoint_Pad_D1.5mm")
+      (fields
+        (field
+          (name "LCSC"))
+        (field
+          (name "Description") "test point")
+        (field
+          (name "Footprint") "TestPoint:TestPoint_Pad_D1.5mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "eeChPIRhEF")
+        (field
+          (name "SKiDL Line") "circuit.py:27"))
+      (libsource
+        (lib "Connector")
+        (part "TestPoint"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "4446e469-7c4f-5a14-aad5-4703ad74cec9"))
+    (comp
+      (ref "TP3")
+      (value "GND")
+      (description "test point")
+      (footprint "TestPoint:TestPoint_Pad_D1.5mm")
+      (fields
+        (field
+          (name "LCSC"))
+        (field
+          (name "Description") "test point")
+        (field
+          (name "Footprint") "TestPoint:TestPoint_Pad_D1.5mm")
+        (field
+          (name "Datasheet"))
+        (field
+          (name "SKiDL Tag") "gt_9PS_HLU")
+        (field
+          (name "SKiDL Line") "circuit.py:27"))
+      (libsource
+        (lib "Connector")
+        (part "TestPoint"))
+      (sheetpath
+        (names "/")
+        (tstamps "/"))
+      (component_classes)
+      (tstamps "824c9621-de1f-50df-9716-1ff101225864"))
     (comp
       (ref "U1")
       (value "ESP32-C3-WROOM-02-N4")
@@ -1435,7 +1611,7 @@
         (field
           (name "Datasheet") "https://www.espressif.com/sites/default/files/documentation/esp32-c3-wroom-02_datasheet_en.pdf")
         (field
-          (name "SKiDL Tag") "p4xO4GQFmM")
+          (name "SKiDL Tag") "SFR9WLj4Y_")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1445,7 +1621,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "20f5ef4b-eb03-5728-952f-9eb8d3b1f7d8"))
+      (tstamps "ded7b84f-bfc5-5e78-8ea4-d923837489a4"))
     (comp
       (ref "U2")
       (value "AP2112K-3.3")
@@ -1461,7 +1637,7 @@
         (field
           (name "Datasheet") "https://www.diodes.com/assets/Datasheets/AP2112.pdf")
         (field
-          (name "SKiDL Tag") "BJAmWlnNPS")
+          (name "SKiDL Tag") "kgP8FY6rj_")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1471,7 +1647,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "a218f503-204b-5a0b-ab86-40d26d51161f"))
+      (tstamps "95391286-be30-5a15-860d-b76338d48794"))
     (comp
       (ref "U3")
       (value "74AHCT1G125")
@@ -1487,7 +1663,7 @@
         (field
           (name "Datasheet") "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf")
         (field
-          (name "SKiDL Tag") "JwaiWrULdr")
+          (name "SKiDL Tag") "WIhFOSCz8m")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1497,7 +1673,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "c3770164-0a63-50f6-8d7d-ae3a440b64ba"))
+      (tstamps "35cd7368-6661-58b3-a9de-4e16b63ec761"))
     (comp
       (ref "U4")
       (value "USBLC6-2SC6")
@@ -1513,7 +1689,7 @@
         (field
           (name "Datasheet") "https://www.st.com/resource/en/datasheet/usblc6-2.pdf")
         (field
-          (name "SKiDL Tag") "d7pjoSXAea")
+          (name "SKiDL Tag") "ecqj7cXcfk")
         (field
           (name "SKiDL Line") "circuit.py:27"))
       (libsource
@@ -1523,7 +1699,7 @@
         (names "/")
         (tstamps "/"))
       (component_classes)
-      (tstamps "bf462048-be36-5a75-84e9-2b9f264c2d91")))
+      (tstamps "164f832b-d066-5e08-bf05-10d4500c933a")))
   (nets
     (net
       (code 1)
@@ -1565,6 +1741,10 @@
       (code 2)
       (name "+5V")
       (class "Default")
+      (node
+        (ref "#FLG2")
+        (pin "1")
+        (pintype "POWER-OUT"))
       (node
         (ref "C1")
         (pin "1")
@@ -1758,6 +1938,10 @@
       (name "GND")
       (class "Default")
       (node
+        (ref "#FLG3")
+        (pin "1")
+        (pintype "POWER-OUT"))
+      (node
         (ref "C1")
         (pin "2")
         (pintype "PASSIVE"))
@@ -1942,12 +2126,20 @@
         (pin "2")
         (pintype "PASSIVE"))
       (node
+        (ref "R7")
+        (pin "2")
+        (pintype "PASSIVE"))
+      (node
         (ref "SW1")
         (pin "2")
         (pintype "PASSIVE"))
       (node
         (ref "SW2")
         (pin "2")
+        (pintype "PASSIVE"))
+      (node
+        (ref "TP3")
+        (pin "1")
         (pintype "PASSIVE"))
       (node
         (ref "U1")
@@ -2158,6 +2350,10 @@
       (name "LED_DATA_3V3")
       (class "Default")
       (node
+        (ref "R7")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
         (ref "U1")
         (pin "3")
         (pintype "BIDIRECTIONAL"))
@@ -2239,6 +2435,30 @@
         (pintype "TRISTATE")))
     (net
       (code 28)
+      (name "RXD")
+      (class "Default")
+      (node
+        (ref "TP1")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "11")
+        (pintype "BIDIRECTIONAL")))
+    (net
+      (code 29)
+      (name "TXD")
+      (class "Default")
+      (node
+        (ref "TP2")
+        (pin "1")
+        (pintype "PASSIVE"))
+      (node
+        (ref "U1")
+        (pin "12")
+        (pintype "BIDIRECTIONAL")))
+    (net
+      (code 30)
       (name "USB_DM")
       (class "Default")
       (node
@@ -2262,7 +2482,7 @@
         (pin "4")
         (pintype "PASSIVE")))
     (net
-      (code 29)
+      (code 31)
       (name "USB_DP")
       (class "Default")
       (node
@@ -2286,9 +2506,13 @@
         (pin "6")
         (pintype "PASSIVE")))
     (net
-      (code 30)
+      (code 32)
       (name "VBUS")
       (class "Default")
+      (node
+        (ref "#FLG1")
+        (pin "1")
+        (pintype "POWER-OUT"))
       (node
         (ref "F1")
         (pin "1")
