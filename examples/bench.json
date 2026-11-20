@@ -28,7 +28,11 @@
           "Circuit board",
           "../hardware/led-bar/stl/case-board.stl",
           "#2d5a3d",
-          "not printed"
+          "not printed",
+          {
+            "glb": "../hardware/led-bar/fab/led-bar.glb",
+            "from": "../hardware/led-bar/fab/led-bar.stl"
+          }
         ]
       ]
     },

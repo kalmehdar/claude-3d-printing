@@ -19,6 +19,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import struct
 import sys
 
@@ -76,6 +77,32 @@ def make_project(bench, src, m, out, folder):
     return f"{folder.strip('/')}/{m['id']}.3mf"
 
 
+def board_glb(base, entry, v, shift, projects_dir, bench):
+    """A board part can carry KiCad's coloured GLB (pcb.py fab): {"glb": ..., "from": the fab STL the case placed}.
+    Returns its URL and the matrix that puts it where the flat board STL sits on the bench, or None."""
+    extra = entry[4] if len(entry) > 4 and isinstance(entry[4], dict) else {}
+    if not extra.get("glb"):
+        return None
+    fab = triangles(os.path.join(base, extra["from"]))
+    flo = [min(fab[a::3]) for a in range(3)]
+    fhi = [max(fab[a::3]) for a in range(3)]
+    clo = [min(v[a::3]) for a in range(3)]
+    # case.scad turns the fab STL over (rotate y 180) and moves it: x' = -x + tx, y' = y + ty, z' = -z + tz
+    tx, ty, tz = clo[0] + fhi[0], clo[1] - flo[1], clo[2] + fhi[2]
+    # KiCad's GLB is in metres, y up, with KiCad's y (down the board) as +z: STL x = 1000 gx, y = -1000 gz, z = 1000 gy
+    cx, cy, cz = shift
+    rows = [[-1000, 0, 0, tx - cx], [0, 0, -1000, ty - cy], [0, -1000, 0, tz - cz], [0, 0, 0, 1]]
+    matrix = [rows[r][c] for c in range(4) for r in range(4)]   # column-major, as three.js Matrix4.fromArray wants
+    src = os.path.join(base, extra["glb"])
+    if projects_dir:   # published next to the page, so it loads from the same site
+        os.makedirs(projects_dir, exist_ok=True)
+        shutil.copyfile(src, os.path.join(projects_dir, os.path.basename(src)))
+        url = os.path.basename(projects_dir.rstrip("/\\")) + "/" + os.path.basename(src)
+    else:
+        url = link(bench, extra["glb"])
+    return {"url": url, "matrix": matrix}
+
+
 def secs(t):
     """OrcaSlicer's "1d 2h 3m 4s" style to seconds."""
     return sum(int(n) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[u] for n, u in re.findall(r"(\d+)\s*([dhms])", t))
@@ -115,19 +142,20 @@ def main():
             label, rel, colour = entry[:3]
             printed = not (len(entry) > 3 and entry[3] == "not printed")   # e.g. a circuit board shown in its case
             v = triangles(os.path.join(base, rel))
-            parts.append((label, rel, colour, v, grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", "")) if printed and not m.get("nobed") else None))
+            parts.append((label, rel, colour, v, grams(v, "PLA" in m.get("material", "") and "PETG" not in m.get("material", "")) if printed and not m.get("nobed") else None, entry))
             allv.extend(v)
         lo = [min(allv[a::3]) for a in range(3)]
         hi = [max(allv[a::3]) for a in range(3)]
         cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
         packed = []
-        for label, rel, colour, v, g in parts:
+        for label, rel, colour, v, g, entry in parts:
             shifted = [v[i] - (cx, cy, lo[2])[i % 3] for i in range(len(v))]
             q0 = min(shifted) if shifted else 0.0          # 16-bit vertices: a quarter of the page size of floats
             step = max((max(shifted) - q0) / 65535, 1e-6) if shifted else 1.0
             ints = [round((x - q0) / step) for x in shifted]
             url = link(bench, rel)
-            packed.append({"label": label, "colour": colour, "grams": g, "url": url, "q0": q0, "qs": step,
+            glb = board_glb(base, entry, v, (cx, cy, lo[2]), projects and os.path.join(os.path.dirname(os.path.abspath(out)), projects), bench)
+            packed.append({"label": label, "colour": colour, "grams": g, "url": url, "q0": q0, "qs": step, "glb": glb,
                            "data": base64.b64encode(struct.pack(f"<{len(ints)}H", *ints)).decode()})
         models.append({"id": m["id"], "name": m["name"], "for": m.get("for", ""), "status": m.get("status", ""),
                        "state": m.get("state", "ready"), "material": m.get("material", ""), "credit": m.get("credit", ""),
