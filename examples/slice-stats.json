@@ -1,0 +1,150 @@
+{
+ "bambu-p1s": {
+  "label": "Bambu Lab P1S",
+  "designs": {
+   "clip": {
+    "time": "10m 32s",
+    "grams": [
+     0.8
+    ],
+    "total_g": 0.8,
+    "changes": 0
+   },
+   "ledbar": {
+    "time": "1h 6m 14s",
+    "grams": [
+     25.8,
+     2.0
+    ],
+    "total_g": 27.8,
+    "changes": 0
+   },
+   "testcard": {
+    "time": "1h 9m 17s",
+    "grams": [
+     3.5,
+     2.5,
+     3.0,
+     3.3
+    ],
+    "total_g": 12.3,
+    "changes": 0
+   },
+   "bins": {
+    "error": "slicer exit 4294967195: Slic3r::CLI::run found error, exit"
+   },
+   "tags": {
+    "time": "5h 0m 36s",
+    "grams": [
+     15.1,
+     8.2,
+     10.1,
+     13.1
+    ],
+    "total_g": 46.5,
+    "changes": 0
+   },
+   "swatch": {
+    "time": "25m 58s",
+    "grams": [
+     7.2,
+     0.6
+    ],
+    "total_g": 7.8,
+    "changes": 0
+   },
+   "before": {
+    "time": "1h 2m 44s",
+    "grams": [
+     22.6
+    ],
+    "total_g": 22.6,
+    "changes": 0
+   },
+   "after": {
+    "time": "2h 5m 28s",
+    "grams": [
+     29.7,
+     1.0,
+     4.4
+    ],
+    "total_g": 35.1,
+    "changes": 0
+   }
+  }
+ },
+ "u1": {
+  "label": "Snapmaker U1",
+  "designs": {
+   "ledbar": {
+    "time": "1h 4m 34s",
+    "grams": [
+     28.0,
+     1.8
+    ],
+    "total_g": 29.8,
+    "changes": 4
+   },
+   "testcard": {
+    "time": "25m 22s",
+    "grams": [
+     1.9,
+     2.3,
+     1.7,
+     1.7
+    ],
+    "total_g": 7.6,
+    "changes": 30
+   },
+   "bins": {
+    "error": "slicer exit 4294967195: Slic3r::CLI::run found error, exit"
+   },
+   "tags": {
+    "time": "1h 21m 42s",
+    "grams": [
+     6.3,
+     6.2,
+     4.0,
+     4.7
+    ],
+    "total_g": 21.2,
+    "changes": 165
+   },
+   "swatch": {
+    "time": "15m 51s",
+    "grams": [
+     6.9,
+     0.2
+    ],
+    "total_g": 7.1,
+    "changes": 3
+   },
+   "clip": {
+    "time": "5m 10s",
+    "grams": [
+     0.7
+    ],
+    "total_g": 0.7,
+    "changes": 0
+   },
+   "before": {
+    "time": "56m 59s",
+    "grams": [
+     23.1
+    ],
+    "total_g": 23.1,
+    "changes": 0
+   },
+   "after": {
+    "time": "1h 17m 23s",
+    "grams": [
+     27.2,
+     1.0,
+     1.0
+    ],
+    "total_g": 29.2,
+    "changes": 31
+   }
+  }
+ }
+}
