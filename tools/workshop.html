@@ -349,7 +349,7 @@ function render() {
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
     const fs = feedState(i), loaded = fs ? fs.cls !== "empty" : (!tc.filament_exist || tc.filament_exist[i]);
     const canUnload = !active && (fs ? fs.cls === "in" : loaded && tc.filament_exist) && !(tc.filament_soft || [])[i];
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${fs ? `<span class="state ${fs.cls}">${fs.word}</span>` : ""}<div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
+    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${fs ? `<span class="state ${fs.cls}">${esc(fs.word)}</span>` : ""}<div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
   $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
@@ -727,7 +727,7 @@ const FEED = {load_finish: ["in", "In the head"], preload_finish: ["parked", "Pa
 function feedState(i) {
   const s = S.status || {}, ch = (s["filament_feed left"] || {})["extruder" + i] || (s["filament_feed right"] || {})["extruder" + i];
   if (!ch) return null;
-  const [cls, word] = FEED[ch.channel_state] || (ch.filament_detected ? ["parked", ch.channel_state.replace(/_/g, " ")] : ["empty", "Empty"]);
+  const [cls, word] = FEED[ch.channel_state] || (ch.filament_detected ? ["parked", String(ch.channel_state || "unknown").replace(/_/g, " ")] : ["empty", "Empty"]);
   return {cls, word, raw: ch.channel_state};
 }
 let ALERTS = [];
@@ -753,17 +753,19 @@ function renderBanner() {
 /* ---------- layer photos (saved by printer.py watch) ---------- */
 const FR = {job: "", list: [], follow: true};
 const runName = j => j.replace(/-0*(\d+)$/, " (print $1)");
-function openPhotos(job) { FR.job = job; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => $("#framesCard").scrollIntoView({behavior: "smooth"})); }
+function openPhotos(job) { FR.job = job; FR.pinned = true; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => $("#framesCard").scrollIntoView({behavior: "smooth"})); }
 function showFrame() {
   const f = FR.list[+$("#frRange").value]; if (!f) return;
-  $("#frImg").src = f.url; $("#frImg").alt = `Layer ${f.layer ?? "?"} photo`;
+  if ($("#frImg").getAttribute("src") !== f.url) $("#frImg").src = f.url;
+  $("#frImg").alt = `Layer ${f.layer ?? "?"} photo`;
   $("#frInfo").textContent = `${runName(FR.job)} · layer ${f.layer ?? "?"} at ${f.time} · photo ${+$("#frRange").value + 1} of ${FR.list.length}`;
 }
 async function loadFrames() {
-  let r; try { r = await api("/api/frames" + (FR.job ? "?job=" + enc(FR.job) : "")); } catch (e) { return; }
+  let r; try { r = await api("/api/frames" + (FR.pinned ? "?job=" + enc(FR.job) : "")); } catch (e) { return; }   // unpinned: the newest print
+  FR.jobs = r.jobs;
+  if (r.job !== FR.job) { FR.list = []; FR.follow = true; }
   $("#framesCard").hidden = !r.frames.length; if (!r.frames.length) return;
   const sel = $("#frJob"); sel.hidden = r.jobs.length < 2;
-  FR.jobs = r.jobs;
   sel.innerHTML = r.jobs.slice(0, 20).map(j => `<option value="${esc(j)}" ${j === r.job ? "selected" : ""}>${esc(runName(j))}</option>`).join("");
   const rng = $("#frRange"), atEnd = +rng.value >= FR.list.length - 1;
   FR.job = r.job; FR.list = r.frames; FR.video = r.video; rng.max = FR.list.length - 1;
@@ -813,7 +815,7 @@ api("/api/info").then(i => { S.info = i;
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
 loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAlerts(); loadActivity(); } }, 10000);
-loadFrames(); setInterval(() => { if (!document.hidden) loadFrames(); }, 30000);
+loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
 askWho(false);
 camLoop();
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");

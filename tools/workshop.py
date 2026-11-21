@@ -376,7 +376,13 @@ def frames(job=""):
                       key=lambda d: -os.path.getmtime(os.path.join(root, d)))
     except OSError:
         return {"jobs": [], "frames": []}
-    job = job if job in jobs else (jobs[0] if jobs else "")
+    def has_pics(d):
+        try:
+            return any(f.endswith(".jpg") for f in os.listdir(os.path.join(root, d)))
+        except OSError:
+            return False
+    with_pics = [d for d in jobs if has_pics(d)]
+    job = job if job in jobs else (with_pics[0] if with_pics else "")   # default: the newest print that has a photo
     try:
         pics = sorted(f for f in os.listdir(os.path.join(root, job)) if f.endswith(".jpg")) if job else []
     except OSError:   # removed between the two listings

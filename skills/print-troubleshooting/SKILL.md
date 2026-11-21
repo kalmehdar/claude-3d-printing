@@ -18,11 +18,11 @@ Where the defect starts tells you most of the cause:
 
 ## 2. Decide: keep going, pause, or cancel
 
-Cancel when continuing makes it worse or risks the printer; pause when a person should look; keep going for cosmetic defects. The calls below are judgement unless a source is named. Pause or cancel only when you are confident from what you see; when unsure, say so, keep watching, and tell the person.
+Cancel when continuing makes it worse or risks the printer; pause when a person should look; keep going for cosmetic defects. The calls below are judgement unless a source is named. Pause or cancel only when you are confident from what you see; when unsure, say so, keep watching, and tell the person. Before a cancel you start yourself, take a second fresh frame a few seconds later and check it shows the same thing (and its timestamp is new), then tell the person at once.
 
 | Seen | Call |
 | --- | --- |
-| Spaghetti, part loose or knocked over, extruding into air | **Cancel now** (or cancel just that object if the file has object labels: Klipper `EXCLUDE_OBJECT`) |
+| Spaghetti, part loose or knocked over, extruding into air | **Cancel now**. Cancelling just one object (Klipper `EXCLUDE_OBJECT`) is for the person to do from Fluidd or the printer screen; Claude never forces raw G-code mid-print |
 | First-layer lines not bonded; a corner lifting and getting worse | **Cancel** and restart after the fix (the nozzle will hit the curl) |
 | Layer shift | **Cancel**: everything above is out of place |
 | Sudden thin or missing extrusion mid-print, extruder clicking | **Cancel**: clog or heat creep; it prints air, then spaghetti |
@@ -30,7 +30,7 @@ Cancel when continuing makes it worse or risks the printer; pause when a person 
 | Plastic building up on the nozzle (PETG) | **Pause**, clean the nozzle |
 | Overhang edges curling up where the nozzle passes | **Pause** and look |
 | Stringing, blobs, ringing, banding, elephant foot, mild over- or under-extrusion | **Keep going**, fix it for next time |
-| Printing with the bed heater off (bed target 0) | **Pause** (`printer.py watch` does this itself) |
+| Printing with the bed heater off (bed target 0) | **Pause** (`printer.py watch` does this itself, but only while it is running) |
 
 After any pause or cancel, tell the person what you saw, at which layer, and what happens next.
 
