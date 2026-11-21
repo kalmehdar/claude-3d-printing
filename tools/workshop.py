@@ -805,6 +805,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         p = self.path
         if not self.allowed():
             return self.send(403, {"error": "refused: open Workshop by its address, not from another site"})
+        if p in ("/icon-180.png", "/icon-512.png"):   # home-screen icon (phones: Share > Add to Home Screen)
+            return self.send(200, open(os.path.join(TOOLS, "workshop" + p.replace("/icon", "-icon")), "rb").read(), "image/png")
+        if p == "/manifest.webmanifest":
+            return self.send(200, {"name": "Workshop", "short_name": "Workshop", "start_url": "/#now", "display": "standalone",
+                                   "background_color": "#111114", "theme_color": "#111114",
+                                   "icons": [{"src": "/icon-180.png", "sizes": "180x180", "type": "image/png"},
+                                             {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]},
+                             "application/manifest+json")
         if p in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8")
         if p.startswith("/moonraker/"):
