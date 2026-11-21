@@ -8,6 +8,7 @@ What it serves:
     /moonraker/<path>     the printer's Moonraker API, passed through (so the page works from a phone, and later over a VPN)
     /cam.jpg              the printer's camera still (Snapmaker U1 stock firmware: /server/files/camera/monitor.jpg)
     /bench/<n>/<path>     the designs' STLs and sources from bench n, read only
+    /api/frames[?job=]    the layer photos printer.py watch saved, per job; /frames/<job>/<file>.jpg serves one
     /api/designs          every bench's designs with file links and real slicer numbers for --profile
     /api/slice  (POST)    {"bench": n, "id": design, "preset": "standard", "set": ["infill=30"], "upload": true, "queue": false}
                           packs the design's colour parts into a 3MF, slices it with tools/orca.py and uploads the G-code
@@ -254,9 +255,19 @@ def watch_alerts():
         _alerts.extend(json.loads(x) for x in open(ALERT_LOG, encoding="utf-8").read().splitlines()[-200:] if x.strip())
     except OSError:
         pass
+    import printer
+    printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+    last = None
     while True:
         try:
             scan_alerts()
+        except (OSError, ValueError, KeyError):
+            pass
+        try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
+            s = printer.status()
+            if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
+                printer.layer_photo(s["file"], s["layer"].split("/")[0])
+                last = (s["file"], s["layer"])
         except (OSError, ValueError, KeyError):
             pass
         time.sleep(20)
@@ -321,6 +332,25 @@ def start_unload(head):
 
 
 _last_wake = [0.0]
+
+
+def frames(job=""):
+    """The layer photos printer.py watch saved: the jobs newest first, or one job's photos in order."""
+    import printer
+    root = printer.FRAMES
+    try:
+        jobs = sorted((d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)) and not d.startswith(".")),
+                      key=lambda d: -os.path.getmtime(os.path.join(root, d)))
+    except OSError:
+        return {"jobs": [], "frames": []}
+    job = job if job in jobs else (jobs[0] if jobs else "")
+    pics = sorted(f for f in os.listdir(os.path.join(root, job)) if f.endswith(".jpg")) if job else []
+    out = []
+    for f in pics:
+        m = re.match(r"(\d{8})-(\d{2})(\d{2})\d{2}-layer(\d+)\.jpg$", f)
+        out.append({"name": f, "url": f"/frames/{urllib.parse.quote(job)}/{f}",
+                    "time": f"{m.group(2)}:{m.group(3)}" if m else "", "layer": int(m.group(4)) if m else None})
+    return {"jobs": jobs[:12], "job": job, "frames": out}
 
 
 def wake_camera():
@@ -522,6 +552,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except OSError:
                 lines = []
             return self.send(200, [json.loads(x) for x in lines[::-1] if x.strip()])
+        if p.startswith("/api/frames"):
+            return self.send(200, frames(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("job", [""])[0]))
+        m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.jpg)", p)
+        if m and not m.group(1).startswith("."):
+            import printer
+            f = os.path.join(printer.FRAMES, m.group(1), m.group(2))
+            if os.path.isfile(f):
+                return self.send(200, open(f, "rb").read(), "image/jpeg")
+            return self.send(404, {"error": "no such frame"})
         if p.startswith("/api/look"):
             return self.look()
         if p == "/api/alerts":

@@ -38,6 +38,7 @@ import urllib.request
 import uuid
 
 CONF = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "printer.json")
+FRAMES = os.path.join(os.path.dirname(CONF), "frames")   # watch keeps one folder of layer photos per job here; Workshop shows them
 ACTIVITY = os.path.join(os.path.dirname(CONF), "activity.jsonl")   # who did what, shared with Workshop
 RUNNING = ("printing", "paused")
 BASE = CAMERA = None
@@ -202,6 +203,17 @@ def snap(out):
     wake_camera()
     open(out, "wb").write(call(CAMERA, raw=True, timeout=15))
     return out
+
+
+def layer_photo(job_file, layer, frames=None):
+    """One photo per layer per job, shared by watch and Workshop: returns the existing photo for this layer, or takes one."""
+    d = os.path.join(frames or FRAMES, os.path.splitext(os.path.basename(job_file or "job"))[0])
+    os.makedirs(d, exist_ok=True)
+    tag = f"-layer{layer}.jpg"
+    have = sorted(f for f in os.listdir(d) if f.endswith(tag))
+    if have:
+        return os.path.join(d, have[-1])
+    return snap(os.path.join(d, time.strftime("%Y%m%d-%H%M%S") + tag))
 
 
 def queue_running():
@@ -411,7 +423,7 @@ def watch(every, frames):
         if s["layer"] != last:
             last = s["layer"]
             try:
-                f = snap(os.path.join(frames, f'{time.strftime("%H%M%S")}-layer{(last or "0").split("/")[0]}.jpg'))
+                f = layer_photo(s["file"], (last or "0").split("/")[0], frames)
                 print("frame:", f, flush=True)
             except OSError:
                 pass
@@ -445,7 +457,7 @@ def main():
     ap.add_argument("--bed-clear", action="store_true")
     ap.add_argument("--queue", action="store_true")
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--frames", default="printer-frames")
+    ap.add_argument("--frames", default=FRAMES)
     ap.add_argument("--level", default="info", choices=list(LEVEL))
     ap.add_argument("--vendor", default="generic")
     ap.add_argument("--sub", default="generic")

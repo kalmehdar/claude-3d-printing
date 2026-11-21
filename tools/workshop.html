@@ -151,6 +151,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .slots{grid-template-columns:repeat(2,1fr)}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.warm{font-size:13px;color:var(--dim);margin:2px 0 8px}.warm b{color:var(--text);font-weight:600}
 </style>
 </head>
 <body>
@@ -178,6 +179,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
               <div class="ring" id="ring"><div><div><b id="pct">0%</b><small id="ringSub">idle</small></div></div></div>
               <div style="min-width:0;width:100%">
                 <div class="fname" id="jobFile">Nothing printing</div>
+                <div class="warm" id="warm" hidden></div>
                 <div class="kv">
                   <div><span>Layer</span><b id="kLayer">-</b></div>
                   <div><span>Time left</span><b id="kLeft">-</b></div>
@@ -193,6 +195,11 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
         <div class="grid" style="align-content:start">
           <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
+          <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
+            <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
+            <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
+            <div class="note" id="frInfo"></div>
+            <select id="frJob" aria-label="Which print" hidden style="margin-top:8px"></select></div>
           <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
           <div class="card"><h2>Recent activity</h2><div id="activity" class="note">Nothing yet.</div></div>
         </div>
@@ -309,13 +316,23 @@ function render() {
   const active = ps.state === "printing" || ps.state === "paused";
   $("#ring").style.setProperty("--p", active || ps.state === "complete" ? p : 0);
   $("#pct").textContent = active || ps.state === "complete" ? p + "%" : "-";
-  $("#ringSub").textContent = STATE_WORD[ps.state]?.toLowerCase() || ps.state;
+  // warming up: any heater with a target still more than 3 degrees short
+  const warm = [["Bed", s.heater_bed], ...["extruder", "extruder1", "extruder2", "extruder3"].map((n, i) => ["T" + i, s[n]])]
+    .filter(([, h]) => h && h.target > 0 && h.temperature < h.target - 3);
+  const heating = ps.state === "printing" && !(info.current_layer > 0) && warm.length;
+  $("#ringSub").textContent = heating ? "heating" : ps.state === "printing" && info.total_layer && !(info.current_layer > 0) ? "getting ready" : STATE_WORD[ps.state]?.toLowerCase() || ps.state;
+  $("#warm").innerHTML = heating ? "Heating " + warm.map(([n, h]) => `${n} <b>${Math.round(h.temperature)}° → ${Math.round(h.target)}°</b>`).join(" · ") : "";
+  $("#warm").hidden = !heating;
+  if (ps.filename && !S.meta[ps.filename] && S.metaWant !== ps.filename) { S.metaWant = ps.filename; ensureMeta([ps.filename]).then(render); }
+  const est = (S.meta[ps.filename] || {}).estimated_time;
   $("#jobFile").textContent = ps.filename || "Nothing printing";
   $("#kLayer").textContent = info.total_layer ? `${info.current_layer} of ${info.total_layer}` : "-";
   let left = null;
+  let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
-  $("#kLeft").textContent = left != null ? hm(left) : "-";
-  $("#kEnd").textContent = left != null ? clock(new Date(Date.now() + left * 1000)) : "-";
+  else if (active && est) { left = Math.max(est - ps.print_duration, 0); guess = true; }   // early on: the slicer's estimate
+  $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
+  $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" : "-";
   document.title = (active ? `${p}% · ` : "") + "Workshop";
@@ -729,6 +746,25 @@ function renderBanner() {
   }
   b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
 }
+/* ---------- layer photos (saved by printer.py watch) ---------- */
+const FR = {job: "", list: [], follow: true};
+function showFrame() {
+  const f = FR.list[+$("#frRange").value]; if (!f) return;
+  $("#frImg").src = f.url; $("#frImg").alt = `Layer ${f.layer ?? "?"} photo`;
+  $("#frInfo").textContent = `Layer ${f.layer ?? "?"} at ${f.time} · photo ${+$("#frRange").value + 1} of ${FR.list.length}`;
+}
+async function loadFrames() {
+  let r; try { r = await api("/api/frames" + (FR.job ? "?job=" + enc(FR.job) : "")); } catch (e) { return; }
+  $("#framesCard").hidden = !r.frames.length; if (!r.frames.length) return;
+  const sel = $("#frJob"); sel.hidden = r.jobs.length < 2;
+  sel.innerHTML = r.jobs.map(j => `<option ${j === r.job ? "selected" : ""}>${esc(j)}</option>`).join("");
+  const rng = $("#frRange"), atEnd = +rng.value >= FR.list.length - 1;
+  FR.job = r.job; FR.list = r.frames; rng.max = FR.list.length - 1;
+  if (FR.follow && atEnd) rng.value = rng.max;   // keep showing the newest unless someone is scrolling back
+  showFrame();
+}
+$("#frRange").oninput = () => { FR.follow = +$("#frRange").value >= FR.list.length - 1; showFrame(); };
+$("#frJob").onchange = () => { FR.job = $("#frJob").value; FR.list = []; FR.follow = true; loadFrames(); };
 async function loadAlerts() {
   try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
   const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only
@@ -767,6 +803,7 @@ api("/api/info").then(i => { S.info = i;
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
 loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAlerts(); loadActivity(); } }, 10000);
+loadFrames(); setInterval(() => { if (!document.hidden) loadFrames(); }, 30000);
 askWho(false);
 camLoop();
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");

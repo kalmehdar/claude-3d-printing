@@ -86,4 +86,20 @@ posts = [s for s in SEEN if s[0] == "POST"]
 assert posts and all(h.get("X-Workshop") == "1" and h.get("X-Workshop-User") == "Tester" for _, _, h, _ in posts)
 assert json.loads(next(b for m, p, h, b in posts if p == "/api/filament"))["colour"] == "1c1c1c"
 srv.shutdown()
+
+# printer.layer_photo: one photo per layer per job, shared by watch and Workshop
+sys.path.insert(0, HERE)
+import tempfile, printer
+snaps = []
+def fake_snap(out):
+    snaps.append(out)
+    open(out, "wb").write(b"jpg")
+    return out
+printer.snap = fake_snap
+with tempfile.TemporaryDirectory() as d:
+    a = printer.layer_photo("sub/Panel.gcode", "3", d)
+    b = printer.layer_photo("sub/Panel.gcode", "3", d)        # second caller, same layer: no new photo
+    c = printer.layer_photo("sub/Panel.gcode", "4", d)
+    assert a == b and a != c and len(snaps) == 2, (a, b, c, snaps)
+    assert os.path.dirname(a) == os.path.join(d, "Panel") and a.endswith("-layer3.jpg")
 print("printer_mcp.py checks passed")
