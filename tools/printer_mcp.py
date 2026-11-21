@@ -117,6 +117,20 @@ def t_designs(a):
     return f'Benches: {", ".join(f"{i}: {b}" for i, b in enumerate(d["benches"]))}\n' + ("\n".join(rows) or "No designs match.")
 
 
+def t_design_picture(a):
+    url = f'/api/look?bench={int(a.get("bench", 0))}&id={q(a["design"])}'
+    req = urllib.request.Request(URL + url, headers={"X-Workshop-User": USER})
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            png, size = r.read(), r.headers.get("X-Design-Size", "")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(json.loads(e.read() or b"{}").get("error") or f"HTTP {e.code}")
+    except OSError as e:
+        raise RuntimeError(f"cannot reach Workshop at {URL}: {e}")
+    return [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"},
+            {"type": "text", "text": f'{a["design"]}: top left angled, top right top, bottom left front, bottom right side. Size {size}.'}]
+
+
 def t_slice(a):
     sets = []
     if a.get("infill") is not None:
@@ -213,6 +227,8 @@ TOOLS = [
     ("printer_files", "Sliced G-code files on the printer, newest first.", {}, t_files),
     ("printer_designs", "Designs Claude can slice (from the Print Benches), with real print time and grams where known.",
      {"search": {"type": "string", "description": "words to filter by"}}, t_designs),
+    ("printer_design_picture", "A picture of a design from four sides (angled, top, front, side) in its print colours, with its size in mm. Look at it before slicing to check it is the right thing.",
+     {"design": {"type": "string", "description": "design id from printer_designs"}, "bench": {"type": "integer"}}, t_design_picture, ["design"]),
     ("printer_slice", "Slice a design for the printer with the filament that is loaded (each colour goes to the head holding it) and put the G-code on the printer. Refuses a colour that is not loaded unless allow_substitute.",
      {"design": {"type": "string", "description": "design id from printer_designs"}, "bench": {"type": "integer"},
       "preset": {"type": "string", "enum": ["draft", "standard", "strong", "fine", "low-waste"]},

@@ -395,6 +395,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return False
         return True
 
+    def look(self):
+        """A picture of a bench design from four sides in its colours, with its size (tools/look.py), as PNG."""
+        import subprocess
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        try:
+            bench_path = CFG["benches"][int((q.get("bench") or ["0"])[0])]
+            d = next(m for m in json.load(open(bench_path, encoding="utf-8"))["models"] if m["id"] == (q.get("id") or [""])[0])
+        except (ValueError, IndexError, StopIteration):
+            return self.send(404, {"error": "no such design"})
+        base = os.path.dirname(bench_path)
+        parts = [(os.path.realpath(os.path.join(base, e[1])), e[2]) for e in d["parts"]]
+        if not parts or not all(os.path.isfile(f) and f.lower().endswith(".stl") for f, _ in parts):
+            return self.send(404, {"error": "this design has no STL parts to draw"})
+        with tempfile.TemporaryDirectory() as tmp:
+            scad, png = os.path.join(tmp, "d.scad"), os.path.join(tmp, "d.png")
+            with open(scad, "w", encoding="utf-8") as f:
+                f.write("part = \"all\";\n" + "".join(f'color("{c}") import({json.dumps(stl)}, convexity = 10);\n' for stl, c in parts))
+            r = subprocess.run([sys.executable, os.path.join(TOOLS, "look.py"), scad, "--out", png, "--size", "900"],
+                               capture_output=True, text=True, timeout=240)
+            if r.returncode or not os.path.exists(png):
+                return self.send(500, {"error": "could not draw it: " + (r.stderr or r.stdout)[-300:]})
+            size = (r.stdout.splitlines() or [""])[0]
+            return self.send(200, open(png, "rb").read(), "image/png", {"X-Design-Size": size.replace("size: ", "")})
+
     def printer_busy(self):
         try:
             with moonraker("GET", "/printer/objects/query?print_stats=state", timeout=5) as r:
@@ -498,6 +522,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except OSError:
                 lines = []
             return self.send(200, [json.loads(x) for x in lines[::-1] if x.strip()])
+        if p.startswith("/api/look"):
+            return self.look()
         if p == "/api/alerts":
             try:
                 return self.send(200, alerts())

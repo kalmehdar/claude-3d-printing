@@ -63,6 +63,18 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `hardware/` | Electronics projects, each with specs, circuit, board, fab files and a printed case. First one: `hardware/led-bar` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
 
+## Drive your printer from the Claude app
+
+Talk to your printer the way you talk to Claude: "what's printing?", "slice the cable clip in black and queue it", "the bed's clear, start it", "unload T2".
+
+1. Run Workshop next to your Klipper/Moonraker printer (`python tools/workshop.py --printer <address>`), on a home network or a VPN.
+2. In the Claude desktop app: Settings, Developer, Edit Config, and add
+   `{"mcpServers": {"printer": {"command": "python3", "args": ["<repo>/tools/printer_mcp.py"], "env": {"WORKSHOP_URL": "http://<workshop>:8090", "WORKSHOP_USER": "<your name>"}}}}`, then restart the app.
+   In Claude Code: `claude mcp add printer -e WORKSHOP_URL=http://<workshop>:8090 -e WORKSHOP_USER=<your name> -- python3 <repo>/tools/printer_mcp.py`.
+3. Each person uses their own Claude account; every action goes through Workshop's checks (no start without "the bed is empty", none while a head is unloaded or the bed would be cold) and shows in its activity log under their name.
+
+Running a Snapmaker U1? Read [docs/snapmaker-u1.md](docs/snapmaker-u1.md) first.
+
 ## Full setup
 
 1. Install [OpenSCAD](https://openscad.org/downloads.html). Take a development snapshot: it renders with the manifold backend, seconds instead of minutes.

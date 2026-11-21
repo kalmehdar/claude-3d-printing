@@ -76,6 +76,8 @@ It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with eve
 
 ## 7. Print it (a Klipper/Moonraker printer on the network)
 
+**In the Claude app with the printer tools** (`printer_status`, `printer_snapshot`, `printer_slice`... from `tools/printer_mcp.py`), use those instead of the commands below: the same loop, with Workshop's safety checks and the person's name in the activity log. `printer_design_picture` shows a design before slicing; `printer_start` needs `bed_clear` from the person's own words, after `printer_snapshot` shows an empty plate.
+
 When the person has a printer Claude can reach (`python tools/printer.py status` answers; the address comes from `--printer`, `PRINTER_HOST` or `~/.config/claude-3d-printing/printer.json`), Claude can run the print itself. The loop: **send, look, start, watch, log.**
 
 1. **Match the loaded filament.** `printer.py status` lists what is on each head (the Snapmaker U1 reports type and colour per slot). Map each design colour to the head that holds it, and slice for those materials. A colour that is not loaded: say so, never print it in the wrong colour.
