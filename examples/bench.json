@@ -108,6 +108,23 @@
       "source": "models/insert-card.scad"
     },
     {
+      "id": "hingecard",
+      "name": "Hinge card",
+      "for": "Three print-in-place hinges, printed flat and already assembled, at gaps of 0.2, 0.3 and 0.4 mm. Flex each one gently: the right gap is the smallest that frees with a little force and then swings without rubbing. Tell Claude the number and later hinged designs use it.",
+      "status": "Check first: not yet printed",
+      "state": "check",
+      "material": "PETG or PLA, one head; print it in the material your hinges will be",
+      "credit": "Designed with Claude in OpenSCAD with BOSL2's knuckle_hinge (models/hinge-card.scad)",
+      "parts": [
+        [
+          "Card",
+          "stl/hinge-card-card.stl",
+          "#1f1f22"
+        ]
+      ],
+      "source": "models/hinge-card.scad"
+    },
+    {
       "id": "bins",
       "name": "Colour-coded Gridfinity bins",
       "for": "Eleven bins that fill a 5 x 5 Gridfinity tray, 42 mm tall, each name printed into a band in its category colour: red power, blue network, white storage, plain black for the rest.",
