@@ -12,7 +12,7 @@
 //   - the hinge axis lies along the bed; the leaves are flat plates, so nothing needs supports
 // Prints flat as it is, one colour. About 40 minutes and 16 g (OrcaSlicer, U1 PETG and P1S PLA).
 // Then: python tools/fit.py set --slide <s> --press <p> --pip <the gap that swung freely>
-//   part = "card"   the four hinges, gaps under each leaf
+//   part = "card"   the four hinges, gaps under each leaf  ("all" previews the same)
 part = "card";
 $fn = 64;
 font = "Liberation Sans:style=Bold";
@@ -69,4 +69,4 @@ for (e = EXTRA) let(c = base + e) {
   assert(c >= 0.3, "under the pin the gap must be more than one 0.2 mm layer");
 }
 echo(gaps = [for (e = EXTRA) base + e], knuckle_mm = knuckle_len(base), wall_mm = R - hole_r(base + max(EXTRA)));
-if (part == "card") color("#1f1f22") card();
+if (part == "card" || part == "all") color("#1f1f22") card();
