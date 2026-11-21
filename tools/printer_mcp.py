@@ -241,6 +241,7 @@ def t_start(a):
     if not a.get("bed_clear"):
         raise RuntimeError("Not started: the person must say the bed is empty (bed_clear=true), and you should look at "
                            "printer_snapshot first. Ask them.")
+    http("POST", "/api/bed")   # the person said the bed is empty: Workshop logs it, and its bed check lets the start through
     mr("POST", "/printer/print/start?filename=" + q(a["filename"]))
     return f'Started {a["filename"]}. Watch the first layers with printer_snapshot.'
 

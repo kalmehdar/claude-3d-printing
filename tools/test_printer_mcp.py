@@ -94,6 +94,8 @@ img = replies[4]["result"]["content"][0]
 assert img["type"] == "image" and img["mimeType"] == "image/jpeg"
 starts = [s for s in SEEN if "/printer/print/start" in s[1]]
 assert len(starts) == 1, "bed_clear=false must not reach the printer; bed_clear=true must"
+beds = [x for x in SEEN if x[0] == "POST" and x[1].startswith("/api/bed")]
+assert len(beds) == 1, "bed_clear=true marks the bed clear in Workshop before the start; bed_clear=false does not"
 assert replies[5]["result"]["isError"] and "bed is empty" in replies[5]["result"]["content"][0]["text"]
 assert replies[6]["result"]["isError"] and "not loaded" in replies[6]["result"]["content"][0]["text"]   # Workshop's refusal passes through
 assert replies[7]["result"]["content"][0]["text"] == "T0: SUNLU PETG generic #1C1C1C"
@@ -220,6 +222,7 @@ with tempfile.TemporaryDirectory() as d:
 class _G:
     command = "POST"
     printer_busy = lambda self: True   # a job is running
+    body = lambda self: None           # the command is in the address, as every Workshop client sends it
     guard = workshop.Handler.guard
 g = _G()
 for script, ok in (("M220 S115", True), ("M220 S50", True), ("M220 S200", False), ("M220 S20", False),
@@ -277,9 +280,9 @@ with tempfile.TemporaryDirectory() as d:
 # print log: one row appended to the end of the register's table, '?' where only a person knows
 with tempfile.TemporaryDirectory() as d:
     reg = os.path.join(d, "prints.md")
-    open(reg, "w").write("# Print log\n\n| Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof? |\n"
+    open(reg, "w", encoding="utf-8").write("# Print log\n\n| Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof? |\n"
                          "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| 2026-11-20 | old.gcode | ? | ? | ? | 1 | 1 min | ? | Completed | No |\n\nNotes after the table.\n")
-    fil = os.path.join(d, "filament.md"); open(fil, "w").write("| Material | Price |\n| --- | --- |\n| PETG | £12.00 per kg |\n")
+    fil = os.path.join(d, "filament.md"); open(fil, "w", encoding="utf-8").write("| Material | Price |\n| --- | --- |\n| PETG | £12.00 per kg |\n")
     workshop.SPOOLS = os.path.join(d, "spools.json")
     json.dump({"T1": {"spool": "SUNLU PETG black", "start_g": 1000, "used_g": 0}}, open(workshop.SPOOLS, "w"))
     workshop.CFG.update(print_log=None, register=fil)
@@ -287,9 +290,9 @@ with tempfile.TemporaryDirectory() as d:
     workshop.CFG["print_log"] = reg
     row = workshop.log_print({"state": "complete", "file": "panel-quality.gcode", "printing_min": 125.4},
                              {"filament_type": "PETG;PETG"}, {"T1": 250.0}, folder="/x/panel-quality-000009")
-    lines = open(reg).read().split("\n")
+    lines = open(reg, encoding="utf-8").read().split("\n")
     assert lines[5] == row and lines[6] == "" and "Notes after the table." in lines, lines
-    assert row == "| " + workshop.time.strftime("%Y-%m-%d") + " | panel-quality.gcode | ? | SUNLU PETG black on T1 | quality | 250.0 (measured) | 125 min | £3.00 | Completed; timelapse panel-quality-000009/timelapse.mp4 | ? |", row
+    assert row == "| " + workshop.time.strftime("%Y-%m-%d") + " | panel-quality.gcode | ? | SUNLU PETG black on T1 | quality | 250.0 (measured) | 125 min | £3.00 | Completed; layer photos panel-quality-000009 (timelapse.mp4 beside them once made) | ? |", row
 # cancel one part: only a part still printing, never the last one left, and only that one command is sent
 sent = []
 class _OK:
