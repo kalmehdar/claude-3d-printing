@@ -19,6 +19,10 @@ A design may carry two optional fields:
                                                together); the numbers are added up
   "plates": [[0, 1], [2], [3]]                 the same, with parts grouped by their place in "parts" (a body and its
                                                labels stay on one plate)
+  "rotate": [90, 0, 0]                         print orientation in degrees about x, then y, then z (OpenSCAD's order),
+                                               for parts drawn as they sit in an assembly: every part turns together,
+                                               so labels stay in their body; or one rotation per part,
+                                               [[90, 0, 0], [0, 0, 0]], in the order of "parts"
 
 OrcaSlicer: set ORCA_CLI to orca-slicer.exe (upstream OrcaSlicer 2.5 or later), or it is looked for in ~/tools.
 Profiles for bambu-p1s: ORCA_PROFILES, or any OrcaSlicer install found under ~/tools.
@@ -27,8 +31,10 @@ Standard library only.
 import argparse
 import glob
 import json
+import math
 import os
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -69,9 +75,28 @@ def clock(sec):
     return f"{h}h {m}m" if h else f"{m}m"
 
 
-def slice_one(exe, parts, name, machine, process, filament, overrides, tmp):
+def rotated(path, deg, tmp):
+    """The part turned by deg (x, then y, then z, as OpenSCAD's rotate) and written as a binary STL in tmp."""
+    import make_3mf
+    verts, tris = make_3mf.read_stl(path)
+    for axis, d in enumerate(deg):
+        c, s_ = math.cos(math.radians(d)), math.sin(math.radians(d))
+        i, j = [(1, 2), (2, 0), (0, 1)][axis]
+        verts = [tuple(v[i] * c - v[j] * s_ if k == i else v[i] * s_ + v[j] * c if k == j else v[k] for k in range(3)) for v in verts]
+    out = os.path.join(tmp, f"r{len(os.listdir(tmp))}-" + os.path.basename(path))
+    with open(out, "wb") as f:
+        f.write(b"\0" * 80 + struct.pack("<I", len(tris)))
+        for t in tris:
+            f.write(struct.pack("<3f", 0, 0, 0) + b"".join(struct.pack("<3f", *verts[k]) for k in t) + b"\0\0")
+    return out
+
+
+def slice_one(exe, parts, name, machine, process, filament, overrides, tmp, rotate=None):
     """One plate: pack the parts into a colour 3MF, slice it, read the numbers from the G-code."""
     import make_3mf
+    if rotate:
+        turns = rotate if isinstance(rotate[0], list) else [rotate] * len(parts)
+        parts = [(label, rotated(path, r, tmp) if any(r) else path, colour) for (label, path, colour), r in zip(parts, turns)]
     if overrides:
         d = json.load(open(process, encoding="utf-8"))
         orca.apply(d, overrides, add=True)
@@ -122,7 +147,10 @@ def main():
         for plate in plates:
             with tempfile.TemporaryDirectory() as tmp:
                 machine, process, filament = bambu(m.get("material", ""), tmp) if a.printer == "bambu-p1s" else custom(a.profiles, m.get("material", ""))
-                results.append(slice_one(exe, plate, m["name"], machine, process, filament, m.get("slice"), tmp))
+                rot = m.get("rotate")
+                if rot and isinstance(rot[0], list):
+                    rot = [rot[parts.index(p)] for p in plate]
+                results.append(slice_one(exe, plate, m["name"], machine, process, filament, m.get("slice"), tmp, rot))
         bad = [r for r in results if "error" in r]
         if bad:
             s = bad[0]
