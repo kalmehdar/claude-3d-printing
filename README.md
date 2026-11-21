@@ -43,7 +43,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | --- | --- |
 | `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
-| `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
+| `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit, and printability notes: steep overhang area and the longest bridge, with the fix |
 | `tools/fit.py` | Your printer's measured fits (slide and press clearance from the fit card, the M3 heat-set insert hole from the insert card, the print-in-place hinge gap from the hinge card), so every design uses them instead of a material guess |
 | `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, quality, polished, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
 | `tools/slice_stats.py` | Slices every bench design with OrcaSlicer's command line and records real print time and grams per printer in `slice-stats.json`; the bench shows them with a printer switch |
