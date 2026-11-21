@@ -383,6 +383,11 @@ def watch(every, frames):
             time.sleep(every)
             continue
         seen_running |= s["state"] in RUNNING
+        if s["state"] == "printing" and s["bed"].endswith("/0") and (s["layer"] or "0/0").split("/")[0] not in ("0", "None"):
+            # seen 21 Nov 2026: resuming a U1 job after a runout left the bed heater off; a cold first layer comes loose
+            call("/printer/print/pause", "POST")
+            print("PAUSED: printing with the bed heater off (" + s["bed"] + " C); check before resuming", flush=True)
+            notify(f'Print paused: {s["file"]}', f'The bed heater was off ({s["bed"]} C) while printing. Check the bed, then restart.', "warn")
         print(time.strftime("%H:%M"), s["state"], s["layer"] or "", f'{s["progress_pct"]}%',
               f'{s.get("left_min", "?")} min left', flush=True)
         if s["layer"] != last:
