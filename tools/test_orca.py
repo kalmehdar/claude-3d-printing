@@ -57,3 +57,18 @@ import slice_stats  # noqa: E402
 assert slice_stats.seconds("5h 47m 45s") == 20865 and slice_stats.seconds("1d 2h") == 93600
 assert slice_stats.clock(20865) == "5h 48m" and slice_stats.clock(2578) == "43m"   # plates added up, to the minute
 print("slice_stats checks passed")
+
+# look.py: a model's top-level include/use lines are lifted out of the module (BOSL2 failed inside it, 21 Nov 2026)
+import look   # noqa: E402
+with tempfile.TemporaryDirectory() as t:
+    open(os.path.join(t, "lib.scad"), "w").write("module thing() {}\n")
+    m = os.path.join(t, "m.scad")
+    open(m, "w").write("include <lib.scad>\nuse <BOSL2/std.scad>\npart = \"all\";\nthing();\n")
+    hoisted, rest = look.hoist_libraries(m)
+    assert hoisted == f"include <{os.path.join(t, 'lib.scad')}>\nuse <BOSL2/std.scad>\n", hoisted   # local made absolute
+    body = open(rest).read()
+    assert "include" not in body and "use <" not in body and "thing();" in body
+    os.remove(rest)
+    plain = os.path.join(t, "p.scad"); open(plain, "w").write("cube(1);\n")
+    assert look.hoist_libraries(plain) == ("", plain)
+print("look.py checks passed")
