@@ -259,7 +259,15 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         except subprocess.TimeoutExpired:
             sys.exit(f"OrcaSlicer ran past {timeout // 60} minutes")
     gcode = glob.glob(os.path.join(out, "*.gcode"))
-    s = stats(open(gcode[0], encoding="utf-8", errors="replace").read()) if gcode else {
+    text = open(gcode[0], encoding="utf-8", errors="replace").read() if gcode else ""
+    bed = re.search(r"^M190 S(\d+)", text, re.M) or re.search(r"^M140 S([1-9]\d*)", text, re.M)
+    if gcode and (not bed or bed.group(1) == "0"):
+        # seen 21 Nov 2026: a plate type the filament profile has no temperature for slices with the bed at 0
+        plate = re.search(r"^; curr_bed_type = (.+)$", text, re.M)
+        os.remove(gcode[0])
+        sys.exit(f"the bed temperature came out at 0 for {plate.group(1) if plate else 'this plate'}: "
+                 "set curr_bed_type to the printer's real plate (e.g. --set curr_bed_type=\"Textured PEI Plate\")")
+    s = stats(text) if gcode else {
         "error": "OrcaSlicer wrote nothing: " + " ".join((r.stdout + r.stderr).split())[-600:] + " (open the model in the app to see why)"}
     s.update({"printer": machine.get("name", printer), "preset": preset, "materials": [d.get("name") for d in fil_data],
               "settings": overrides, "project": os.path.join(out, f"{name}-sliced.3mf"), "gcode": gcode[0] if gcode else None})

@@ -302,7 +302,11 @@ def heads_not_loaded(filename):
     import re
     text = call("/server/files/gcodes/" + urllib.parse.quote(filename), raw=True, timeout=120).decode(errors="replace")
     heads = sorted({int(t) for t in re.findall(r"^T([0-3])\s*$", text, re.M)}) or [0]
-    return [f"T{i} ({channel_state(i)})" for i in heads if channel_state(i) not in (None, "load_finish")]
+    problems = [f"T{i} not loaded into the head ({channel_state(i)})" for i in heads if channel_state(i) not in (None, "load_finish")]
+    bed = re.search(r"^M190 S(\d+)", text, re.M)
+    if bed and bed.group(1) == "0":   # a plate type the filament has no temperature for: it would print on a cold bed
+        problems.append("the file heats the bed to 0 C (re-slice for the real plate)")
+    return problems
 
 
 def known_filaments():
@@ -453,7 +457,7 @@ def main():
     def need_loaded(filename):
         missing = heads_not_loaded(filename)
         if missing:
-            sys.exit("refused: not loaded into the head: " + ", ".join(missing) + ". Load from the printer's screen first.")
+            sys.exit("refused: " + "; ".join(missing))
 
     if c == "status":
         print(json.dumps(status(), indent=1))

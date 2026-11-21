@@ -316,7 +316,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except OSError:
                 missing = []
             if missing:
-                return "not loaded into the head: " + ", ".join(missing) + ". Load from the printer's screen first."
+                return "; ".join(missing)
         if self.command == "POST" and p.startswith(("/server/job_queue/job", "/printer/print/start")):
             try:
                 with moonraker("GET", "/server/job_queue/status", timeout=5) as r:
