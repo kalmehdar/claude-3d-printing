@@ -8,6 +8,10 @@
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
     python printer.py pause | resume | cancel
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
+    python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
+    python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
+                                                  Snapmaker U1: tell the printer what was loaded on a head (as its screen does)
+    python printer.py filament list               the types, vendors and sub-types the printer knows
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
@@ -20,10 +24,14 @@ Discord: a channel webhook URL in PRINTER_DISCORD_WEBHOOK or "discord_webhook" i
 Moonraker often has no password: use it on a home network or over a VPN only. Standard library only.
 """
 import argparse
+import base64
 import json
 import os
+import socket
+import struct
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -96,7 +104,85 @@ def status():
     return out
 
 
+def ws_rpc(host, port, method, params, timeout=15):
+    """One JSON-RPC call over Moonraker's websocket (some endpoints, like the U1's camera, are websocket-only)."""
+    s = socket.create_connection((host, port), timeout=timeout)
+    try:
+        key = base64.b64encode(os.urandom(16)).decode()
+        s.sendall(f"GET /websocket HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                  f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                raise OSError("websocket closed during handshake")
+            buf += chunk
+        if b" 101 " not in buf.split(b"\r\n", 1)[0]:
+            raise OSError("no websocket upgrade")
+        buf = buf.split(b"\r\n\r\n", 1)[1]
+        msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params, "id": 4242}).encode()
+        n = len(msg)
+        hdr = bytes([0x81]) + (bytes([0x80 | n]) if n < 126 else bytes([0xFE]) + struct.pack(">H", n))
+        mask = os.urandom(4)
+        s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(msg)))
+        while True:   # read frames until our reply (Moonraker also pushes status notifications)
+            while len(buf) < 2:
+                chunk = s.recv(65536)
+                if not chunk:
+                    raise OSError("websocket closed")
+                buf += chunk
+            ln, off = buf[1] & 0x7F, 2
+            if ln == 126:
+                ln, off = struct.unpack(">H", buf[2:4])[0], 4
+            elif ln == 127:
+                ln, off = struct.unpack(">Q", buf[2:10])[0], 10
+            while len(buf) < off + ln:
+                chunk = s.recv(65536)
+                if not chunk:
+                    raise OSError("websocket closed")
+                buf += chunk
+            payload, buf = buf[off:off + ln], buf[off + ln:]
+            try:
+                d = json.loads(payload)
+            except ValueError:
+                continue
+            if d.get("id") == 4242:
+                if "error" in d:
+                    raise OSError(d["error"].get("message", "camera error"))
+                return d.get("result")
+    finally:
+        s.close()
+
+
+def camera_age():
+    """Seconds since the camera still was written, or None when the printer does not list a camera folder."""
+    try:
+        files = call("/server/files/list?root=camera", timeout=5)
+    except OSError:
+        return None
+    hit = next((f for f in files if CAMERA.endswith("/" + f["path"])), None)
+    return time.time() - hit["modified"] if hit else None
+
+
+def wake_camera():
+    """Snapmaker U1: the still only refreshes while something 'watches' (its app sends camera.start_monitor).
+    Ask for it when the still is stale, then wait for a fresh frame. Harmless on printers without it."""
+    age = camera_age()
+    if age is None or age < 10:
+        return
+    host, port = BASE[len("http://"):].rsplit(":", 1)
+    try:
+        ws_rpc(host, int(port), "camera.start_monitor", {"req_id": 1, "domain": "lan", "interval": 1})
+    except OSError:
+        return
+    for _ in range(10):
+        time.sleep(0.6)
+        if (camera_age() or 99) < 3:
+            return
+
+
 def snap(out):
+    wake_camera()
     open(out, "wb").write(call(CAMERA, raw=True, timeout=15))
     return out
 
@@ -121,6 +207,74 @@ def gcode(cmd, force=False):
     if not force and state() in RUNNING:
         sys.exit("refused: a job is running; --force only for harmless commands")
     return call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=300)
+
+
+def unload(which):
+    """Snapmaker U1: the firmware's own end-of-print unload (AUTO_FEEDING ... UNLOAD=1, prepare then doing), per head.
+    Soft filament (TPU) is left alone, as the firmware does; unload that from the printer's screen."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; unload after it ends")
+    t = query("print_task_config").get("print_task_config")
+    if not t or "filament_exist" not in t:
+        sys.exit("this printer does not report its heads' filament (unload is for the Snapmaker U1)")
+    n = len(t["filament_exist"])
+    heads = range(n) if which == "all" else [int(which.upper().lstrip("T"))]
+    for i in heads:
+        if not 0 <= i < n:
+            sys.exit(f"no head T{i}: this printer has T0 to T{n - 1}")
+        name = f'T{i} {t["filament_type"][i]} {t["filament_sub_type"][i]}'.strip()
+        if not t["filament_exist"][i]:
+            print(f"T{i}: nothing loaded")
+            continue
+        if t["filament_soft"][i]:
+            print(f"{name}: soft filament, unload it from the printer's screen")
+            continue
+        print(f"{name}: unloading...", flush=True)
+        for stage in ("prepare", "doing"):
+            call("/printer/gcode/script?script=" + urllib.parse.quote(f"AUTO_FEEDING EXTRUDER={i} UNLOAD=1 STAGE={stage}"), "POST", timeout=600)
+        left = query("print_task_config")["print_task_config"]["filament_exist"][i]
+        print(f"{name}: {'still reports filament, check the head' if left else 'unloaded'}")
+
+
+def known_filaments():
+    """{type: {vendor: [sub-types]}} from the U1's own filament table (config/snapmaker/filament_parameters.json)."""
+    d = json.loads(call("/server/files/config/snapmaker/filament_parameters.json", raw=True))
+    return {t: {v[len("vendor_"):]: [x[len("sub_"):] for x in subs] for v, subs in vendors.items() if v.startswith("vendor_")}
+            for t, vendors in d.items() if isinstance(vendors, dict)}
+
+
+def set_filament(head, ftype, vendor, sub, colour, force=False):
+    """Snapmaker U1: SET_PRINT_FILAMENT_CONFIG, what the screen sends after you edit a head's filament. Names are matched to the
+    printer's table (any case); an unknown vendor or sub-type falls back to the type's generic settings, as the firmware does."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; change the filament after it ends")
+    i = int(head.upper().lstrip("T"))
+    known = known_filaments()
+    t = next((k for k in known if k.lower() == ftype.lower()), None)
+    if not t:
+        sys.exit(f"the printer does not know type {ftype!r}; it knows: {', '.join(known)}")
+    v = next((k for k in known[t] if k.lower() == vendor.lower()), None)
+    v_note = "" if v else f" (vendor {vendor!r} not in its table: generic {t} settings)"
+    v = v or vendor
+    subs = known[t].get(v, []) + known[t].get("generic", [])
+    sb = next((k for k in subs if k.lower() == sub.lower()), sub)
+    hexc = colour.lstrip("#").upper()
+    if len(hexc) != 6 or any(c not in "0123456789ABCDEF" for c in hexc):
+        sys.exit("colour as six hex digits, e.g. 1f1f22")
+    cmd = (f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={i} VENDOR={v} FILAMENT_TYPE={t} FILAMENT_SUBTYPE={sb} "
+           f"FILAMENT_COLOR_RGBA={hexc}FF" + (" FORCE=1" if force else ""))
+    if " " in v + t + sb:
+        sys.exit("names with spaces need the printer's screen")   # Klipper parameters cannot hold spaces
+    try:
+        call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=60)
+    except urllib.error.HTTPError as e:
+        msg = json.loads(e.read() or b"{}").get("error", {}).get("message", str(e))
+        if "official filament" in msg:
+            sys.exit(f"T{i} holds a Snapmaker chipped spool, which sets itself from its tag; pass --force to override")
+        sys.exit(msg)
+    now = query("print_task_config")["print_task_config"]
+    print(f'T{i}: {now["filament_vendor"][i]} {now["filament_type"][i]} {now["filament_sub_type"][i]} '
+          f'#{now["filament_color_rgba"][i][:6]}{v_note}')
 
 
 def watch(every, frames):
@@ -169,6 +323,9 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--frames", default="printer-frames")
     ap.add_argument("--level", default="info", choices=list(LEVEL))
+    ap.add_argument("--vendor", default="generic")
+    ap.add_argument("--sub", default="generic")
+    ap.add_argument("--colour", default="FFFFFF")
     a = ap.parse_args()
     if a.cmd == "notify":
         r = notify(a.args[0], " ".join(a.args[1:]), a.level)
@@ -221,6 +378,18 @@ def main():
         print(call(f"/printer/print/{c}", "POST"))
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
+    elif c == "unload":
+        if not x:
+            sys.exit("unload T0..T3, or unload all")
+        unload(x[0])
+    elif c == "filament":
+        if x and x[0] == "list":
+            for t, vendors in known_filaments().items():
+                print(f"{t}: " + "; ".join(f"{v} ({', '.join(subs)})" for v, subs in vendors.items()))
+        elif len(x) >= 2:
+            set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force)
+        else:
+            sys.exit("filament T0..T3 TYPE --colour RRGGBB [--vendor NAME] [--sub NAME], or filament list")
     elif c == "gcode":
         print(gcode(x[0], a.force))
     elif c == "watch":
