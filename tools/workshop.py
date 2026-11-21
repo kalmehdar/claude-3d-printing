@@ -334,6 +334,9 @@ _unloading = []
 
 import threading as _threading
 _unload_lock = _threading.Lock()
+_look_slots = _threading.BoundedSemaphore(2)
+# a multipart upload field print=true: Moonraker starts the file the moment it lands
+UPLOAD_PRINT = re.compile(rb'name="print"[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*\r?\n\s*true', re.I)
 
 
 def start_unload(head):
@@ -482,8 +485,9 @@ def api_keys():
     keys = [os.environ.get("ANTHROPIC_API_KEY", "").strip()]
     for f in [API_KEY_FILE] + [f"{API_KEY_FILE}-{n}" for n in range(2, 6)]:
         try:
-            if not os.stat(f).st_mode & 0o077:
-                keys.append(open(f, encoding="utf-8").read().strip())
+            if os.name == "nt" or not os.stat(f).st_mode & 0o077:   # Windows reports 0o666 whatever the ACL says; the profile folder is per user
+                text = open(f, encoding="utf-8").read().strip()   # the bare key, or put-key's ANTHROPIC_API_KEY=... line
+                keys.append(text.split("=", 1)[1].strip() if text.startswith("ANTHROPIC_API_KEY=") else text)
         except OSError:
             pass
     return [k for k in dict.fromkeys(keys) if k]
@@ -677,7 +681,7 @@ def log_print(s, meta, use, folder=None):
     m = PRESET_IN_NAME.search(file)
     outcome = OUTCOME.get(s.get("state"), s.get("state") or "?")
     if folder:
-        outcome += f"; timelapse {os.path.basename(folder)}/timelapse.mp4"
+        outcome += f"; layer photos {os.path.basename(folder)} (timelapse.mp4 beside them once made)"
     cell = lambda v: str(v).replace("|", "/").replace("\n", " ")
     row = "| " + " | ".join(cell(v) for v in [time.strftime("%Y-%m-%d"), file, "?", ", ".join(heads) or "?",
                                                (m.group(1) if m else "?"), f"{sum(use.values()):.1f} (measured)" if use else "?",
@@ -692,9 +696,18 @@ def log_print(s, meta, use, folder=None):
 REQUESTS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "requests.json")
 
 
+_requests_lock = _threading.Lock()
+
+
 def requests_(change=None, who="?"):
     """Print requests between two people: [{id, who, what, design, qty, colour, note, state, by, t}], newest first.
-    change: {"what"...} adds one; {"id", "state": "taken" | "done" | "dropped"} moves one along."""
+    change: {"what"...} adds one; {"id", "state": "taken" | "done" | "dropped"} moves one along. One at a time (a lock),
+    so two people adding at once neither lose one nor get the same id."""
+    with _requests_lock:
+        return _requests(change, who)
+
+
+def _requests(change, who):
     try:
         rows = json.load(open(REQUESTS, encoding="utf-8"))
     except (OSError, ValueError):
@@ -815,6 +828,19 @@ def printer_conf():
     return printer.load_conf()
 
 
+def lan_ip():
+    """This machine's address on the network (no packet is sent), so a link in a phone alert opens Workshop, not localhost."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))
+        return s.getsockname()[0]
+    except OSError:
+        return "localhost"
+    finally:
+        s.close()
+
+
 def make_timelapse(folder):
     import printer
     try:
@@ -892,8 +918,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(n) if n else None
+        if not hasattr(self, "_body"):   # read once: guard() looks at it, proxy() forwards it
+            n = int(self.headers.get("Content-Length") or 0)
+            self._body = self.rfile.read(n) if n else None
+        return self._body
 
     def proxy(self, path, timeout=30):
         hdrs = {k: v for k, v in self.headers.items() if k.lower() not in SKIP}
@@ -925,7 +953,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return True
 
     def look(self):
-        """A picture of a bench design from four sides in its colours, with its size (tools/look.py), as PNG."""
+        """A picture of a bench design from four sides in its colours, with its size (tools/look.py), as PNG.
+        At most two drawings at once: each starts OpenSCAD, and a page full of images could start dozens."""
+        if not _look_slots.acquire(blocking=False):
+            return self.send(429, {"error": "busy drawing other designs; try again in a moment"})
+        try:
+            return self._look()
+        finally:
+            _look_slots.release()
+
+    def _look(self):
         import subprocess
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         try:
@@ -975,7 +1012,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def guard(self, p):
         """Physical safety checked here, not only in the page: no filament, heater or motion G-code while a job runs
-        (the light is allowed), and nothing added to a queue that is running (it would start onto the last print)."""
+        (the light is allowed), and nothing added to a queue that is running (it would start onto the last print).
+        Moonraker also reads arguments from a request body and starts a file uploaded with print=true, so a body on a
+        start or a G-code command is refused, an upload that would start itself is refused, and no start goes ahead while
+        the last print is still on the bed (independent review, 21 Nov 2026)."""
+        if self.command == "POST" and p.startswith(("/printer/gcode/script", "/printer/print/start", "/server/job_queue/start")) \
+                and self.body():
+            return "send the command in the address, not in a body"
+        if self.command == "POST" and p.startswith("/server/files/upload"):
+            if "print=true" in p.lower() or UPLOAD_PRINT.search(self.body() or b""):
+                return "upload the file, then start it from Files or the queue, after the bed check"
+        if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")) and bed().get("state") == "part waiting":
+            return "the last print is still on the bed: mark it clear first (Took it off in Workshop, or tell Claude it is clear)"
         if self.command == "POST" and p.startswith("/printer/gcode/script"):
             script = urllib.parse.unquote_plus(p.split("script=", 1)[-1]) if "script=" in p else ""
             if "\n" in script or "\r" in script:
@@ -1036,8 +1084,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.proxy(path)
                 try:
                     moonraker("POST", "/server/job_queue/pause", timeout=10).read()
-                except OSError:
-                    pass
+                except OSError as e:   # the queue would start the next job onto this one's part: say so loudly
+                    record("could not hold the queue after starting it", str(e), who="Workshop")
+                    try:
+                        import printer
+                        printer.push("Queue not held", "The next queued job would start when this one ends, onto the finished "
+                                     "part. Hold the queue in Workshop.", "bad", click=CFG.get("url"))
+                    except Exception:
+                        pass
                 return
             what = self.describe(path)
             if what:
@@ -1268,7 +1322,7 @@ def main():
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else 'localhost'}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
