@@ -182,7 +182,7 @@ def t_fit(_):
 
 def t_fit_set(a):
     args = ["set", "--slide", a["slide"], "--press", a["press"]]
-    for k in ("insert", "pip", "printer"):
+    for k in ("insert", "hinge", "printer"):
         if a.get(k) is not None:
             args += [f"--{k}", a[k]]
     return run("fit.py", *args)
@@ -253,10 +253,10 @@ TOOLS_LIST = [
     ("design_settings", "OrcaSlicer settings by their plain names (infill, walls, supports, brim, layer...), optionally filtered by a word.",
      {"word": STR}, t_settings),
     ("design_presets", "The slicing presets (draft, standard, strong, solid, fine, low-waste...) and what each does.", {}, t_presets),
-    ("design_fit", "The printer's measured fits (slide and press clearance, insert hole, print-in-place gap) and the OpenSCAD lines to use them. Use these, not a material guess.",
+    ("design_fit", "The printer's measured fits (slide and press clearance, insert hole, print-in-place hinge gap) and the OpenSCAD lines to use them. Use these, not a material guess.",
      {}, t_fit),
-    ("design_fit_set", "Store the fits measured on the fit card, insert card and hinge ladder.",
-     {"slide": {"type": "number"}, "press": {"type": "number"}, "insert": {"type": "number"}, "pip": {"type": "number"},
+    ("design_fit_set", "Store the fits measured on the fit card, insert card and hinge card.",
+     {"slide": {"type": "number"}, "press": {"type": "number"}, "insert": {"type": "number"}, "hinge": {"type": "number"},
       "printer": {"type": "string", "description": "which printer and material these are for"}}, t_fit_set, ["slide", "press"]),
     ("design_project", "Pack STLs into one colour 3MF project (each part its colour and filament slot) for OrcaSlicer or Bambu Studio.",
      {"parts": {"type": "array", "items": {"type": "object", "properties": {"label": STR, "stl": STR, "colour": {"type": "string", "description": "#RRGGBB"}},

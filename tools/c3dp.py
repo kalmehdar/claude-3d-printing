@@ -77,7 +77,7 @@ def doctor(as_json):
     check("Blender (mesh audit, renders)", b, b or "not found: optional; set BLENDER")
     f = fit.load()
     check("measured fits", f["measured"], ("measured: " if f["measured"] else "defaults, print examples/models/fit-card.scad: ")
-          + ", ".join(f"{k} {f[k]}" for k in ("slide", "press", "insert", "pip") if k in f))
+          + ", ".join(f"{k} {f[k]}" for k in ("slide", "press", "insert", "hinge") if k in f))
     names = sorted(os.listdir(orca.PRINTERS)) if os.path.isdir(orca.PRINTERS) else []
     check("printer setups for slicing", names, ", ".join(names) + " (plus bambu-p1s)" if names else f"only bambu-p1s; add yours with c3dp new-printer (folder {orca.PRINTERS})")
     pj = os.path.join(orca.HOME, ".config", "claude-3d-printing", "printer.json")

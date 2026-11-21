@@ -52,9 +52,9 @@ with tempfile.TemporaryDirectory() as d:
              ("design_read", {"path": "box/box.scad"}),
              ("design_files", {}),
              ("design_presets", {}),
-             ("design_fit_set", {"slide": 0.2, "press": 0.1, "pip": 0.5}),
+             ("design_fit_set", {"slide": 0.2, "press": 0.1, "hinge": 0.4}),
              ("design_fit", {}),
-             ("design_fit_set", {"slide": 0.2, "press": 0.1, "pip": 0.1}),              # under a layer: refused by fit.py
+             ("design_fit_set", {"slide": 0.2, "press": 0.1, "hinge": 0.9}),              # outside 0.1 to 0.6: refused by fit.py
              ("design_project", {"parts": [{"label": "Body", "stl": stl, "colour": "#1f1f22"}], "name": "box", "out": "box/box.3mf"}),
              ("design_project", {"parts": [{"stl": stl}], "out": os.path.join(d, "x.3mf")}),   # outside: refused
              ("design_spools", {}),
@@ -72,8 +72,8 @@ with tempfile.TemporaryDirectory() as d:
     assert "box" in text(6) and "box.scad" in text(6)
     assert "strong" in text(7) and "draft" in text(7)
     assert not err(8), text(8)
-    assert "pip_gap = 0.5" in text(9) and "slide_fit = 0.2" in text(9)
-    assert err(10) and "0.3" in text(10)
+    assert "hinge_gap = 0.4" in text(9) and "slide_fit = 0.2" in text(9)
+    assert err(10) and "0.6" in text(10)
     assert not err(11) and os.path.getsize(os.path.join(designs, "box", "box.3mf")) > 0
     assert err(12) and not os.path.exists(os.path.join(d, "x.3mf"))
     assert "#3" in text(13) and "120 g left" in text(13) and "Old" not in text(13)   # archived spools are left out
