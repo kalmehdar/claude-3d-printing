@@ -1072,7 +1072,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                              {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]},
                              "application/manifest+json")
         if p in ("/", "/index.html"):
-            return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8")
+            return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8",
+                             {"Cache-Control": "no-cache"})   # an updated page shows on the next load, not a cached copy
         if p.startswith("/moonraker/"):
             path = p[len("/moonraker"):]
             why = self.guard(path)

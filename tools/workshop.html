@@ -83,11 +83,12 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .btn.sm{height:26px;padding:0 8px;font-size:12.5px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .btn svg{width:14px;height:14px}
-.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
 .slot{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r2);padding:10px 8px;text-align:center;min-width:0}
 .slot.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .swatch{width:26px;height:26px;border-radius:50%;margin:0 auto 6px;border:1px solid rgba(255,255,255,.18)}
-.slot b{display:block;font-size:12.5px;font-weight:500} .slot span{display:block;font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot b{display:block;font-size:12.5px;font-weight:500} .slot span{display:block;font-size:11.5px;color:var(--dim);overflow-wrap:anywhere;line-height:1.35}
+@media (hover:none){.slot .btn.sm,.camtools .btn.sm,#jobActions .btn{min-height:40px;padding:0 12px}}   /* fingers, not a mouse */
 .temps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
 .temp{background:var(--panel2);border-radius:var(--r2);padding:7px 10px}
 .temp span{display:block;color:var(--faint);font-size:11.5px} .temp b{font-weight:500;font-variant-numeric:tabular-nums}
@@ -293,8 +294,6 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <section id="tab-now">
       <div class="grid now">
         <div class="grid">
-          <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button></div></div>
           <div class="card" id="jobCard">
             <div class="jhead"><span id="jIcon"></span><div class="fname" id="jobFile">Nothing printing</div><span class="chip" id="jPreset" hidden></span>
               <span class="spacer"></span><b class="jpct" id="pct">-</b></div>
@@ -309,6 +308,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
             </div>
             <div class="actions" id="jobActions"></div>
           </div>
+          <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button></div></div>
           <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
             <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
@@ -426,7 +427,9 @@ const day = t => new Date(t * 1000).toLocaleString("en-GB", {day: "numeric", mon
 const DEFAULT_COLOURS = ["#e2dedb", "#3a3d44", "#e72f1d", "#f4c032"];
 let S = {status: null, colours: DEFAULT_COLOURS, queue: [], files: [], meta: {}, info: {}};
 
-function toast(t, bad) { const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
+const OFFLINE_SAID = "Can't reach the printer. It may be restarting or updating; Workshop keeps trying.";
+function toast(t, bad) { if (/^printer unreachable/i.test(t)) return;   // the header already says the printer is offline, in words
+  const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
 async function api(path, opts = {}) {
   if (opts.method && opts.method !== "GET") opts.headers = Object.assign({"X-Workshop": "1", "X-Workshop-User": who() || "someone"}, opts.headers || {});   // the server refuses changes without it
   const r = await fetch(path, opts);
@@ -582,7 +585,8 @@ async function poll() {
     else if (st !== "printing" && st !== "paused") $("#partsCard").hidden = true;
   } catch (e) {
     $("#conn").className = "dot off"; $("#statePill").textContent = "Printer offline"; $("#statePill").className = "pill error";
-    $("#updated").textContent = e.message;
+    const off = /^printer unreachable/i.test(e.message);
+    $("#updated").textContent = off ? OFFLINE_SAID : e.message; $("#updated").title = off ? e.message : "";
   }
 }
 /* ---------- cancel one part: marked picture first, then only that part (EXCLUDE_OBJECT) ---------- */
@@ -1265,14 +1269,42 @@ async function loadAlerts() {
   $("#alertsCard").hidden = !recent.length;
   $("#alerts").innerHTML = recent.map(a => `<div class="alert"><b>${esc(a.text)}</b><span>${clock(new Date(a.t * 1000))}${a.advice ? " · " + esc(a.advice) : ""}</span></div>`).join("");
 }
+/* The feed in plain words: raw printer commands read as what they did, back-to-back light or speed changes by one
+   person fold into the newest one, "via Workshop" (the usual way) is left out, and six rows show until "Show all". */
+let actAll = false;
+function plainActivity(r) {
+  const what = r.what || "", d = r.detail || "";
+  if (what === "sent") {
+    const led = d.match(/^SET_LED\b.*\bWHITE=([\d.]+)/i);
+    if (led) return {what: +led[1] > 0 ? "turned the light on" : "turned the light off", detail: "", fold: "light"};
+    const sp = d.match(/^M220 S(\d+)/i);
+    if (sp) return {what: `set the speed to ${sp[1]}%`, detail: "", fold: "speed"};
+    if (/\.gcode$/i.test(d)) return {what: "sent a file to the printer", detail: d, fold: ""};
+  }
+  const sp = what.match(/^speed set to (\d+)%/);
+  if (sp) return {what: `set the speed to ${sp[1]}%`, detail: d, fold: "speed"};
+  return {what, detail: d, fold: ""};
+}
+const VIA = {"Workshop": "", "printer.py": "from the command line"};
 async function loadActivity() {
   let rows; try { rows = await api("/api/activity"); } catch (e) { return; }
   const name = w => (w || "?").replace(/^./, c => c.toUpperCase()), hue = w => [...name(w)].reduce((h, c) => h + c.charCodeAt(0), 0) % 360;
+  const items = [];
+  for (const r of rows) {   // newest first: a repeat folds into the newer row above it
+    const p = plainActivity(r), last = items[items.length - 1];
+    if (p.fold && last && last.p.fold === p.fold && name(last.r.who) === name(r.who)) { last.more++; continue; }
+    items.push({r, p, more: 0});
+  }
+  const shown = items.slice(0, actAll ? 40 : 6);
   let lastDay = "";
-  $("#activity").innerHTML = rows.length ? `<div class="feed">${rows.slice(0, 12).map(r => { const d = dayLabel(r.t), head = d !== lastDay ? `<div class="fday">${esc(d)}</div>` : ""; lastDay = d;
+  $("#activity").innerHTML = items.length ? `<div class="feed">${shown.map(({r, p, more}) => { const d = dayLabel(r.t), head = d !== lastDay ? `<div class="fday">${esc(d)}</div>` : ""; lastDay = d;
+    const via = r.via in VIA ? VIA[r.via] : `via ${r.via}`;
     return head + `<div class="fitem"><span class="av" style="--h:${hue(r.who)}" aria-hidden="true">${esc(name(r.who)[0])}</span>
-      <div class="ftext"><b>${esc(name(r.who))}</b> ${esc(r.what)}${r.detail ? ` <span class="fdet">${esc(r.detail)}</span>` : ""}<span class="fvia"> via ${esc(r.via)}</span></div>
-      <time>${clock(new Date(r.t * 1000))}</time></div>`; }).join("")}</div>` : "Nothing yet.";
+      <div class="ftext"><b>${esc(name(r.who))}</b> ${esc(p.what)}${p.detail ? ` <span class="fdet">${esc(p.detail)}</span>` : ""}${more ? `<span class="fvia"> (and ${more} more like it)</span>` : ""}${via ? `<span class="fvia"> ${esc(via)}</span>` : ""}</div>
+      <time>${clock(new Date(r.t * 1000))}</time></div>`; }).join("")}</div>`
+    + (items.length > 6 ? `<button class="btn sm ghost" id="actMore" style="margin-top:8px">${actAll ? "Show fewer" : `Show all (${items.length})`}</button>` : "") : "Nothing yet.";
+  const more = $("#actMore");
+  if (more) more.onclick = () => { actAll = !actAll; loadActivity(); };
 }
 
 /* ---------- start ---------- */
