@@ -7,6 +7,9 @@
     python orca.py open  part.stl --printer u1 ...           the same, then opens the sliced project in OrcaSlicer
     python orca.py add-material "Snapmaker PLA Basic @U1" --printer u1 [--as pla-white]
     python orca.py install --printer u1                      puts the printer, its filaments and the presets in OrcaSlicer's own menus
+    python orca.py new-printer u1 --vendor Snapmaker --machine "Snapmaker U1 (0.4 nozzle)" --process "0.20mm Standard @Snapmaker U1 (0.4 nozzle)" \
+        --filament "Snapmaker PLA SnapSpeed @U1:pla-snapspeed"   a setup from a slicer's bundled vendor profiles
+    python orca.py adopt-gcode good-print.gcode --printer u1  take the start/end/tool-change G-code a known-good print was sliced with
 
 A printer setup is a folder holding machine.json, process.json and filament-<name>.json, as exported from OrcaSlicer
 (File > Export > Export preset). --printer takes a folder path, or a name under ~/.config/claude-3d-printing/printers
@@ -346,6 +349,42 @@ def install(printer, user_dir=None):
     print(f"{len(wrote)} presets in {user_dir}; restart OrcaSlicer and pick printer {mname!r}, then the 'Claude ...' presets")
 
 
+def new_printer(name, vendor, machine, process, filaments):
+    """A printer setup from a slicer's bundled vendor profiles, e.g. Snapmaker Orca's Snapmaker folder."""
+    base = next((d for d in vendor_dirs() if os.path.basename(d.rstrip("\\/")) == vendor and glob.glob(os.path.join(d, "machine", "*.json"))), None)
+    if not base:
+        sys.exit(f"no unpacked {vendor!r} profiles in an installed slicer (OrcaSlicer 2.5 packs them; Snapmaker Orca does not)")
+    out = os.path.join(PRINTERS, name)
+    os.makedirs(out, exist_ok=True)
+    files = {"machine": flatten(base, machine, "machine"), "process": flatten(base, process, "process")}
+    for f in filaments:
+        system, _, short = f.partition(":")
+        files["filament-" + (short or re.sub(r"[^a-z0-9]+", "-", system.lower()).strip("-"))] = flatten(base, system, "filament")
+    for k, d in files.items():
+        d["from"] = "system"
+        json.dump(d, open(os.path.join(out, k + ".json"), "w", encoding="utf-8"), indent=1)
+    return out, sorted(files)
+
+
+def adopt_gcode(gcode_path, printer):
+    """Copy the custom G-code blocks (start, end, tool change...) a known-good print was sliced with into a setup's machine.json.
+    Every OrcaSlicer G-code ends with its full settings; a fork's profile can use variables upstream OrcaSlicer refuses."""
+    cfg = {}
+    for line in open(gcode_path, encoding="utf-8", errors="replace"):
+        m = re.match(r"^; ([a-z0-9_]+) = (.*)$", line.rstrip("\n"))
+        if m:
+            cfg[m.group(1)] = m.group(2).replace("\\n", "\n")
+    if not cfg:
+        sys.exit("no settings block in that G-code (slice it with OrcaSlicer or a fork)")
+    path = os.path.join(printer_dir(printer), "machine.json")
+    machine = json.load(open(path, encoding="utf-8-sig"))
+    changed = [k for k in machine if k.endswith("_gcode") and k in cfg and isinstance(machine[k], str) and machine[k] != cfg[k]]
+    for k in changed:
+        machine[k] = cfg[k]
+    json.dump(machine, open(path, "w", encoding="utf-8"), indent=1)
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -368,11 +407,28 @@ def main():
     am.add_argument("system_name")
     am.add_argument("--printer", required=True)
     am.add_argument("--as", dest="as_name")
+    np = sub.add_parser("new-printer")
+    np.add_argument("name")
+    np.add_argument("--vendor", required=True, help="vendor folder name, e.g. Snapmaker")
+    np.add_argument("--machine", required=True)
+    np.add_argument("--process", required=True)
+    np.add_argument("--filament", action="append", default=[], help='"System name[:short-name]", repeat')
+    ag = sub.add_parser("adopt-gcode")
+    ag.add_argument("gcode")
+    ag.add_argument("--printer", required=True)
     ins = sub.add_parser("install")
     ins.add_argument("--printer", required=True)
     ins.add_argument("--user-dir", help="OrcaSlicer user preset folder (default: %%APPDATA%%/OrcaSlicer/user/default)")
     a = ap.parse_args()
 
+    if a.cmd == "new-printer":
+        out, files = new_printer(a.name, a.vendor, a.machine, a.process, a.filament)
+        print(f"{out}: {', '.join(files)}")
+        return
+    if a.cmd == "adopt-gcode":
+        changed = adopt_gcode(a.gcode, a.printer)
+        print("took from the G-code:", ", ".join(changed) or "nothing (already the same)")
+        return
     if a.cmd == "printers":
         names = sorted(os.listdir(PRINTERS)) if os.path.isdir(PRINTERS) else []
         for n in names + ["bambu-p1s"]:

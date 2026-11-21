@@ -27,6 +27,15 @@ with tempfile.TemporaryDirectory() as t:
     assert pick == ["filament-petg-red.json", "filament-pla-white.json", "filament-pla-white.json"], pick
     assert [os.path.basename(p) for p in orca.pick_materials(t, "", 1)] == ["filament-petg-black.json"]
 
+with tempfile.TemporaryDirectory() as t:   # adopt-gcode: custom G-code from a known-good print replaces the profile's
+    json.dump({"machine_start_gcode": "{if fork_only_var==0}X{endif}", "machine_end_gcode": "END", "printable_area": "0x0"},
+              open(os.path.join(t, "machine.json"), "w", encoding="utf-8"))
+    g = os.path.join(t, "good.gcode")
+    open(g, "w").write("G1 X1\n; machine_start_gcode = PRINT_START\\nG28\n; machine_end_gcode = END\n; printable_area = 9x9\n")
+    assert orca.adopt_gcode(g, t) == ["machine_start_gcode"]
+    m = json.load(open(os.path.join(t, "machine.json")))
+    assert m["machine_start_gcode"] == "PRINT_START\nG28" and m["printable_area"] == "0x0"   # only *_gcode keys move
+
 assert all(isinstance(v, str) for p in orca.PRESETS.values() for v in p.values())
 assert set(orca.PRESETS) == set(orca.PRESET_WORDS)
 print("orca.py checks passed")
