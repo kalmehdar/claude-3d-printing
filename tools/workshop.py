@@ -501,38 +501,49 @@ PHOTO_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["v
                                "confidence": {"type": "number"}, "reason": {"type": "string"}}}
 
 
+def api_keys():
+    """Claude API keys for automated work, in order: ANTHROPIC_API_KEY, then anthropic-key, anthropic-key-2 ... beside it,
+    each a file only this user can read (one readable by others is skipped, never used). Never logged or shown."""
+    keys = [os.environ.get("ANTHROPIC_API_KEY", "").strip()]
+    for f in [API_KEY_FILE] + [f"{API_KEY_FILE}-{n}" for n in range(2, 6)]:
+        try:
+            if not os.stat(f).st_mode & 0o077:
+                keys.append(open(f, encoding="utf-8").read().strip())
+        except OSError:
+            pass
+    return [k for k in dict.fromkeys(keys) if k]
+
+
 def api_key():
-    """The Claude API key for automated work: ANTHROPIC_API_KEY, else a file only this user can read. Never logged or shown."""
-    k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if k:
-        return k
-    try:
-        if os.stat(API_KEY_FILE).st_mode & 0o077:   # readable by others: refuse rather than use a leaked key
-            return None
-        return open(API_KEY_FILE, encoding="utf-8").read().strip() or None
-    except OSError:
-        return None
+    return (api_keys() or [None])[0]
 
 
 def look_at_photo(jpg, layer):
     """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError."""
     import base64
-    key = api_key()
-    if not key:
+    keys = api_keys()
+    if not keys:
         raise ValueError("no API key")
     body = {"model": PHOTO_MODEL, "max_tokens": 2000, "fallbacks": "default",
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": PHOTO_SCHEMA}},
             "messages": [{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
                 {"type": "text", "text": PHOTO_PROMPT.format(layer=layer)}]}]}
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
-        "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2026-10-21",
-        "anthropic-beta": "server-side-fallback-2026-07-01"})
-    try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            res = json.load(r)
-    except urllib.error.HTTPError as e:   # never echo the request: it carries the key
-        raise OSError(f"Claude API HTTP {e.code}")
+    res, last = None, None
+    for n, key in enumerate(keys, 1):   # the next key only when this one is refused, rate-limited or the API is overloaded
+        req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
+            "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2026-10-21",
+            "anthropic-beta": "server-side-fallback-2026-07-01"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                res = json.load(r)
+            break
+        except urllib.error.HTTPError as e:   # never echo the request: it carries the key
+            last = f"Claude API HTTP {e.code} on key {n}"
+            if e.code not in (401, 403, 429, 529):
+                break
+    if res is None:
+        raise OSError(last or "Claude API: no answer")
     if res.get("stop_reason") != "end_turn":
         raise ValueError(f"no verdict (stop_reason {res.get('stop_reason')})")
     text = next(b["text"] for b in res["content"] if b.get("type") == "text")

@@ -194,4 +194,11 @@ with tempfile.TemporaryDirectory() as d:
     verdicts(bad, bad); workshop.photo_watch("a.gcode", 50, photo)
     assert pauses == ["/printer/print/pause"] and pushes, (pauses, pushes)
     assert len(open(workshop.PHOTO_LOG).read().splitlines()) == 6
+# API keys: env first, then the files in order; a file others can read is skipped
+with tempfile.TemporaryDirectory() as d:
+    workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    for name, val, mode in (("anthropic-key", "k1", 0o600), ("anthropic-key-2", "k2", 0o600), ("anthropic-key-3", "k3", 0o644)):
+        f = os.path.join(d, name); open(f, "w").write(val + "\n"); os.chmod(f, mode)
+    assert workshop.api_keys() == ["k1", "k2"], workshop.api_keys()
 print("printer_mcp.py checks passed")
