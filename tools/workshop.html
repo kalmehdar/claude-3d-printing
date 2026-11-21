@@ -327,10 +327,8 @@ $("#slots").addEventListener("click", e => {
   const b = e.target.closest("[data-unload]"); if (!b) return;
   const i = +b.dataset.unload, tc = S.status.print_task_config;
   confirmSheet(`Unload T${i}?`, `The printer heats T${i}, cuts the tip and winds the ${tc.filament_type[i]} ${tc.filament_sub_type[i]} back to its spool. It takes a minute or two.`, `Unload T${i}`, async () => {
-    toast(`Unloading T${i}...`);
-    await gcode(`AUTO_FEEDING EXTRUDER=${i} UNLOAD=1 STAGE=prepare`);
-    await gcode(`AUTO_FEEDING EXTRUDER=${i} UNLOAD=1 STAGE=doing`);
-    toast(`T${i} unloaded`);
+    await post("/api/unload", {head: `T${i}`});
+    toast(`Unloading T${i}: about a minute. The printer heats it, cuts the tip and winds it back.`);
   });
 });
 $("#lightBtn").onclick = async () => { const on = $("#lightBtn").getAttribute("aria-pressed") !== "true"; try { await gcode(`SET_LED LED=cavity_led WHITE=${on ? 1 : 0}`); poll(); } catch (e) { toast(e.message, true); } };

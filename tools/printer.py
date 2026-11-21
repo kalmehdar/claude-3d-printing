@@ -218,31 +218,81 @@ def gcode(cmd, force=False):
     return call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=300)
 
 
+def head_obj(i):
+    return "extruder" if i == 0 else f"extruder{i}"
+
+
+def channel_state(i):
+    """Snapmaker U1 feeder state for head i (e.g. unload_finish), from the filament_feed modules."""
+    for mod in ("filament_feed left", "filament_feed right"):
+        ch = query(mod).get(mod, {}).get(f"extruder{i}")   # the feeders name every head extruderN, T0 included
+        if ch:
+            return ch.get("channel_state")
+    return None
+
+
+def run_waiting(cmd, done, limit):
+    """Send one G-code command; the U1 holds the request open while it works and sometimes drops it, so success is
+    judged by the printer's state (done() returning True), never by the HTTP reply."""
+    try:
+        call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=limit)
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"{cmd}: " + json.loads(e.read() or b"{}").get("error", {}).get("message", str(e)))
+    except OSError:
+        pass
+    end = time.time() + limit
+    while time.time() < end:
+        if done():
+            return
+        time.sleep(2)
+    raise SystemExit(f"{cmd}: the printer did not finish in {limit} s; check it")
+
+
 def unload(which):
-    """Snapmaker U1: the firmware's own end-of-print unload (AUTO_FEEDING ... UNLOAD=1, prepare then doing), per head.
-    Soft filament (TPU) is left alone, as the firmware does; unload that from the printer's screen."""
+    """Snapmaker U1: unload heads exactly as its screen's Unload all does (recorded 21 Nov 2026): AUTO_FEEDING_BATCH
+    ACTION=START; per head DOING STAGE=prepare (pick the head, heat it, preheat the next) then DOING STAGE=doing
+    (cut, retract, wind back); ACTION=STOP at the end, which turns the heaters off."""
     if state() in RUNNING:
         sys.exit("refused: a job is running; unload after it ends")
     t = query("print_task_config").get("print_task_config")
     if not t or "filament_exist" not in t:
         sys.exit("this printer does not report its heads' filament (unload is for the Snapmaker U1)")
     n = len(t["filament_exist"])
-    heads = range(n) if which == "all" else [int(which.upper().lstrip("T"))]
+    heads = list(range(n)) if which == "all" else [int(which.upper().lstrip("T"))]
     for i in heads:
         if not 0 <= i < n:
             sys.exit(f"no head T{i}: this printer has T0 to T{n - 1}")
+    todo = []
+    for i in heads:
         name = f'T{i} {t["filament_type"][i]} {t["filament_sub_type"][i]}'.strip()
-        if not t["filament_exist"][i]:
-            print(f"T{i}: nothing loaded")
-            continue
         if t["filament_soft"][i]:
             print(f"{name}: soft filament, unload it from the printer's screen")
-            continue
-        print(f"{name}: unloading...", flush=True)
-        for stage in ("prepare", "doing"):
-            call("/printer/gcode/script?script=" + urllib.parse.quote(f"AUTO_FEEDING EXTRUDER={i} UNLOAD=1 STAGE={stage}"), "POST", timeout=600)
-        left = query("print_task_config")["print_task_config"]["filament_exist"][i]
-        print(f"{name}: {'still reports filament, check the head' if left else 'unloaded'}")
+        elif channel_state(i) != "load_finish":   # unload_finish and preload_finish (parked at the feeder) mean empty head
+            print(f"T{i}: nothing loaded in the head ({channel_state(i)})")
+        else:
+            todo.append((i, name))
+    if not todo:
+        return
+
+    def idle():
+        return query("machine_state_manager")["machine_state_manager"]["main_state"] == 0
+
+    def hot(i):
+        h = query(head_obj(i))[head_obj(i)]
+        return h["target"] > 0 and h["temperature"] >= h["target"] - 5
+
+    call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=START"), "POST")
+    try:
+        for k, (i, name) in enumerate(todo):
+            nxt = f" NEXT_EXTRUDER={todo[k + 1][0]}" if k + 1 < len(todo) else ""
+            print(f"{name}: heating...", flush=True)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} UNLOAD=1", lambda: hot(i), 240)
+            print(f"{name}: unloading...", flush=True)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} UNLOAD=1",
+                        lambda: idle() and channel_state(i) == "unload_finish", 300)
+            print(f"{name}: unloaded")
+    finally:
+        call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
 
 
 def known_filaments():

@@ -193,6 +193,28 @@ def loaded_heads():
     return heads
 
 
+_unloading = []
+
+
+def start_unload(head):
+    """Run printer.unload (the U1 screen's own batch protocol) in a thread; it takes about a minute per head."""
+    import threading
+    import printer
+    printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+    if _unloading and _unloading[0].is_alive():
+        return
+
+    def go():
+        try:
+            printer.unload(head if head.lower() == "all" else "T" + head.upper().lstrip("T"))
+        except SystemExit as e:
+            sys.stderr.write(f"unload {head}: {e}\n")
+
+    t = threading.Thread(target=go, daemon=True)
+    _unloading[:] = [t]
+    t.start()
+
+
 _last_wake = [0.0]
 
 
@@ -332,6 +354,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 live = None
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live,
                                    "presets": getattr(orca, "PRESET_WORDS", {})})
+        if p == "/api/unload" and self.command == "POST":
+            try:
+                req = json.loads(self.body() or b"{}")
+                head = str(req.get("head", "")) if isinstance(req, dict) else ""
+            except ValueError:
+                head = ""
+            if not re.fullmatch(r"all|T?[0-3]", head, re.I):
+                return self.send(400, {"error": "head is T0 to T3, or all"})
+            if self.printer_busy():
+                return self.send(409, {"error": "a job is running; unload after it ends"})
+            start_unload(head)
+            return self.send(202, {"started": head})
         if p == "/api/slice" and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")
