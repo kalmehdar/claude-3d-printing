@@ -646,8 +646,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 record(what[0], what[1], who=actor(self))
             return self.proxy(path, timeout=600 if ("upload" in path or "gcode/script" in path) else 30)
         if p.startswith("/cam.jpg"):
+            import printer
+            printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
             wake_camera()
-            return self.proxy(CFG["camera"], timeout=10)
+            try:
+                with urllib.request.urlopen(printer.camera_url(), timeout=10) as r:
+                    return self.send(200, r.read(), r.headers.get("Content-Type", "image/jpeg"))
+            except OSError as e:
+                return self.send(502, {"error": f"camera: {e}"})
         if p == "/api/designs":
             return self.send(200, designs())
         if p == "/api/info":
@@ -793,7 +799,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST"), help="printer address (or PRINTER_HOST)")
     ap.add_argument("--moonraker-port", type=int, default=7125)
-    ap.add_argument("--camera", default="/server/files/camera/monitor.jpg", help="camera still path on Moonraker")
+    ap.add_argument("--camera", help="camera still path or URL (default: the snapshot Moonraker lists)")
     ap.add_argument("--bench", action="append", help="a bench.json (repeat for more); default examples/bench.json")
     ap.add_argument("--profile", default="u1", help="tools/orca.py printer setup for slicing")
     ap.add_argument("--bind", default="0.0.0.0")

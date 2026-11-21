@@ -134,4 +134,18 @@ with tempfile.TemporaryDirectory() as d:
                          "| SUNLU | PETG | Red | £9.00 |\n")
     assert workshop.filament_prices(reg) == {"PETG": 7.86}, workshop.filament_prices(reg)
     assert workshop.filament_prices(os.path.join(d, "none.md")) == {} and workshop.filament_prices(None) == {}
+# camera: follows what Moonraker lists, stock still on Moonraker's port, Extended Firmware's snapshot on port 80
+printer.BASE, printer.CAMERA = "http://10.0.0.5:7125", None
+for listed, want in ((None, "http://10.0.0.5:7125/server/files/camera/monitor.jpg"),
+                     ("/server/files/camera/monitor.jpg", "http://10.0.0.5:7125/server/files/camera/monitor.jpg"),
+                     ("/webcam/snapshot.jpg", "http://10.0.0.5/webcam/snapshot.jpg")):
+    printer._cam.update(url=None, t=0)
+    printer.call = lambda path, *a, l=listed, **k: {"webcams": [{"enabled": True, "snapshot_url": l}] if l else []}
+    assert printer.camera_url() == want, (listed, printer.camera_url())
+printer._cam.update(url=None, t=0)
+printer.call = lambda path, *a, **k: {"webcams": [{"enabled": True, "snapshot_url": "/server/files/camera/monitor.jpg"},
+                                                  {"enabled": True, "snapshot_url": "/webcam/snapshot.jpg"}]}
+assert printer.camera_url() == "http://10.0.0.5/webcam/snapshot.jpg"   # the old stock entry left behind loses
+printer.CAMERA = "http://cam.local/x.jpg"
+assert printer.camera_url() == "http://cam.local/x.jpg"   # an explicit camera always wins
 print("printer_mcp.py checks passed")

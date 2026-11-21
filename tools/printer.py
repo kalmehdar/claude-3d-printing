@@ -20,7 +20,7 @@
     python printer.py notify "Title" ["text"] [--level good|warn|bad]   phone push (ntfy) and/or Discord, whichever is set up
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
-The camera: --camera PATH on Moonraker (default /server/files/camera/monitor.jpg, the Snapmaker U1's still).
+The camera: whatever Moonraker lists (stock U1: /server/files/camera/monitor.jpg; Extended Firmware: /webcam/snapshot.jpg), or --camera PATH|URL.
 Phone push: "ntfy_topic" in printer.json (a long random name; install the ntfy app and subscribe to it). "ntfy_server" if self-hosted.
 Discord: a channel webhook URL in PRINTER_DISCORD_WEBHOOK or "discord_webhook" in printer.json (keep it out of git);
 "discord_mention" (e.g. <@123>) is added to warn and bad posts.
@@ -211,19 +211,48 @@ def ws_rpc(host, port, method, params, timeout=15):
         s.close()
 
 
+STOCK_STILL = "/server/files/camera/monitor.jpg"   # Snapmaker U1 stock firmware: a file Moonraker serves
+_cam = {"url": None, "t": 0.0}
+
+
+def camera_url():
+    """Full URL of the camera still. --camera (or "camera" in printer.json) wins; otherwise the snapshot Moonraker lists,
+    so the same tools follow the printer from stock (its monitor.jpg on Moonraker) to the Extended Firmware's 25-30 fps
+    camera (/webcam/snapshot.jpg on port 80) with no change here."""
+    path = CAMERA
+    if not path:
+        if not _cam["url"] or time.time() - _cam["t"] > 60:
+            try:
+                cams = [c for c in call("/server/webcams/list", timeout=5).get("webcams", []) if c.get("enabled", True)]
+                snaps = [c["snapshot_url"] for c in cams if c.get("snapshot_url")]
+                # a real camera service beats the stock still, which may survive in Moonraker's database after a flash
+                _cam["url"] = next((u for u in snaps if not u.endswith(STOCK_STILL)), None) or (snaps or [STOCK_STILL])[0]
+            except (OSError, ValueError, KeyError):
+                _cam["url"] = STOCK_STILL
+            _cam["t"] = time.time()
+        path = _cam["url"]
+    if path.startswith("http"):
+        return path
+    if path.startswith("/server/"):
+        return BASE + path
+    return "http://" + BASE[len("http://"):].rsplit(":", 1)[0] + path   # the printer's web server, not Moonraker's port
+
+
 def camera_age():
-    """Seconds since the camera still was written, or None when the printer does not list a camera folder."""
+    """Seconds since the stock camera still was written, or None when the printer does not list a camera folder."""
     try:
         files = call("/server/files/list?root=camera", timeout=5)
     except OSError:
         return None
-    hit = next((f for f in files if CAMERA.endswith("/" + f["path"])), None)
+    hit = next((f for f in files if camera_url().endswith("/" + f["path"])), None)
     return time.time() - hit["modified"] if hit else None
 
 
 def wake_camera():
     """Snapmaker U1: the still only refreshes while something 'watches' (its app sends camera.start_monitor).
     Ask for it when the still is stale, then wait for a fresh frame. Harmless on printers without it."""
+    if not camera_url().endswith(STOCK_STILL):   # a real camera service streams by itself
+        return
     age = camera_age()
     if age is None or age < 10:
         return
@@ -240,7 +269,8 @@ def wake_camera():
 
 def snap(out):
     wake_camera()
-    data = call(CAMERA, raw=True, timeout=15)
+    with urllib.request.urlopen(camera_url(), timeout=15) as r:
+        data = r.read()
     open(out + ".part", "wb").write(data)
     os.replace(out + ".part", out)   # a reader never sees half a JPEG
     return out
@@ -553,7 +583,7 @@ def main():
                                  epilog="\n".join(__doc__.splitlines()[2:]))
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST") or conf.get("host"))
     ap.add_argument("--port", type=int, default=conf.get("port", 7125))
-    ap.add_argument("--camera", default=conf.get("camera", "/server/files/camera/monitor.jpg"))
+    ap.add_argument("--camera", default=conf.get("camera"), help="camera still path or URL (default: what Moonraker lists)")
     ap.add_argument("cmd")
     ap.add_argument("args", nargs="*")
     ap.add_argument("--bed-clear", action="store_true")
