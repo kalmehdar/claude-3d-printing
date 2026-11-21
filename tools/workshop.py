@@ -329,45 +329,6 @@ def watch_alerts():
         time.sleep(20)
 
 
-CLAUDE_JOBS = []   # [{id, who, text, state, output, t}], newest last; kept in memory while Workshop runs
-CLAUDE_TOOLS = [f"Bash(python3 tools/printer.py {c}*)" for c in   # each subcommand named: no raw `gcode`, no notify, no config
-                ("status", "snap", "files", "send ", "start ", "queue", "pause", "resume", "cancel", "light ", "unload ", "filament ",
-                 "history", "watch", "timelapse")] + [
-                "Bash(python3 tools/orca.py *)", "Bash(python3 tools/make_3mf.py *)", "Bash(python3 tools/look.py *)",
-                f"Read(/{REPO}/**)"]   # "//" = an absolute path in Claude Code permission rules; benches added per call
-
-
-def claude_prompt(who, text, bed_clear):
-    return f"""You are driving a Snapmaker U1 3D printer for {who}, from the Workshop page. Their request:
-
-{text}
-
-{"They ticked: the bed is empty." if bed_clear else "They did NOT say the bed is empty."}
-
-Rules (from skills/print-workflow step 7 and docs/snapmaker-u1.md in this folder; read them if unsure):
-- Use only python3 tools/printer.py, tools/orca.py, tools/make_3mf.py and tools/look.py from this folder. Designs are in the benches Workshop serves.
-- Start a print only when they ticked that the bed is empty AND a fresh `python3 tools/printer.py snap bed.jpg` (read the image) shows an empty plate. Otherwise prepare everything, say so, and do not start.
-- Never use `gcode --force`, and never send motion, heating or feeding commands except through printer.py's own start, pause, resume, cancel, unload and filament commands for what they asked.
-- If anything is unclear or unsafe, do not act: say what you need from them.
-Reply in two to five short plain sentences: what you did, what the printer is doing now, and anything they must do."""
-
-
-def run_claude(job, bed_clear):
-    import subprocess
-    exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
-    env = dict(os.environ, PRINTER_ACTOR=f"Claude for {job['who']}", PRINTER_HOST=CFG["printer"])
-    try:
-        r = subprocess.run([exe, "-p", claude_prompt(job["who"], job["text"], bed_clear), "--output-format", "json",
-                            "--max-turns", "30", "--allowedTools", *CLAUDE_TOOLS, *{f"Read(/{os.path.dirname(b)}/**)" for b in CFG.get("benches", [])}],
-                           cwd=REPO, env=env, capture_output=True, text=True, timeout=1500)
-        d = json.loads(r.stdout or "{}")
-        job["output"] = d.get("result") or (r.stderr or "no reply")[-600:]
-        job["state"] = "error" if d.get("is_error") or r.returncode else "done"
-    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
-        job["output"], job["state"] = f"Claude could not run: {e}", "error"
-    record("Claude replied", job["output"][:200], who=f"Claude for {job['who']}")
-
-
 _unloading = []
 
 
@@ -1225,24 +1186,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, alerts())
             except (OSError, ValueError, KeyError) as e:
                 return self.send(502, {"error": str(e)})
-        if p == "/api/claude" and self.command == "GET":
-            return self.send(200, CLAUDE_JOBS[-20:][::-1])
-        if p == "/api/claude" and self.command == "POST":
-            import threading
-            try:
-                r = json.loads(self.body() or b"{}")
-                text = str(r.get("text", "")).strip()[:1500] if isinstance(r, dict) else ""
-            except ValueError:
-                text = ""
-            if not text:
-                return self.send(400, {"error": "say what you want Claude to do"})
-            if any(j["state"] == "running" for j in CLAUDE_JOBS):
-                return self.send(409, {"error": "Claude is still on the last request; wait for its reply"})
-            job = {"id": len(CLAUDE_JOBS) + 1, "who": actor(self), "text": text, "state": "running", "output": "", "t": time.time()}
-            CLAUDE_JOBS.append(job)
-            record("asked Claude", text[:200], who=job["who"])
-            threading.Thread(target=run_claude, args=(job, bool(r.get("bed_clear"))), daemon=True).start()
-            return self.send(202, job)
         if p == "/api/filaments":
             import printer
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
