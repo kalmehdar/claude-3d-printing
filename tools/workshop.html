@@ -195,7 +195,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
             <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
             <div class="note" id="frInfo"></div>
-            <select id="frJob" aria-label="Which print" hidden style="margin-top:8px"></select></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><select id="frJob" aria-label="Which print" hidden></select>
+              <button class="btn sm" id="frPlay" hidden>Play timelapse</button><a class="btn sm ghost" id="frSave" hidden download>Download video</a></div></div>
         </div>
         <div class="grid" style="align-content:start">
           <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
@@ -765,12 +766,15 @@ async function loadFrames() {
   FR.jobs = r.jobs;
   sel.innerHTML = r.jobs.slice(0, 20).map(j => `<option value="${esc(j)}" ${j === r.job ? "selected" : ""}>${esc(runName(j))}</option>`).join("");
   const rng = $("#frRange"), atEnd = +rng.value >= FR.list.length - 1;
-  FR.job = r.job; FR.list = r.frames; rng.max = FR.list.length - 1;
+  FR.job = r.job; FR.list = r.frames; FR.video = r.video; rng.max = FR.list.length - 1;
+  $("#frPlay").hidden = $("#frSave").hidden = !r.video;
+  if (r.video) { $("#frSave").href = r.video; $("#frSave").setAttribute("download", r.job + ".mp4"); }
   if (FR.follow && atEnd) rng.value = rng.max;   // keep showing the newest unless someone is scrolling back
   showFrame();
 }
 $("#frRange").oninput = () => { FR.follow = +$("#frRange").value >= FR.list.length - 1; showFrame(); };
 $("#frJob").onchange = () => openPhotos($("#frJob").value);
+$("#frPlay").onclick = () => { openSheet(runName(FR.job), `<video src="${esc(FR.video)}" controls autoplay playsinline muted loop style="width:100%;border-radius:12px;background:#000"></video>`); };
 async function loadAlerts() {
   try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
   const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only

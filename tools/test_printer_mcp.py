@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SEEN = []   # (method, path, headers) of every request the fake Workshop got
@@ -110,4 +111,7 @@ with tempfile.TemporaryDirectory() as d:
     c = printer.layer_photo("sub/Panel.gcode", "4", d)
     assert a == b and a != c and len(snaps) == 2, (a, b, c, snaps)
     assert os.path.dirname(a) == os.path.join(d, "Panel-000042") and a.endswith("-layer3.jpg")
+    old = os.path.join(d, "Old-000001"); os.makedirs(old)
+    os.utime(old, (time.time() - 31 * 86400,) * 2)
+    assert printer.prune_photos(30, d) == ["Old-000001"] and os.path.isdir(os.path.join(d, "Panel-000042"))   # 30 days, newer kept
 print("printer_mcp.py checks passed")

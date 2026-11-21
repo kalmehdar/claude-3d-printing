@@ -15,6 +15,7 @@
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
+    python printer.py timelapse [FOLDER]          a short video from a print's layer photos (default the newest print; needs ffmpeg)
     python printer.py log [FILE]                  add finished jobs not yet in FILE (a markdown print log; default "log_file" in printer.json)
     python printer.py notify "Title" ["text"] [--level good|warn|bad]   post to Discord (watch posts when a job ends)
 
@@ -28,6 +29,8 @@ import argparse
 import base64
 import json
 import os
+import subprocess
+import shutil
 import socket
 import struct
 import sys
@@ -226,6 +229,41 @@ def layer_photo(job_file, layer, frames=None):
     if have:
         return os.path.join(d, have[-1])
     return snap(os.path.join(d, time.strftime("%Y%m%d-%H%M%S") + tag))
+
+
+def timelapse(folder, seconds=12):
+    """Turn a print run's layer photos into folder/timelapse.mp4 (about `seconds` long) with ffmpeg. Returns the path."""
+    pics = sorted(f for f in os.listdir(folder) if f.endswith(".jpg"))
+    if len(pics) < 10:
+        raise ValueError(f"only {len(pics)} photos in {folder}; a timelapse needs 10 or more")
+    ff = shutil.which("ffmpeg") or next((p for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg") if os.path.exists(p)), None)
+    if not ff:
+        raise OSError("ffmpeg is not installed (brew install ffmpeg)")
+    fps = max(8, min(30, round(len(pics) / seconds)))
+    out = os.path.join(folder, "timelapse.mp4")
+    lst = os.path.join(folder, ".frames.txt")
+    with open(lst, "w") as f:   # concat list, not a shell glob: file names never reach a shell
+        f.writelines(f"file '{p}'\nduration {1 / fps:.4f}\n" for p in pics)
+    try:
+        subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-vf", "scale=1280:-2,format=yuv420p",
+                        "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-movflags", "+faststart", out + ".part.mp4"],
+                       check=True, timeout=600, cwd=folder)
+        os.replace(out + ".part.mp4", out)
+    finally:
+        os.remove(lst)
+    return out
+
+
+def prune_photos(days=30, frames=None):
+    """Delete print-run photo folders not touched for `days` days (Khalid, 21 Nov 2026: keep 30 days)."""
+    root, gone = frames or FRAMES, []
+    cut = time.time() - days * 86400
+    for d in os.listdir(root) if os.path.isdir(root) else []:
+        p = os.path.join(root, d)
+        if os.path.isdir(p) and not d.startswith(".") and os.path.getmtime(p) < cut:
+            shutil.rmtree(p)
+            gone.append(d)
+    return gone
 
 
 def queue_running():
@@ -564,6 +602,9 @@ def main():
             sys.exit('give the log file, or set "log_file" in printer.json')
         added = log_jobs(path)
         print("\n".join(added) if added else "nothing new to log")
+    elif c == "timelapse":
+        runs = sorted((os.path.join(FRAMES, d) for d in os.listdir(FRAMES)), key=os.path.getmtime) if os.path.isdir(FRAMES) else []
+        print(timelapse(os.path.expanduser(x[0]) if x else (runs or [None])[-1] or sys.exit("no print photos yet")))
     elif c == "history":
         for j in call(f"/server/history/list?limit={int(x[0]) if x else 10}&order=desc")["jobs"]:
             print(time.strftime("%Y-%m-%d %H:%M", time.localtime(j["start_time"])), f'{j["status"]:<11}',

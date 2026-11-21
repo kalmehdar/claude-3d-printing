@@ -257,7 +257,8 @@ def watch_alerts():
         pass
     import printer
     printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
-    last = None
+    import threading
+    last, was, pruned = None, None, 0
     while True:
         try:
             scan_alerts()
@@ -266,10 +267,22 @@ def watch_alerts():
         try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
             s = printer.status()
             if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
-                printer.layer_photo(s["file"], s["layer"].split("/")[0])
+                f = printer.layer_photo(s["file"], s["layer"].split("/")[0])
                 last = (s["file"], s["layer"])
+                was = os.path.dirname(f)
+            if was and s["state"] in ("complete", "cancelled", "error", "standby"):
+                # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
+                threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
+                was = None
         except (OSError, ValueError, KeyError):
             pass
+        if time.time() - pruned > 3600:
+            try:
+                for d in printer.prune_photos(30):
+                    print("removed photos older than 30 days:", d, flush=True)
+            except OSError:
+                pass
+            pruned = time.time()
         time.sleep(20)
 
 
@@ -334,6 +347,14 @@ def start_unload(head):
 _last_wake = [0.0]
 
 
+def make_timelapse(folder):
+    import printer
+    try:
+        printer.timelapse(folder)
+    except Exception as e:   # never take the watcher down over a video
+        print("timelapse failed for", folder, e, flush=True)
+
+
 def frames(job=""):
     """The layer photos printer.py watch saved: the jobs newest first, or one job's photos in order."""
     import printer
@@ -350,7 +371,8 @@ def frames(job=""):
         m = re.match(r"(\d{8})-(\d{2})(\d{2})\d{2}-layer(\d+)\.jpg$", f)
         out.append({"name": f, "url": f"/frames/{urllib.parse.quote(job)}/{f}",
                     "time": f"{m.group(2)}:{m.group(3)}" if m else "", "layer": int(m.group(4)) if m else None})
-    return {"jobs": jobs, "job": job, "frames": out}
+    video = f"/frames/{urllib.parse.quote(job)}/timelapse.mp4" if job and os.path.isfile(os.path.join(root, job, "timelapse.mp4")) else None
+    return {"jobs": jobs, "job": job, "frames": out, "video": video}
 
 
 def wake_camera():
@@ -554,13 +576,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(200, [json.loads(x) for x in lines[::-1] if x.strip()])
         if p.startswith("/api/frames"):
             return self.send(200, frames(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("job", [""])[0]))
-        m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.jpg)", p)
+        m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.(jpg|mp4))", p)
         if m and not m.group(1).startswith("."):
             import printer
             f = os.path.join(printer.FRAMES, m.group(1), m.group(2))
-            if os.path.isfile(f):
-                return self.send(200, open(f, "rb").read(), "image/jpeg")
-            return self.send(404, {"error": "no such frame"})
+            if not os.path.isfile(f):
+                return self.send(404, {"error": "no such file"})
+            data = open(f, "rb").read()
+            if m.group(3) == "jpg":
+                return self.send(200, data, "image/jpeg")
+            # video: Safari on iPhone and iPad plays only with byte ranges
+            rng = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
+            if rng and (rng.group(1) or rng.group(2)):
+                a = int(rng.group(1)) if rng.group(1) else max(len(data) - int(rng.group(2)), 0)
+                b = min(int(rng.group(2)), len(data) - 1) if rng.group(1) and rng.group(2) else len(data) - 1
+                if a > b or a >= len(data):
+                    return self.send(416, b"", "video/mp4", {"Content-Range": f"bytes */{len(data)}"})
+                return self.send(206, data[a:b + 1], "video/mp4", {"Content-Range": f"bytes {a}-{b}/{len(data)}", "Accept-Ranges": "bytes"})
+            return self.send(200, data, "video/mp4", {"Accept-Ranges": "bytes"})
         if p.startswith("/api/look"):
             return self.look()
         if p == "/api/alerts":
