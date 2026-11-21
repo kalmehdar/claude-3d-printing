@@ -91,6 +91,23 @@
       "source": "models/fit-card.scad"
     },
     {
+      "id": "insertcard",
+      "name": "Insert card",
+      "for": "The right hole for M3 heat-set inserts on your printer, in one short print. Six bosses with pockets from 3.8 to 4.3 mm. Melt an insert into each, then screw a bolt in and out: the best hole is the smallest where the insert sits flush and doesn't turn. Tell Claude the number and every design after uses it.",
+      "status": "Check first: not yet printed",
+      "state": "check",
+      "material": "Any, one head; print it in the material your inserts go into",
+      "credit": "Designed with Claude in OpenSCAD (models/insert-card.scad); stored with tools/fit.py",
+      "parts": [
+        [
+          "Card",
+          "stl/insert-card-card.stl",
+          "#1f1f22"
+        ]
+      ],
+      "source": "models/insert-card.scad"
+    },
+    {
       "id": "bins",
       "name": "Colour-coded Gridfinity bins",
       "for": "Eleven bins that fill a 5 x 5 Gridfinity tray, 42 mm tall, each name printed into a band in its category colour: red power, blue network, white storage, plain black for the rest.",
