@@ -38,6 +38,7 @@ Before writing a key, confirm it exists for this printer: `python tools/orca.py 
 
 - **Four heads, four filaments.** Calibrate per head and filament; each head's PA is separate (`extruder`, `extruder1`, `extruder2`, `extruder3`).
 - **The printer has its own PA calibration**, `FLOW_CALIBRATE` (Snapmaker's `flow_calibrator.py`). Despite the name, it measures pressure advance K, not flow ratio. It runs on the active head, stores the result per loaded filament, and resets on unload or filament change (`FLOW_RESET_K`). Flow ratio still comes from the slicer profile.
+- **Check what the heads actually use** (21 Nov 2026): `printer/objects/query?extruder=pressure_advance` read 0.0 on T0 and T1 and 0.04 on T2 and T3, with `enable_pressure_advance` = 0 in every profile, so nothing was setting PA and the black PETG had printed every job without it. Read it live before and after calibrating.
 - **Pick one PA source per filament.** A PA value sent by the slicer overrides the measured one, and Snapmaker Orca sends it by default (the setting's exact name is unconfirmed). Either tune PA in OrcaSlicer and keep the slicer value, or rely on `FLOW_CALIBRATE` and stop the slicer sending PA. Forum users found the two disagree (PETG 0.033 measured against 0.051 by hand), so do not mix them.
 - `FLOW_CALIBRATE` heats and moves the head: it is a real job, not a probe. Run it only with the person's go and an empty bed, like a print.
 
