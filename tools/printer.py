@@ -11,9 +11,12 @@
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
+    python printer.py notify "Title" ["text"] [--level good|warn|bad]   post to Discord (watch posts when a job ends)
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
 The camera: --camera PATH on Moonraker (default /server/files/camera/monitor.jpg, the Snapmaker U1's still).
+Discord: a channel webhook URL in PRINTER_DISCORD_WEBHOOK or "discord_webhook" in printer.json (keep it out of git);
+"discord_mention" (e.g. <@123>) is added to warn and bad posts.
 Moonraker often has no password: use it on a home network or over a VPN only. Standard library only.
 """
 import argparse
@@ -28,6 +31,27 @@ import uuid
 CONF = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "printer.json")
 RUNNING = ("printing", "paused")
 BASE = CAMERA = None
+CFG = {}
+LEVEL = {"info": 1920728, "good": 955268, "warn": 11880200, "bad": 11805464}
+
+
+def notify(title, text="", level="info"):
+    """Post a Discord embed if a webhook is set up: True posted, False failed, None when no webhook is set."""
+    url = os.environ.get("PRINTER_DISCORD_WEBHOOK") or CFG.get("discord_webhook")
+    if not url:
+        return None
+    body = {"embeds": [{"title": title[:250], "description": text[:3000], "color": LEVEL.get(level, LEVEL["info"]),
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}]}
+    if level in ("warn", "bad") and CFG.get("discord_mention"):
+        body["content"] = CFG["discord_mention"]
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "claude-3d-printing/printer.py"})
+    try:
+        urllib.request.urlopen(req, timeout=10).read()
+        return True
+    except OSError as e:
+        print("discord post failed:", getattr(e, "code", e), file=sys.stderr)   # never echo the URL
+        return False
 
 
 def call(path, method="GET", body=None, timeout=15, raw=False):
@@ -121,6 +145,10 @@ def watch(every, frames):
                 pass
         if seen_running and s["state"] not in RUNNING:
             print("ended:", s["state"], s.get("message", ""))
+            done = s["state"] == "complete"
+            notify(f'{"Print finished" if done else "Print stopped"}: {s["file"] or "job"}',
+                   f'{s["state"]} after {s["printing_min"]:.0f} min, {s["filament_used_m"]} m of filament. {s.get("message", "")}'.strip(),
+                   "good" if done else "bad")
             return s["state"]
         time.sleep(every)
 
@@ -128,6 +156,7 @@ def watch(every, frames):
 def main():
     global BASE, CAMERA
     conf = json.load(open(CONF, encoding="utf-8")) if os.path.exists(CONF) else {}
+    CFG.update(conf)
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="\n".join(__doc__.splitlines()[2:]))
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST") or conf.get("host"))
@@ -139,7 +168,14 @@ def main():
     ap.add_argument("--queue", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--frames", default="printer-frames")
+    ap.add_argument("--level", default="info", choices=list(LEVEL))
     a = ap.parse_args()
+    if a.cmd == "notify":
+        r = notify(a.args[0], " ".join(a.args[1:]), a.level)
+        if r is None:
+            sys.exit("no Discord webhook set (PRINTER_DISCORD_WEBHOOK or discord_webhook in printer.json)")
+        print("posted" if r else "not posted")
+        sys.exit(0 if r else 1)
     if not a.printer:
         sys.exit(f"no printer: pass --printer, set PRINTER_HOST, or write {{\"host\": \"...\"}} to {CONF}")
     BASE, CAMERA = f"http://{a.printer}:{a.port}", a.camera
