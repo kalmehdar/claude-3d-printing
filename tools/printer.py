@@ -7,6 +7,8 @@
     python printer.py start part.gcode --bed-clear   start now; the flag says the bed was seen empty (camera or a person)
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
     python printer.py pause | resume | cancel
+    python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
+    python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
     python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
     python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
@@ -661,6 +663,17 @@ def main():
     elif c in ("pause", "resume", "cancel"):
         print(call(f"/printer/print/{c}", "POST"))
         record({"pause": "paused", "resume": "resumed", "cancel": "cancelled"}[c], status().get("file") or "")
+    elif c == "speed":   # the screen's speed override (M220): safe mid-print, bounded so a typo can't wreck a job
+        if not x:
+            q = query("gcode_move")["gcode_move"]
+            print(f'speed {q["speed_factor"] * 100:.0f}%')
+        else:
+            pct = int(x[0].rstrip("%"))
+            if not 50 <= pct <= 150:
+                sys.exit("refused: speed is 50 to 150 percent")
+            call("/printer/gcode/script?script=" + urllib.parse.quote(f"M220 S{pct}"), "POST")
+            record(f"speed set to {pct}%", status().get("file") or "")
+            print(f"speed {pct}%")
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
     elif c == "unload":
