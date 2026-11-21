@@ -190,7 +190,7 @@ with tempfile.TemporaryDirectory() as d:
     photo = os.path.join(d, "x-layer50.jpg"); open(photo, "wb").write(b"jpg")
     def verdicts(*vs):
         it = iter(vs)
-        workshop.look_at_photo = lambda jpg, layer: dict(next(it))
+        workshop.look_at_photo = lambda jpg, layer, plan=None: dict(next(it))
     bad = {"verdict": "pause", "problem": "spaghetti", "confidence": 0.95, "reason": "tangles"}
     ok = {"verdict": "ok", "problem": "none", "confidence": 0.9, "reason": "fine"}
     verdicts(bad, ok); workshop.photo_watch("a.gcode", 50, photo)
@@ -274,4 +274,48 @@ with tempfile.TemporaryDirectory() as d:
             workshop.requests_(bad, who="x"); raise AssertionError(str(bad))
         except ValueError:
             pass
+# print log: one row appended to the end of the register's table, '?' where only a person knows
+with tempfile.TemporaryDirectory() as d:
+    reg = os.path.join(d, "prints.md")
+    open(reg, "w").write("# Print log\n\n| Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof? |\n"
+                         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| 2026-11-20 | old.gcode | ? | ? | ? | 1 | 1 min | ? | Completed | No |\n\nNotes after the table.\n")
+    fil = os.path.join(d, "filament.md"); open(fil, "w").write("| Material | Price |\n| --- | --- |\n| PETG | £12.00 per kg |\n")
+    workshop.SPOOLS = os.path.join(d, "spools.json")
+    json.dump({"T1": {"spool": "SUNLU PETG black", "start_g": 1000, "used_g": 0}}, open(workshop.SPOOLS, "w"))
+    workshop.CFG.update(print_log=None, register=fil)
+    assert workshop.log_print({"state": "complete", "file": "a.gcode"}, {}, {"T1": 10}) is None   # no register set: nothing written
+    workshop.CFG["print_log"] = reg
+    row = workshop.log_print({"state": "complete", "file": "panel-quality.gcode", "printing_min": 125.4},
+                             {"filament_type": "PETG;PETG"}, {"T1": 250.0}, folder="/x/panel-quality-000009")
+    lines = open(reg).read().split("\n")
+    assert lines[5] == row and lines[6] == "" and "Notes after the table." in lines, lines
+    assert row == "| " + workshop.time.strftime("%Y-%m-%d") + " | panel-quality.gcode | ? | SUNLU PETG black on T1 | quality | 250.0 (measured) | 125 min | £3.00 | Completed; timelapse panel-quality-000009/timelapse.mp4 | ? |", row
+# cancel one part: only a part still printing, never the last one left, and only that one command is sent
+sent = []
+class _OK:
+    def read(self): return b"{}"
+workshop.moonraker = lambda method, path, **k: (sent.append(path), _OK())[1]
+def fake_parts(left, state="printing"):
+    workshop.parts = lambda: {"file": "bins.gcode", "state": state, "objects": [{"name": n} for n in left], "excluded": [], "current": left[0] if left else None, "left": left}
+fake_parts(["A", "B"])
+assert workshop.cancel_part("A B", "x")[0] == 400 and workshop.cancel_part("C", "x")[0] == 400 and not sent
+fake_parts(["A"])
+code, body = workshop.cancel_part("A", "x")
+assert code == 409 and "only part left" in body["error"] and not sent, body
+fake_parts(["A", "B"], state="standby")
+assert workshop.cancel_part("A", "x")[0] == 409 and not sent
+fake_parts(["A", "B"])
+code, body = workshop.cancel_part("B", "x")
+assert code == 200 and body["left"] == ["A"] and sent == ["/printer/gcode/script?script=EXCLUDE_OBJECT%20NAME%3DB"], (code, body, sent)
+# the Claude app's cancel tool refuses without the person's yes and sends nothing
+import printer_mcp
+_calls = []
+printer_mcp.http = lambda m, path, body=None, **k: (_calls.append((m, path, body)), {"cancelled": "B", "left": ["A"]})[1]
+for args in ({"name": "B"}, {"name": "B", "person_said_yes": "yes"}):
+    try:
+        printer_mcp.t_cancel_part(args); raise AssertionError(args)
+    except ValueError:
+        pass
+assert not _calls
+assert printer_mcp.t_cancel_part({"name": "B", "person_said_yes": True}).startswith("Cancelled B") and _calls == [("POST", "/api/parts", {"name": "B"})], _calls
 print("printer_mcp.py checks passed")

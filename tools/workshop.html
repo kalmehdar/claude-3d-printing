@@ -298,6 +298,10 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
         <div class="grid" style="align-content:start">
           <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
+          <div class="card" id="partsCard" hidden><h2>Parts on the bed</h2>
+            <img id="partsMap" alt="The bed from above with each part's outline" style="width:100%;max-width:320px;border-radius:8px;display:block;margin:0 auto 10px;background:#121316">
+            <div class="list" id="partsList"></div>
+            <p class="note" style="margin:10px 0 0">One part going wrong? Cancel just that part and the rest keep printing. You see it marked first.</p></div>
           <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
           <div class="card" id="pushCard" hidden><h2>Phone alerts</h2><p class="note">Get a push when a print pauses, finishes or stops.
             Install the free <b>ntfy</b> app, then open this link on your phone (or add the topic in the app).</p>
@@ -564,11 +568,37 @@ async function poll() {
     S.status = r.status; $("#conn").className = "dot on"; render();
     if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
+    const st = S.status?.print_stats?.state;
+    if ((st === "printing" || st === "paused") && Date.now() - (loadParts.t || 0) > 30000) loadParts();
+    else if (st !== "printing" && st !== "paused") $("#partsCard").hidden = true;
   } catch (e) {
     $("#conn").className = "dot off"; $("#statePill").textContent = "Printer offline"; $("#statePill").className = "pill error";
     $("#updated").textContent = e.message;
   }
 }
+/* ---------- cancel one part: marked picture first, then only that part (EXCLUDE_OBJECT) ---------- */
+const partWord = n => n.replace(/_ID_\d+_COPY_\d+$/i, "").replace(/_/g, " ").toLowerCase().replace(/^./, c => c.toUpperCase());
+async function loadParts() {
+  loadParts.t = Date.now();
+  let p; try { p = await api("/api/parts"); } catch (e) { return; }
+  const show = p.objects.length > 1;   // one part only: cancelling it would be the whole print, so no card
+  $("#partsCard").hidden = !show; if (!show) return;
+  $("#partsMap").src = "/parts-map.png?t=" + Date.now();
+  $("#partsList").innerHTML = p.objects.map(o => { const gone = p.excluded.includes(o.name), now = o.name === p.current;
+    return issueHtml({icon: gone ? "cancelled" : now ? "progress" : "queued", id: "", title: esc(partWord(o.name)),
+      meta: [gone ? "cancelled" : now ? "printing now" : "waiting its turn"],
+      acts: gone || p.left.length < 2 ? "" : `<button class="btn sm danger" data-cpart="${esc(o.name)}">Cancel this part</button>`}); }).join("");
+}
+$("#partsList").addEventListener("click", e => { const b = e.target.closest("[data-cpart]"); if (!b) return;
+  const name = b.dataset.cpart;
+  const body = openSheet("Cancel one part?", `<div class="two"><div><img src="/parts-map.png?mark=${encodeURIComponent(name)}&t=${Date.now()}" alt="The bed from above, the part to cancel in red" style="width:100%;border-radius:10px;background:#121316"></div>
+      <div><img src="/cam.jpg?t=${Date.now()}" alt="The printer right now" style="width:100%;border-radius:10px"></div></div>
+    <p><b>${esc(partWord(name))}</b> (red) stops printing; every other part carries on. This can't be undone for this print.</p>
+    <div class="actions"><button class="btn danger" id="cpYes">Cancel only this part</button><button class="btn" id="cpNo">Keep printing</button></div>`);
+  body.querySelector("#cpNo").onclick = closeSheet;
+  body.querySelector("#cpYes").onclick = async () => { try { await post("/api/parts", {name}); toast("Cancelled: " + partWord(name)); closeSheet(); loadParts(); } catch (err) { toast(err.message, true); } };
+});
+
 const STATE_WORD = {printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error", standby: "Ready"};
 function render() {
   const s = S.status, ps = s.print_stats, ds = s.display_status || {}, info = ps.info || {};

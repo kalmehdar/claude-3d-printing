@@ -171,6 +171,29 @@ def t_requests(a):
                      for r in rows) or "No open print requests."
 
 
+def t_parts(a):
+    p = http("GET", "/api/parts")
+    if len(p["objects"]) < 2:
+        return f'{p["file"] or "This print"} has {len(p["objects"])} part' + ("" if len(p["objects"]) == 1 else "s") + \
+            ": nothing to cancel on its own (cancelling the only part is the whole print, which stays a person's call)."
+    mark = a.get("mark")
+    png = http("GET", "/parts-map.png" + (f"?mark={q(mark)}" if mark else ""), raw=True, timeout=60)
+    jpg = http("GET", "/cam.jpg?t=" + str(time.time()), raw=True, timeout=20)
+    rows = [f'{o["name"]}: ' + ("cancelled" if o["name"] in p["excluded"] else "printing now" if o["name"] == p["current"] else "waiting its turn")
+            for o in p["objects"]]
+    return [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"},
+            {"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
+            {"type": "text", "text": f'{p["file"]}: bed from above (part outlines, ' + (f"{mark} in red, " if mark else "") +
+             "first layer in blue, front edge at the bottom), then the camera now.\n" + "\n".join(rows)}]
+
+
+def t_cancel_part(a):
+    if a.get("person_said_yes") is not True:
+        raise ValueError("ask first: show the person printer_parts with mark set to this part, and cancel only after they say yes")
+    r = http("POST", "/api/parts", {"name": a["name"]})
+    return f'Cancelled {r["cancelled"]}; still printing: {", ".join(r["left"])}.'
+
+
 def t_files(_):
     files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
@@ -326,6 +349,11 @@ TOOLS = [
       "sub": {"type": "string", "description": "sub-type, e.g. generic, HF, Silk"}, "colour": {"type": "string", "description": "hex RRGGBB"}},
      t_filament, ["head", "type", "colour"]),
     ("printer_filament_types", "The filament types, brands and sub-types the printer knows.", {}, t_filament_types),
+    ("printer_parts", "The parts of the running print (one per object the slicer defined): which is printing, waiting or cancelled, with a top-down bed picture and the camera. With mark, that part is filled red: show this to the person before printer_cancel_part.",
+     {"mark": {"type": "string", "description": "a part name to fill red, as printer_parts lists it"}}, t_parts),
+    ("printer_cancel_part", "Stop printing ONE part and keep the rest going (EXCLUDE_OBJECT). Ask first: show printer_parts with mark set to it and wait for the person's yes. Workshop refuses the last part left (that is the whole print, a person's own cancel).",
+     {"name": {"type": "string", "description": "the part's name from printer_parts"}, "person_said_yes": {"type": "boolean", "description": "true only after the person saw the marked picture and said yes"}}, t_cancel_part,
+     ["name", "person_said_yes"]),
     ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
      {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),
     ("printer_light", "Turn the chamber light on or off.", {"on": {"type": "boolean"}}, t_light),
