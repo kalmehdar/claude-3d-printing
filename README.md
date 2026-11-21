@@ -41,6 +41,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 
 | Path | What it does |
 | --- | --- |
+| `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
 | `tools/fit.py` | Your printer's measured fits (slide and press clearance) from the fit card, so every design uses them instead of a material guess |

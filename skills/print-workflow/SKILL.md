@@ -24,6 +24,8 @@ The tools ship with this skill: `tools/` sits two folders above this skill's bas
 - Same-colour shapes that touch only along an edge or a corner make non-manifold meshes: overlap them by 0.01 mm.
 - Upgrading an STL: `import("file.stl", convexity = 6)`, then `difference()` to cut (pockets, holes, label recesses), `union()` to add (hooks, tabs, feet, ribs), `intersection()` to lift a region out as its own colour, removing it from the body with `difference()`. Read the STL's size and bounds first (run `export_parts.py` on a file that imports it, or `mesh_audit.py` on its folder) and place everything from those numbers. `examples/models/upgrade-bin.scad` is the pattern.
 
+**Look before exporting:** `python tools/look.py model.scad` (add `--part <name>` or `-D name=value` as needed) writes `model-look.png` with angled, top, front and side views in colour and prints the real size in mm. Read the picture and compare it with the brief: sizes, which face is down, label direction, nothing floating. Fix, then look again.
+
 ## 3. Export
 
 ```bash
