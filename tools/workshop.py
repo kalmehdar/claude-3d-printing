@@ -409,13 +409,17 @@ def alert_change(prev, s):
            "error": (f"Printer error: {f}", (s.get("message") or "Look at the printer.").strip(), "bad")}.get(s["state"])
     if msg and prev in ("printing", "paused"):
         printer.push(*msg, click=CFG.get("url"))
+        if s["state"] in ("complete", "cancelled", "error"):   # a part (or what's left of one) now sits on the bed
+            bed("part waiting", who="", file=s.get("file") or "")
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
             try:
                 with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
                     take_off_spools(s.get("file"), (s.get("filament_used_m") or 0) * 1000, json.load(r)["result"])
             except (OSError, ValueError, KeyError) as e:
                 print("spool update failed:", e, flush=True)
-    elif s["state"] == "printing" and prev == "paused":
+    elif s["state"] == "printing" and prev not in ("printing", "paused"):
+        bed("printing", who="", file=f)
+    if s["state"] == "printing" and prev == "paused":
         printer.push(f"Print resumed: {f}", "", "info", click=CFG.get("url"))
 
 
@@ -604,6 +608,21 @@ def photo_watch(file, layer, photo):
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
     except (OSError, ValueError, KeyError, StopIteration) as e:
         log({"error": str(e)[:200]})
+
+
+BED = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "bed.json")
+
+
+def bed(state=None, who="", file=""):
+    """The bed between two people: {"state": "clear" | "part waiting" | "printing", "file", "who", "t"}; state saves."""
+    if state:
+        os.makedirs(os.path.dirname(BED), exist_ok=True)
+        json.dump({"state": state, "file": file, "who": who, "t": time.time()}, open(BED + ".part", "w"))
+        os.replace(BED + ".part", BED)
+    try:
+        return json.load(open(BED, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unknown"}
 
 
 SPOOLS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "spools.json")
@@ -939,6 +958,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/bed":
+            if self.command == "POST":   # "I took it off": the bed is clear again, and who did it is logged
+                b = bed()
+                bed("clear", who=actor(self), file=b.get("file", ""))
+                record("took the part off the bed", b.get("file", ""), who=actor(self))
+            return self.send(200, bed())
         if p == "/api/spools":
             if self.command == "POST":   # a new spool on a head: {head, spool, grams}
                 try:

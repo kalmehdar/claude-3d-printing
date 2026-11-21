@@ -87,6 +87,14 @@ def t_status(_):
         ch = feed.get(f"extruder{i}", {}).get("channel_state")
         lines.append(f'T{i}: {fil}{" #" + col if col else ""}, {words.get(ch, ch or "?")}, '
                      f'{s[h]["temperature"]:.0f} / {s[h]["target"]:.0f} C{" (active)" if s[h].get("state") == "ACTIVATE" else ""}')
+    try:   # the bed between two people: a finished part waiting, or cleared by whom
+        b = http("GET", "/api/bed")
+        if b.get("state") == "part waiting":
+            lines.append(f'Bed: {b.get("file") or "a print"} is waiting on it since {time.strftime("%H:%M", time.localtime(b["t"]))}; someone must take it off first')
+        elif b.get("state") == "clear" and b.get("who"):
+            lines.append(f'Bed: cleared by {b["who"]} at {time.strftime("%H:%M", time.localtime(b["t"]))}')
+    except (RuntimeError, KeyError, ValueError):
+        pass
     try:   # grams left on each head's spool (Workshop counts what each print really used)
         heads = http("GET", "/api/spools").get("heads", {})
         left = [f'{h} {v["spool"]}: about {max(0, v["start_g"] - v["used_g"]):.0f} g left' for h, v in sorted(heads.items())]

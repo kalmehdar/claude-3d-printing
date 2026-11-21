@@ -44,6 +44,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.reply(200, {"enabled": True, "every": 25, "checks": []})
         if p.startswith("/api/spools"):
             return self.reply(200, {"low_g": 200, "heads": {}})
+        if p.startswith("/api/bed"):
+            return self.reply(200, {"state": "printing"})
         if p.startswith("/api/calibration") and self.command == "POST":
             return self.reply(201, {"test": "temperature", "value": "240", "filament": "SUNLU PETG", "key": "nozzle_temperature", "photo": "/x.jpg"})
         if p.startswith("/api/frames"):
@@ -244,4 +246,18 @@ with tempfile.TemporaryDirectory() as d:
     sp = workshop.spools()
     assert sp["T0"]["used_g"] == 3.7 and sp["T1"]["used_g"] == 274.2, sp
     assert pushes and "T1 black" in pushes[-1][1], pushes   # 400 - 274 = 126 g left: under 200, warned once
+# bed handover: a finished (or cancelled) print leaves a part waiting; a new print means someone said the bed was clear
+with tempfile.TemporaryDirectory() as d:
+    workshop.BED, workshop.SPOOLS = os.path.join(d, "bed.json"), os.path.join(d, "spools.json")
+    class _M:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return json.dumps({"result": {}}).encode()
+    workshop.moonraker = lambda *a, **k: _M()
+    workshop.alert_change("printing", {"state": "complete", "file": "panel.gcode", "printing_min": 300, "filament_used_m": 85.8})
+    assert workshop.bed()["state"] == "part waiting" and workshop.bed()["file"] == "panel.gcode"
+    workshop.alert_change("standby", {"state": "printing", "file": "next.gcode"})
+    assert workshop.bed()["state"] == "printing"
+    workshop.alert_change("printing", {"state": "cancelled", "file": "next.gcode", "printing_min": 5, "filament_used_m": 1})
+    assert workshop.bed()["state"] == "part waiting"
 print("printer_mcp.py checks passed")

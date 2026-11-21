@@ -424,6 +424,7 @@ async function setFilament(i) {
     } catch (e) { toast(e.message, true); }
   };
 }
+async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ } }
 async function loadSpools() { try { S.spools = await api("/api/spools"); } catch (e) { /* the head cards just leave grams out */ } }
 async function newSpool(i) {
   const tc = (S.status || {}).print_task_config || {};
@@ -819,12 +820,17 @@ function renderBanner() {
   } else if (ps.state === "paused") { cls = "warn"; text = `Paused: ${ps.filename}`; sub = fresh[0] ? fresh[0].advice || fresh[0].text : "Check the warning below, then resume on the screen or cancel and start again."; }
   else {
     const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
-    if (ps.state === "complete") { cls = "warn"; text = `Finished ${ps.filename}`; sub = "Take it off the bed before the next print."; }
+    const waiting = S.bed && S.bed.state === "part waiting";
+    if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${S.bed.file || "A print"} is waiting on the bed` : `Finished ${ps.filename}`;
+      sub = `Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let PETG cool, flex the plate, then tap "I took it off" so the other person knows.`; }
+    else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
-  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+  const takeOff = S.bed && S.bed.state === "part waiting" && ps.state !== "printing" && ps.state !== "paused";
+  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}`;
+  if (takeOff) $("#tookOff").onclick = async () => { try { S.bed = await post("/api/bed"); toast("Bed marked clear"); render(); } catch (e) { toast(e.message, true); } };
 }
 /* ---------- layer photos (saved by printer.py watch) ---------- */
 const FR = {job: "", list: [], follow: true};
@@ -906,7 +912,7 @@ api("/api/info").then(i => { S.info = i;
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
 loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAlerts(); loadActivity(); } }, 10000);
-loadSpools(); setInterval(() => { if (!document.hidden) loadSpools(); }, 30000);
+loadSpools(); loadBed(); setInterval(() => { if (!document.hidden) { loadSpools(); loadBed(); } }, 15000);
 loadAccuracy(); loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
 askWho(false);
 camLoop();
