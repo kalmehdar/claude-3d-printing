@@ -10,6 +10,7 @@ Set OPENSCAD if it is not on PATH; a development snapshot renders in seconds. St
 import argparse
 import math
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -67,6 +68,28 @@ def bbox(stl):
     return lo, hi
 
 
+LIB_LINE = re.compile(r"^\s*(include|use)\s*<([^>]+)>\s*;?\s*$", re.M)
+
+
+def hoist_libraries(scad):
+    """(the model's top-level include/use lines, a sibling copy of the model without them). Relative library paths that
+    exist beside the model are made absolute so they still resolve from the sheet. The copy sits beside the model so its
+    own relative imports keep working; the caller's temp-dir cleanup does not reach it, so it is removed at exit."""
+    import atexit
+    src = open(scad, encoding="utf-8").read()
+    here = os.path.dirname(os.path.abspath(scad))
+    lines = []
+    for m in LIB_LINE.finditer(src):
+        path = os.path.join(here, m.group(2))
+        lines.append(f"{m.group(1)} <{path if os.path.exists(path) else m.group(2)}>\n")
+    if not lines:
+        return "", scad
+    copy = os.path.join(here, f".look-{os.getpid()}-{os.path.basename(scad)}")
+    open(copy, "w", encoding="utf-8").write(LIB_LINE.sub("", src))
+    atexit.register(lambda: os.path.exists(copy) and os.remove(copy))
+    return "".join(lines), copy
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("scad")
@@ -101,7 +124,10 @@ def main():
             for (label, rots), (c, r) in zip(VIEWS, cells))
         # in OpenSCAD the last assignment in a scope wins, so the overrides go after the include
         overrides = "".join(f"{d.split('=', 1)[0]} = {d.split('=', 1)[1]}; " for d in [f'part="{a.part}"'] + a.D)
-        open(sheet, "w", encoding="utf-8").write(f"module model() {{ include <{scad}> {overrides}}}\n{body}")
+        # top-level include/use lines go on the sheet itself: a library's own `use` lines are not allowed inside a module
+        # (BOSL2 failed with a syntax error, found on the Legion 21 Nov 2026); the rest of the model goes in the module
+        hoisted, rest = hoist_libraries(scad)
+        open(sheet, "w", encoding="utf-8").write(f"{hoisted}module model() {{ include <{rest}> {overrides}}}\n{body}")
         sheet_w, sheet_h = sum(colw) + 2 * gap, sum(rowh) + 2 * gap
         height = max(240, min(2 * a.size, round(a.size * sheet_h / sheet_w)))
         # orthographic: the visible height is distance x tan(fov / 2) x 2 with OpenSCAD's 22.5 degree field of view

@@ -310,7 +310,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right"];
+const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -357,6 +357,8 @@ function render() {
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
   if (ps.state === "paused") acts.push(`<button class="btn primary" data-a="resume">Resume</button>`);
   if (active) acts.push(`<button class="btn danger" data-a="cancel">Cancel print</button>`);
+  const sp = Math.round(100 * ((s.gcode_move || {}).speed_factor || 1));
+  if (active) acts.push(`<span class="note" style="align-self:center">Speed ${sp}%</span><button class="btn sm ghost" data-a="slower" ${sp <= 50 ? "disabled" : ""}>Slower</button><button class="btn sm ghost" data-a="faster" ${sp >= 150 ? "disabled" : ""}>Faster</button>`);
   if (!active && ps.filename) acts.push(`<button class="btn" data-a="again">Print again</button>`);
   if (!active) acts.push(`<button class="btn ghost" data-a="cool">Heaters off</button>`);
   $("#jobActions").innerHTML = acts.join("");
@@ -382,6 +384,9 @@ $("#jobActions").addEventListener("click", async e => {
     if (a === "cancel") return confirmSheet("Cancel this print?", "The print stops and cannot be resumed.", "Cancel print", async () => { await post(M("/printer/print/cancel")); toast("Cancelling"); });
     if (a === "again") return bedCheck(S.status.print_stats.filename);
     if (a === "cool") { await gcode("TURN_OFF_HEATERS"); toast("Heaters off"); }
+    if (a === "slower" || a === "faster") {   // 10% steps, 50-150% (Workshop refuses anything outside)
+      const now = Math.round(100 * ((S.status.gcode_move || {}).speed_factor || 1)), to = Math.max(50, Math.min(150, now + (a === "faster" ? 10 : -10)));
+      await gcode(`M220 S${to}`); toast(`Speed ${to}%`); }
     poll();
   } catch (err) { toast(err.message, true); }
 });
