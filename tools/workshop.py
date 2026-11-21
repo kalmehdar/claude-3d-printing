@@ -306,7 +306,9 @@ def watch_alerts():
                 last = (s["file"], s["layer"])
                 was = os.path.dirname(f)
                 n = int(s["layer"].split("/")[0] or 0)
-                due = n == 2 or (n and n // PHOTO_EVERY > checked.get(s["file"], 0))
+                if s["file"] not in checked:
+                    checked[s["file"]] = checked_block(s["file"])
+                due = (n == 2 and checked[s["file"]] < 0) or (n > 2 and n // PHOTO_EVERY > checked[s["file"]])
                 if due and api_key() and not (watcher and watcher.is_alive()):
                     checked[s["file"]] = n // PHOTO_EVERY
                     watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f), daemon=True)
@@ -550,6 +552,22 @@ def look_at_photo(jpg, layer):
     v = json.loads(text)
     v["usage"] = {k: res.get("usage", {}).get(k) for k in ("input_tokens", "output_tokens")}
     return v
+
+
+def checked_block(file):
+    """The highest 25-layer block already checked for this file, from the log, so a Workshop restart does not check again."""
+    best = -1
+    try:
+        for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-200:]:
+            try:
+                d = json.loads(x)
+                if d.get("file") == file and d.get("layer") is not None:
+                    best = max(best, int(d["layer"]) // PHOTO_EVERY)
+            except (ValueError, TypeError):
+                pass
+    except OSError:
+        pass
+    return best
 
 
 def photo_watch(file, layer, photo):
@@ -835,6 +853,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/photo-checks":   # the photo watch's recent verdicts, newest first (no photos, no keys)
+            rows = []
+            try:
+                for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-30:][::-1]:
+                    try:
+                        d = json.loads(x)
+                        rows.append({k: d.get(k) for k in ("t", "file", "layer", "verdict", "problem", "confidence", "reason", "error", "second_look")})
+                    except ValueError:
+                        pass
+            except OSError:
+                pass
+            return self.send(200, {"enabled": bool(api_keys()), "every": PHOTO_EVERY, "checks": rows})
         if p == "/api/calibration":
             if self.command == "POST":
                 try:

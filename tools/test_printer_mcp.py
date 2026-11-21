@@ -201,4 +201,9 @@ with tempfile.TemporaryDirectory() as d:
     for name, val, mode in (("anthropic-key", "k1", 0o600), ("anthropic-key-2", "k2", 0o600), ("anthropic-key-3", "k3", 0o644)):
         f = os.path.join(d, name); open(f, "w").write(val + "\n"); os.chmod(f, mode)
     assert workshop.api_keys() == ["k1", "k2"], workshop.api_keys()
+# photo watch remembers across restarts: the log says block 12 of a.gcode was checked
+with tempfile.TemporaryDirectory() as d:
+    workshop.PHOTO_LOG = os.path.join(d, "c.jsonl")
+    open(workshop.PHOTO_LOG, "w").write('{"file": "a.gcode", "layer": 318}\n{"file": "b.gcode", "layer": 40}\n')
+    assert workshop.checked_block("a.gcode") == 12 and workshop.checked_block("b.gcode") == 1 and workshop.checked_block("c.gcode") == -1
 print("printer_mcp.py checks passed")

@@ -196,6 +196,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
             <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
             <div class="note" id="frInfo"></div>
+            <div class="note" id="pwInfo" hidden></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><select id="frJob" aria-label="Which print" hidden></select>
               <button class="btn sm" id="frPlay" hidden>Play timelapse</button><a class="btn sm ghost" id="frSave" hidden download>Download video</a></div></div>
         </div>
@@ -800,7 +801,16 @@ function showFrame() {
   $("#frImg").alt = `Layer ${f.layer ?? "?"} photo`;
   $("#frInfo").textContent = `${runName(FR.job)} · layer ${f.layer ?? "?"} at ${f.time} · photo ${+$("#frRange").value + 1} of ${FR.list.length}`;
 }
+async function loadPhotoWatch() {
+  let r; try { r = await api("/api/photo-checks"); } catch (e) { return; }
+  const el = $("#pwInfo"), c = r.checks.find(x => x.verdict || x.error);
+  el.hidden = !r.enabled; if (!r.enabled) return;
+  el.textContent = !c ? `Claude checks a photo at layer 2 and every ${r.every} layers.`
+    : c.error ? `Claude's last photo check failed (${c.error}); it tries again at the next check.`
+    : `Claude checked layer ${c.layer} at ${clock(new Date(c.t * 1000))}: ${c.verdict === "ok" ? "looks fine" : "PAUSED, " + c.problem.replace("_", " ")}. ${c.reason || ""}`;
+}
 async function loadFrames() {
+  loadPhotoWatch();
   let r; try { r = await api("/api/frames" + (FR.pinned ? "?job=" + enc(FR.job) : "")); } catch (e) { return; }   // unpinned: the newest print
   FR.jobs = r.jobs;
   if (r.job !== FR.job) { FR.list = []; FR.follow = true; }
