@@ -81,6 +81,8 @@ Ask for a part in the Claude desktop app ("a wall hook for a 20 mm rail, in blac
 design, shows you four views, exports the parts and slices them for your printer, with time and grams.
 
 1. Install OpenSCAD and OrcaSlicer (see Full setup), then check with `python tools/c3dp.py doctor`.
+   Installed this repo as a Claude Code plugin? Both servers (`design` and `printer`) come with it: Claude Code asks for the
+   Python command (`python` on Windows), your designs folder and, if you have them, Spoolman and Workshop addresses. Skip step 2.
 2. In the Claude desktop app: Settings, Developer, Edit Config, and add
    `{"mcpServers": {"design": {"command": "python3", "args": ["<repo>/tools/design_mcp.py"], "env": {"DESIGN_DIR": "<a folder for your designs>"}}}}`, then restart the app.
    In Claude Code: `claude mcp add design -e DESIGN_DIR=<folder> -- python3 <repo>/tools/design_mcp.py`. On Windows the command is `python`.
