@@ -26,6 +26,12 @@ The tests exist only in the GUI. The CLI has no calibration flags, and the per-l
 | Retraction tower (direct drive 0 to 2 mm, step 0.1) | Lowest clean height. Find its length in the G-code comment `; Calib_Retraction_tower: Z_HEIGHT: ..., length: ...`, not `; retract`. Strings even at the top mean dry the spool | `filament_retraction_length` |
 | Tolerance (right-click plate, Add Handy Model, Orca Tolerance Test) | Which hex hole a 6 mm Allen key fits | Hole and contour compensation; or keep using `tools/fit.py` |
 
+**Driving the GUI (Snapmaker Orca, seen 21 Nov 2026 on macOS):**
+- Each test opens as its own project; the rest of the Calibration menu greys out until you start a new project (Cmd+N). Answer "No" to saving and "Discard" to the temperature changes the test made to the preset.
+- Export with Cmd+G. It saves a `.gcode.3mf`; the G-code is inside at `Metadata/plate_1.gcode` (`unzip -p file.gcode.3mf Metadata/plate_1.gcode > test.gcode`).
+- Before sending, check the extracted file: the first `M190`/`M140` is the bed (not 0), `; filament_settings_id` names the intended profile on the right head, and the temperature tower's `M104 S<n> ; set nozzle temperature` lines step through the range you asked for.
+- The setup wizard and the main window are web views a screen reader can't see. Drive them by screen position, with the screen awake and unlocked and nobody else using it.
+
 Before writing a key, confirm it exists for this printer: `python tools/orca.py settings <word> --printer <setup>`. Save the filament profile after every step, and note the values in the print log.
 
 ## Snapmaker U1
