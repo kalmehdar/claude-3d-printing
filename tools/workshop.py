@@ -262,7 +262,8 @@ def watch_alerts():
     import printer
     printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
     import threading
-    last, was, pruned = None, None, 0
+    printer.load_conf()
+    last, was, pruned, prev = None, None, 0, None
     while True:
         try:
             scan_alerts()
@@ -270,6 +271,9 @@ def watch_alerts():
             print("alert scan failed:", e, flush=True)
         try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
             s = printer.status()
+            if prev and s["state"] != prev:
+                alert_change(prev, s)
+            prev = s["state"]
             if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
                 f = printer.layer_photo(s["file"], s["layer"].split("/")[0])
                 last = (s["file"], s["layer"])
@@ -357,6 +361,26 @@ def start_unload(head):
 
 
 _last_wake = [0.0]
+
+
+def alert_change(prev, s):
+    """Phone push (ntfy, if set in printer.json) when a print pauses, finishes or stops, whoever started it."""
+    import printer
+    f = s.get("file") or "the print"
+    took = f'{s["printing_min"] // 60:.0f} h {s["printing_min"] % 60:.0f} min, {s["filament_used_m"]} m of filament' if s.get("printing_min") else ""
+    msg = {"paused": (f"Print paused: {f}", (s.get("message") or "Check the printer before resuming.").strip(), "warn"),
+           "complete": (f"Print finished: {f}", f"Took {took}. Let the bed cool before taking it off." if took else "Let the bed cool before taking it off.", "good"),
+           "cancelled": (f"Print cancelled: {f}", took and f"After {took}.", "bad"),
+           "error": (f"Printer error: {f}", (s.get("message") or "Look at the printer.").strip(), "bad")}.get(s["state"])
+    if msg and prev in ("printing", "paused"):
+        printer.push(*msg, click=CFG.get("url"))
+    elif s["state"] == "printing" and prev == "paused":
+        printer.push(f"Print resumed: {f}", "", "info", click=CFG.get("url"))
+
+
+def printer_conf():
+    import printer
+    return printer.load_conf()
 
 
 def make_timelapse(folder):
@@ -593,7 +617,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     live = f"http://{CFG['printer']}/webcam/" if r.status == 200 else None
             except OSError:
                 live = None
-            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live,
+            conf = printer_conf()
+            push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
+            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "push": push,
                                    "presets": getattr(orca, "PRESET_WORDS", {})})
         if p.startswith("/api/activity"):
             import printer
@@ -733,7 +759,7 @@ def main():
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(url=f"http://{a.bind if a.bind != '0.0.0.0' else 'localhost'}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings

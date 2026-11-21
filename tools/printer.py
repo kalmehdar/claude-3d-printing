@@ -13,14 +13,15 @@
                                                   Snapmaker U1: tell the printer what was loaded on a head (as its screen does)
     python printer.py filament list               the types, vendors and sub-types the printer knows
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
-    python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
+    python printer.py watch [secs] [--frames DIR] [--quiet]   poll until the job ends, one photo per layer; --quiet: no alerts
     python printer.py history [n]
     python printer.py timelapse [FOLDER]          a short video from a print's layer photos (default the newest print; needs ffmpeg)
     python printer.py log [FILE]                  add finished jobs not yet in FILE (a markdown print log; default "log_file" in printer.json)
-    python printer.py notify "Title" ["text"] [--level good|warn|bad]   post to Discord (watch posts when a job ends)
+    python printer.py notify "Title" ["text"] [--level good|warn|bad]   phone push (ntfy) and/or Discord, whichever is set up
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
 The camera: --camera PATH on Moonraker (default /server/files/camera/monitor.jpg, the Snapmaker U1's still).
+Phone push: "ntfy_topic" in printer.json (a long random name; install the ntfy app and subscribe to it). "ntfy_server" if self-hosted.
 Discord: a channel webhook URL in PRINTER_DISCORD_WEBHOOK or "discord_webhook" in printer.json (keep it out of git);
 "discord_mention" (e.g. <@123>) is added to warn and bad posts.
 Moonraker often has no password: use it on a home network or over a VPN only. Standard library only.
@@ -51,9 +52,42 @@ CFG = {}
 LEVEL = {"info": 1920728, "good": 955268, "warn": 11880200, "bad": 11805464}
 
 
-def notify(title, text="", level="info"):
+def load_conf():
+    """printer.json into CFG (once); Workshop calls this too so both send the same alerts."""
+    if not CFG and os.path.exists(CONF):
+        CFG.update(json.load(open(CONF, encoding="utf-8")))
+    return CFG
+
+
+def push(title, text="", level="info", click=None):
+    """Phone push through ntfy if "ntfy_topic" is set in printer.json: True sent, False failed, None not set up.
+    The topic name is the only key: anyone who knows it can read the alerts, so keep it long and out of git."""
+    topic = load_conf().get("ntfy_topic")
+    if not topic:
+        return None
+    body = {"topic": topic, "title": title[:250], "message": text[:3000] or title, "priority": 4 if level in ("warn", "bad") else 3,
+            "tags": [{"good": "white_check_mark", "warn": "warning", "bad": "x"}.get(level, "printer")]}
+    if click:
+        body["click"] = click
+    req = urllib.request.Request(CFG.get("ntfy_server", "https://ntfy.sh"), data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "claude-3d-printing"})
+    try:
+        urllib.request.urlopen(req, timeout=10).read()
+        return True
+    except OSError as e:
+        print("push failed:", getattr(e, "code", e), file=sys.stderr)   # never echo the topic
+        return False
+
+
+def notify(title, text="", level="info", click=None):
+    """Phone push (ntfy) and a Discord embed, whichever are set up: True if any sent, False if all failed, None if none set up."""
+    sent = [push(title, text, level, click), discord(title, text, level)]
+    return None if all(r is None for r in sent) else any(sent)
+
+
+def discord(title, text="", level="info"):
     """Post a Discord embed if a webhook is set up: True posted, False failed, None when no webhook is set."""
-    url = os.environ.get("PRINTER_DISCORD_WEBHOOK") or CFG.get("discord_webhook")
+    url = os.environ.get("PRINTER_DISCORD_WEBHOOK") or load_conf().get("discord_webhook")
     if not url:
         return None
     body = {"embeds": [{"title": title[:250], "description": text[:3000], "color": LEVEL.get(level, LEVEL["info"]),
@@ -469,7 +503,7 @@ def bed_off_midprint(s):
             and 0 < int(cur) < int(tot))
 
 
-def watch(every, frames):
+def watch(every, frames, alerts=True):
     os.makedirs(frames, exist_ok=True)
     last, seen_running, cold_n = None, False, 0
     while True:
@@ -486,7 +520,7 @@ def watch(every, frames):
             call("/printer/print/pause", "POST")
             record("paused (bed heater off)", s["file"] or "", who="watch")
             print("PAUSED: printing with the bed heater off (" + s["bed"] + " C); check before resuming", flush=True)
-            notify(f'Print paused: {s["file"]}', f'The bed heater was off ({s["bed"]} C) while printing. Check the bed, then restart.', "warn")
+            alerts and notify(f'Print paused: {s["file"]}', f'The bed heater was off ({s["bed"]} C) while printing. Check the bed, then restart.', "warn")
         print(time.strftime("%H:%M"), s["state"], s["layer"] or "", f'{s["progress_pct"]}%',
               f'{s.get("left_min", "?")} min left', flush=True)
         if s["layer"] != last:
@@ -499,7 +533,7 @@ def watch(every, frames):
         if seen_running and s["state"] not in RUNNING:
             print("ended:", s["state"], s.get("message", ""))
             done = s["state"] == "complete"
-            notify(f'{"Print finished" if done else "Print stopped"}: {s["file"] or "job"}',
+            alerts and notify(f'{"Print finished" if done else "Print stopped"}: {s["file"] or "job"}',
                    f'{s["state"]} after {s["printing_min"]:.0f} min, {s["filament_used_m"]} m of filament. {s.get("message", "")}'.strip(),
                    "good" if done else "bad")
             if CFG.get("log_file"):
@@ -514,8 +548,7 @@ def watch(every, frames):
 
 def main():
     global BASE, CAMERA
-    conf = json.load(open(CONF, encoding="utf-8")) if os.path.exists(CONF) else {}
-    CFG.update(conf)
+    conf = load_conf()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="\n".join(__doc__.splitlines()[2:]))
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST") or conf.get("host"))
@@ -527,6 +560,7 @@ def main():
     ap.add_argument("--queue", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--frames", default=FRAMES)
+    ap.add_argument("--quiet", action="store_true", help="watch: no phone or Discord alerts (Workshop already sends them)")
     ap.add_argument("--level", default="info", choices=list(LEVEL))
     ap.add_argument("--vendor", default="generic")
     ap.add_argument("--sub", default="generic")
@@ -617,7 +651,7 @@ def main():
     elif c == "gcode":
         print(gcode(x[0], a.force))
     elif c == "watch":
-        watch(int(x[0]) if x else 60, a.frames)
+        watch(int(x[0]) if x else 60, a.frames, not a.quiet)
     elif c == "log":
         path = os.path.expanduser(x[0] if x else conf.get("log_file", ""))
         if not path:

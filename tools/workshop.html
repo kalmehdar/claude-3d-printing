@@ -202,6 +202,9 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
           <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
           <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
+          <div class="card" id="pushCard" hidden><h2>Phone alerts</h2><p class="note">Get a push when a print pauses, finishes or stops.
+            Install the free <b>ntfy</b> app, then open this link on your phone (or add the topic in the app).</p>
+            <div class="actions"><a class="btn sm" id="pushLink" target="_blank" rel="noopener">Subscribe on this phone</a></div></div>
           <div class="card"><h2>Recent activity</h2><div id="activity" class="note">Nothing yet.</div></div>
         </div>
       </div>
@@ -806,6 +809,7 @@ $("#cSend").onclick = async () => {
 
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;
+  if (i.push) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
   if (i.live_camera) {   // real video (WebRTC) instead of stills
     clearInterval(camTimer); camLoop = () => {};
     const f = document.createElement("iframe"); f.src = i.live_camera; f.title = "Live camera"; f.allow = "autoplay; fullscreen"; f.style.cssText = "width:100%;height:100%;border:0;display:block";
