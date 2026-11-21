@@ -89,6 +89,7 @@ section[hidden]{display:none!important}
 .chip.completed,.chip.ready{color:var(--ok)} .chip.cancelled,.chip.check{color:var(--warn)} .chip.error,.chip.klippy_shutdown{color:var(--bad)} .chip.in_progress{color:var(--info)}
 .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .toolbar input[type=search]{flex:1;min-width:160px;min-height:40px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel);padding:0 12px}
+.toolbar input:not([type=search]),.toolbar select{min-height:40px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:0 10px}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .stat span{color:var(--dim);font-size:12.5px;display:block} .stat b{font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -243,6 +244,16 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
+      <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
+        <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
+          value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+          <select id="calTest" aria-label="Which test"></select>
+          <input id="calFil" placeholder="Filament, e.g. SUNLU PETG white" aria-label="Filament" style="min-width:180px">
+          <input id="calVal" placeholder="Value picked, e.g. 240" aria-label="Value picked" style="width:150px">
+          <input id="calNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
+          <button class="btn primary" id="calSave">Record</button></div>
+        <div class="list" id="calList"></div></div>
       <div class="list" id="hList"></div>
     </section>
   </main>
@@ -697,6 +708,7 @@ async function openDesign(key) {
 /* ---------- history ---------- */
 async function loadHistory() {
   try {
+    loadCalibration();
     if (!FR.jobs) await loadFrames();
     const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
     const t = tot?.job_totals || {};
@@ -710,6 +722,23 @@ async function loadHistory() {
 }
 const histCost = j => { const mat = (j.metadata || {}).filament_type || "";   // the printer's own metres, not the slicer's guess
   return j.filament_used ? cost(gramsFromMetres(j.filament_used / 1000, mat), mat) : ""; };
+/* ---------- calibration results ---------- */
+const CAL_WORDS = {"temperature": "Temperature tower", "max-flow": "Max flow", "pressure-advance": "Pressure advance",
+                   "flow-ratio": "Flow ratio", "retraction": "Retraction", "other": "Other"};
+async function loadCalibration() {
+  let r; try { r = await api("/api/calibration"); } catch (e) { return; }
+  const sel = $("#calTest"); if (!sel.options.length) sel.innerHTML = Object.keys(r.tests).map(t => `<option value="${t}">${CAL_WORDS[t] || t}</option>`).join("");
+  if (!$("#calFil").value && S.status) { const tc = S.status.print_task_config || {}; if (tc.filament_type) $("#calFil").value = [(tc.filament_vendor || [])[0], tc.filament_type[0]].filter(v => v && v !== "NONE").join(" "); }
+  $("#calList").innerHTML = r.results.length ? r.results.map(x => `<div class="row">
+      <div class="thumb" style="background-image:url('${x.photo ? esc(x.photo) : ""}')"></div>
+      <div><div class="t">${esc(CAL_WORDS[x.test] || x.test)}: <b>${esc(x.value)}</b>${x.key ? ` <span class="note">(${esc(x.key)})</span>` : ""}</div>
+      <div class="s">${esc(x.filament || "")} · ${esc(x.who)} · ${day(x.t)}${x.note ? " · " + esc(x.note) : ""}</div></div></div>`).join("")
+    : `<div class="empty">No calibration results yet.</div>`;
+}
+$("#calSave").onclick = async () => {
+  try { await post("/api/calibration", {test: $("#calTest").value, value: $("#calVal").value, filament: $("#calFil").value, note: $("#calNote").value});
+    toast("Recorded, with a photo"); $("#calVal").value = $("#calNote").value = ""; loadCalibration(); } catch (e) { toast(e.message, true); }
+};
 const runKey = j => (j.filename.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^\.+/, "") || "job") + "-" + j.job_id;   // matches printer.run_folder
 $("#hList").addEventListener("click", e => { const p = e.target.closest("[data-photos]"); if (p) return openPhotos(p.dataset.photos);
   const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });

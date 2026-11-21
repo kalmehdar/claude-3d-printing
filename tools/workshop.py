@@ -8,6 +8,7 @@ What it serves:
     /moonraker/<path>     the printer's Moonraker API, passed through (so the page works from a phone, and later over a VPN)
     /cam.jpg              the printer's camera still (Snapmaker U1 stock firmware: /server/files/camera/monitor.jpg)
     /bench/<n>/<path>     the designs' STLs and sources from bench n, read only
+    /api/calibration      GET the recorded calibration results; POST {test, value, filament, note} records one with a photo
     /api/frames[?job=]    the layer photos printer.py watch saved, per job; /frames/<job>/<file>.jpg serves one
     /api/designs          every bench's designs with file links and real slicer numbers for --profile
     /api/slice  (POST)    {"bench": n, "id": design, "preset": "standard", "set": ["infill=30"], "upload": true, "queue": false}
@@ -423,6 +424,48 @@ def filament_prices(path):
     return out
 
 
+CAL_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "calibration.jsonl")
+CAL_PHOTOS = os.path.join(os.path.dirname(CAL_LOG), "calibration")
+CAL_TESTS = {   # test -> the slicer profile key its result belongs in (skills/print-calibration)
+    "temperature": "nozzle_temperature", "max-flow": "filament_max_volumetric_speed", "pressure-advance": "pressure_advance",
+    "flow-ratio": "filament_flow_ratio", "retraction": "filament_retraction_length", "other": ""}
+
+
+def calibration(entry=None, who="?"):
+    """Calibration results, newest first; with entry, record one (and a camera photo of the test print) first."""
+    if entry is not None:
+        test, value = str(entry.get("test", "")), str(entry.get("value", "")).strip()[:40]
+        if test not in CAL_TESTS:
+            raise ValueError("test is one of " + ", ".join(CAL_TESTS))
+        if not value:
+            raise ValueError("give the value you picked")
+        row = {"t": time.time(), "who": who, "test": test, "key": CAL_TESTS[test], "value": value,
+               "filament": str(entry.get("filament", "")).strip()[:60], "note": str(entry.get("note", "")).strip()[:300]}
+        import printer
+        printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+        try:
+            os.makedirs(CAL_PHOTOS, exist_ok=True)   # kept apart from layer photos: never pruned, never listed as a print
+            name = time.strftime("%Y%m%d-%H%M%S") + "-" + test + ".jpg"
+            printer.snap(os.path.join(CAL_PHOTOS, name))
+            row["photo"] = "/calibration-photo/" + name
+        except (OSError, ValueError):
+            pass   # a result without a photo is still a result
+        os.makedirs(os.path.dirname(CAL_LOG), exist_ok=True)
+        with open(CAL_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+        record(f"calibration: {test} = {value}", row["filament"], who=who)
+    out = []
+    try:
+        for x in open(CAL_LOG, encoding="utf-8").read().splitlines()[::-1]:
+            try:
+                out.append(json.loads(x))
+            except ValueError:
+                pass
+    except OSError:
+        pass
+    return out
+
+
 def printer_conf():
     import printer
     return printer.load_conf()
@@ -672,6 +715,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "push": push,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
+        m = re.fullmatch(r"/calibration-photo/([\w-]+\.jpg)", p)
+        if m:
+            f = os.path.join(CAL_PHOTOS, m.group(1))
+            return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/calibration":
+            if self.command == "POST":
+                try:
+                    r = json.loads(self.body() or b"{}")
+                    return self.send(201, calibration(r if isinstance(r, dict) else {}, who=actor(self))[0])
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+            return self.send(200, {"tests": CAL_TESTS, "results": calibration()})
         if p.startswith("/api/activity"):
             import printer
             try:

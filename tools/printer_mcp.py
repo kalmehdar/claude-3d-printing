@@ -117,6 +117,16 @@ def t_layer_photos(a):
     return out + [{"type": "text", "text": f'{len(fr)} photos saved for {r["job"]}; other prints with photos: {", ".join(j for j in r["jobs"] if j != r["job"]) or "none"}.'}]
 
 
+def t_calibration(a):
+    if a.get("value"):
+        r = http("POST", "/api/calibration", {k: a.get(k, "") for k in ("test", "value", "filament", "note")})
+        return f'Recorded {r["test"]} = {r["value"]} for {r["filament"] or "the loaded filament"}' + (" with a photo of the print." if r.get("photo") else ".") + (
+            f' It belongs in the profile key {r["key"]}.' if r.get("key") else "")
+    rows = http("GET", "/api/calibration")["results"][:20]
+    return "\n".join(f'{time.strftime("%d %b %H:%M", time.localtime(x["t"]))}  {x["test"]} = {x["value"]}  {x.get("filament", "")}  ({x["who"]})'
+                     + (f'  key {x["key"]}' if x.get("key") else "") + (f'  - {x["note"]}' if x.get("note") else "") for x in rows) or "No calibration results yet."
+
+
 def t_files(_):
     files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
@@ -241,6 +251,9 @@ TOOLS = [
     ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
     ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
      {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
+    ("printer_calibration", "Calibration results (print-calibration skill): with no value, list them; with test and value, record the value the person picked from a test print, with a camera photo of it.",
+     {"test": {"type": "string", "enum": ["temperature", "max-flow", "pressure-advance", "flow-ratio", "retraction", "other"]},
+      "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"}}, t_calibration),
     ("printer_files", "Sliced G-code files on the printer, newest first.", {}, t_files),
     ("printer_designs", "Designs Claude can slice (from the Print Benches), with real print time and grams where known.",
      {"search": {"type": "string", "description": "words to filter by"}}, t_designs),
