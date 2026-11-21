@@ -33,6 +33,20 @@ Learned on a U1 with stock firmware 2.1.2 (November 2026), driving it from `tool
 - **One-part objects:** OrcaSlicer uses the object's head setting and ignores the part's, so `make_3mf.py` sets the object to its first part's head (before that, every single-colour print went to T0).
 - Map design colours to the head that holds them (`make_3mf.py --heads`, or Workshop, which reads the printer). A colour that is not loaded is refused rather than printed wrong.
 
+## Extended Firmware (root, SSH, live camera)
+
+paxx12's community Extended Firmware (github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware, installer page snapmakeru1-extended-firmware.pages.dev) adds root SSH, a WebRTC camera, Fluidd or Mainsail, timelapse, Spoolman and remote access. Moonraker keeps its API, so every tool here works the same. Damage it causes is not covered by the warranty.
+
+- **Match the base.** Each release is built on a stock version. `v2.0.0-paxx12-24` (25 Oct 2026, the newest stable) is built on stock `2.0.0.205`, so on a printer already on stock `2.1.x` it steps the base back. Only the rolling development build was on 2.1.2 then.
+- **Install** (the printer idle, a person at the screen):
+  1. Put the `.bin` from the release on a FAT32 USB stick.
+  2. On the printer: Settings > About > Firmware Version > Local Update.
+  3. The printer reboots itself when it finishes.
+  - Later updates can go through the printer's `/firmware-config/` page with a link to the `.bin`.
+- **Back to stock:** the official `.bin` from Snapmaker's U1 release notes, the same way.
+- **Root SSH:** off by default. Turn it on at `/firmware-config/` (the screen's Settings > Maintenance > Root Access toggle alone did not open port 22 for some users). Then `ssh root@<printer>`. The default users `root` and `lava` both have the published password `snapmaker`, so anyone on the network can log in as root while it is on. Only turn it on at home.
+- Calibrate on stock first, so a later fault can be compared with a known-good baseline.
+
 ## Safety Claude keeps to
 
 - Every start: the person says the bed is clear and they are around, and a fresh camera frame agrees. Never start on the camera alone: it sits low and a thin leftover part can hide.
