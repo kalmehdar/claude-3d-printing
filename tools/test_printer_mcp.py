@@ -40,6 +40,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.reply(200, {"result": STATUS})
         if p.startswith("/api/alerts"):
             return self.reply(200, [])
+        if p.startswith("/api/photo-checks"):
+            return self.reply(200, {"enabled": True, "every": 25, "checks": []})
         if p.startswith("/api/calibration") and self.command == "POST":
             return self.reply(201, {"test": "temperature", "value": "240", "filament": "SUNLU PETG", "key": "nozzle_temperature", "photo": "/x.jpg"})
         if p.startswith("/api/frames"):

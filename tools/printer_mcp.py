@@ -89,6 +89,14 @@ def t_status(_):
                      f'{s[h]["temperature"]:.0f} / {s[h]["target"]:.0f} C{" (active)" if s[h].get("state") == "ACTIVATE" else ""}')
     if ps.get("message"):
         lines.append("Message: " + ps["message"])
+    try:   # what the photo watch last saw (Workshop checks a layer photo every 25 layers when it has an API key)
+        pw = http("GET", "/api/photo-checks")
+        c = next((x for x in pw.get("checks", []) if x.get("verdict")), None)
+        if c and ps.get("filename") and c.get("file") == ps["filename"]:
+            lines.append(f'Photo watch: layer {c["layer"]} at {time.strftime("%H:%M", time.localtime(c["t"]))}, '
+                         f'{"looks fine" if c["verdict"] == "ok" else "PAUSED: " + str(c.get("problem"))}. {c.get("reason") or ""}'.strip())
+    except (RuntimeError, KeyError, ValueError):
+        pass
     recent = [a for a in http("GET", "/api/alerts") if time.time() - a["t"] < 3600][:3]
     for a in recent:
         lines.append(f'Warning {time.strftime("%H:%M", time.localtime(a["t"]))}: {a["text"]}' + (f' - {a["advice"]}' if a["advice"] else ""))
