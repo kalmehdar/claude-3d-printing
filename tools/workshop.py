@@ -486,7 +486,8 @@ def api_keys():
     for f in [API_KEY_FILE] + [f"{API_KEY_FILE}-{n}" for n in range(2, 6)]:
         try:
             if os.name == "nt" or not os.stat(f).st_mode & 0o077:   # Windows reports 0o666 whatever the ACL says; the profile folder is per user
-                keys.append(open(f, encoding="utf-8").read().strip())
+                text = open(f, encoding="utf-8").read().strip()   # the bare key, or put-key's ANTHROPIC_API_KEY=... line
+                keys.append(text.split("=", 1)[1].strip() if text.startswith("ANTHROPIC_API_KEY=") else text)
         except OSError:
             pass
     return [k for k in dict.fromkeys(keys) if k]

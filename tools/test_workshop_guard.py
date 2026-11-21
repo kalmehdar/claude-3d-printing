@@ -48,4 +48,7 @@ w.API_KEY_FILE = key
 os.environ.pop("ANTHROPIC_API_KEY", None)
 if os.name == "nt":
     assert w.api_keys() == ["test-key-not-real"], "the Windows key file was skipped"
+open(key, "w").write("ANTHROPIC_API_KEY=test-key-not-real\n")   # put-key writes the NAME=value form
+if os.name == "nt":
+    assert w.api_keys() == ["test-key-not-real"], "put-key's NAME=value line was not read"
 print("workshop guard checks passed")
