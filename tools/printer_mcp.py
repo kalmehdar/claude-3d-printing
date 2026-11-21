@@ -135,6 +135,14 @@ def t_calibration(a):
                      + (f'  key {x["key"]}' if x.get("key") else "") + (f'  - {x["note"]}' if x.get("note") else "") for x in rows) or "No calibration results yet."
 
 
+def t_speed(a):
+    pct = int(a["percent"])
+    if not 50 <= pct <= 150:
+        raise ValueError("speed is 50 to 150 percent")
+    http("POST", "/moonraker/printer/gcode/script?script=" + q(f"M220 S{pct}"))
+    return f"Speed set to {pct}%."
+
+
 def t_files(_):
     files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
@@ -287,6 +295,8 @@ TOOLS = [
       "sub": {"type": "string", "description": "sub-type, e.g. generic, HF, Silk"}, "colour": {"type": "string", "description": "hex RRGGBB"}},
      t_filament, ["head", "type", "colour"]),
     ("printer_filament_types", "The filament types, brands and sub-types the printer knows.", {}, t_filament_types),
+    ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
+     {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),
     ("printer_light", "Turn the chamber light on or off.", {"on": {"type": "boolean"}}, t_light),
     ("printer_history", "Past prints with their real time and filament used.", {"count": {"type": "integer"}}, t_history),
     ("printer_activity", "Who did what to the printer recently (from Workshop, Claude and the command line).", {}, t_activity),

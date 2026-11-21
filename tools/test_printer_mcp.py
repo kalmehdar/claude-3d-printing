@@ -208,4 +208,14 @@ with tempfile.TemporaryDirectory() as d:
     workshop.PHOTO_LOG = os.path.join(d, "c.jsonl")
     open(workshop.PHOTO_LOG, "w").write('{"file": "a.gcode", "layer": 318}\n{"file": "b.gcode", "layer": 40}\n')
     assert workshop.checked_block("a.gcode") == 12 and workshop.checked_block("b.gcode") == 1 and workshop.checked_block("c.gcode") == -1
+# Workshop guard, offline (never test a guard with a real command): speed 50-150 and the light pass mid-print, motion doesn't
+class _G:
+    command = "POST"
+    printer_busy = lambda self: True   # a job is running
+    guard = workshop.Handler.guard
+g = _G()
+for script, ok in (("M220 S115", True), ("M220 S50", True), ("M220 S200", False), ("M220 S20", False),
+                   ("SET_LED LED=cavity_led WHITE=1", True), ("G28", False), ("M104 S250", False)):
+    why = g.guard("/printer/gcode/script?script=" + workshop.urllib.parse.quote(script))
+    assert (why is None) == ok, (script, why)
 print("printer_mcp.py checks passed")
