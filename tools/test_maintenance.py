@@ -19,3 +19,6 @@ settings = {"extruder": {"individual_maintenance_threshold": 25100}}
 assert m.heads(status, settings) == [("extruder", 200, 25100), ("extruder1", 5, 25100)]
 assert m.heads({"extruder": {"temperature": 20}}, {}) == []                           # a printer that doesn't count swaps
 print("maintenance.py checks passed")
+jobs = [{"start_time": 1000, "print_duration": 3600, "filament_used": 5000}, {"start_time": 1000 + 8.5 * 86400, "status": "in_progress", "print_duration": 60, "filament_used": 10}, {"start_time": 1000 + 8 * 86400, "print_duration": 1800, "filament_used": 2500}]
+assert m.week(jobs, 1000 + 9 * 86400) == (1, 0.5, 2.5)                              # only the job in the last 7 days
+print("maintenance.py week check passed")

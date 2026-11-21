@@ -1,12 +1,14 @@
 """What the printer needs next, from what it already counts. Read-only, except `done`.
 
-    python maintenance.py [status] [--json]      print hours, head swaps against the maker's limit, low spools, manual jobs due
+    python maintenance.py [status] [--json]      print hours, head swaps against the maker's limit, low spools, jobs due
     python maintenance.py done TASK [--note ...]  record a job done now (shafts, carbon, belts, leadscrews, pins, pogo, plate)
+    python maintenance.py status --ntfy URL       also post the report (with this week's prints) to an ntfy topic URL
 
 The printer (Moonraker) counts print time and filament; a Snapmaker U1 also counts head swaps per head against its own
 maintenance limit (individual_maintenance_threshold). Spool weights come from Spoolman when "spoolman" is set in
 printer.json. The jobs follow Snapmaker's U1 core components maintenance guide (monthly, quarterly, every 4-6 months),
-counted from the first print until done once; change an interval in ~/.config/claude-3d-printing/maintenance.json.
+counted from the first print until done once. What was done, and any changed interval, is kept in the printer's own
+Moonraker database (namespace "claude_maintenance"), so every machine that runs this sees the same record.
 Standard library only.
 """
 import argparse
@@ -19,7 +21,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import printer  # noqa: E402
 
-FILE = os.path.join(os.path.dirname(printer.CONF), "maintenance.json")
+NAMESPACE = "claude_maintenance"   # Moonraker's database on the printer: shared by every machine that runs this
 # Snapmaker's U1 core components maintenance guide (wiki.snapmaker.com, read 21 Nov 2026): monthly, quarterly, 4-6 months.
 # The U1 wipes its own nozzles, so no nozzle job. The plate wash is ours. Change any interval in maintenance.json.
 TASKS = {
@@ -35,13 +37,28 @@ UNITS = ("days", "hours", "prints")
 LOW_SPOOL_G = 200   # the almehdar reorder line
 
 
-def load():
+def db_get(key):
     try:
-        saved = json.load(open(FILE, encoding="utf-8"))
-    except (OSError, ValueError):
-        saved = {}
-    tasks = {k: {**v, **saved.get("tasks", {}).get(k, {})} for k, v in TASKS.items()}
-    return {"tasks": tasks, "done": saved.get("done", {})}
+        return printer.call(f"/server/database/item?namespace={NAMESPACE}&key={key}")["value"]
+    except OSError:   # 404: nothing stored yet
+        return {}
+
+
+def db_set(key, value):
+    req = urllib.request.Request(printer.BASE + "/server/database/item", method="POST", headers={"Content-Type": "application/json"},
+                                 data=json.dumps({"namespace": NAMESPACE, "key": key, "value": value}).encode())
+    urllib.request.urlopen(req, timeout=15).close()
+
+
+def load():
+    tasks = {k: {**v, **db_get("tasks").get(k, {})} for k, v in TASKS.items()}
+    return {"tasks": tasks, "done": db_get("done")}
+
+
+def week(jobs, now_s):
+    """(prints, hours, metres) of jobs that started in the last 7 days."""
+    recent = [j for j in jobs if j.get("start_time", 0) > now_s - 7 * 86400 and j.get("status") != "in_progress"]   # as the totals: finished jobs
+    return len(recent), round(sum(j.get("print_duration", 0) for j in recent) / 3600, 1), round(sum(j.get("filament_used", 0) for j in recent) / 1000, 1)
 
 
 def due(tasks, done, now, start):
@@ -85,6 +102,7 @@ def main():
     ap.add_argument("task", nargs="?")
     ap.add_argument("--note", default="")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--ntfy", default=os.environ.get("MAINTENANCE_NTFY"), help="ntfy topic URL to post the report to")
     conf = printer.load_conf()
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST") or conf.get("host"))
     a = ap.parse_args()
@@ -101,16 +119,17 @@ def main():
     if a.cmd == "done":
         if a.task not in data["tasks"]:
             sys.exit(f"no task {a.task!r}: {', '.join(data['tasks'])}")
-        saved = json.load(open(FILE, encoding="utf-8")) if os.path.exists(FILE) else {}
-        saved.setdefault("done", {})[a.task] = {**now, "at": time.strftime("%Y-%m-%d %H:%M"), "note": a.note}
-        os.makedirs(os.path.dirname(FILE), exist_ok=True)
-        json.dump(saved, open(FILE, "w", encoding="utf-8"), indent=1)
-        print(f"{a.task} done at {hours} print hours, {prints} prints")
+        done = data["done"]
+        done[a.task] = {**now, "at": time.strftime("%Y-%m-%d %H:%M"), "note": a.note}
+        db_set("done", done)
+        print(f"{a.task} done at {hours} print hours, {prints} prints (kept on the printer)")
         return
     objs = [o for o in printer.call("/printer/objects/list")["objects"] if o.startswith("extruder")]
     status = printer.query(*objs) if objs else {}
     settings = printer.query("configfile")["configfile"].get("settings", {}) if objs else {}
+    jobs = printer.call("/server/history/list?limit=200&order=desc").get("jobs", [])
     report = {"print_hours": hours, "prints": prints, "filament_m": round(totals["total_filament_used"] / 1000, 1),
+              "week": week(jobs, time.time()),
               "heads": heads(status, settings), "due": due(data["tasks"], data["done"], now, start)}
     try:
         report["spools"] = spools(conf.get("spoolman") or os.environ.get("SPOOLMAN_URL"))
@@ -119,18 +138,26 @@ def main():
     if a.json:
         print(json.dumps(report, indent=1))
         return
-    print(f"{hours} print hours, {prints} prints, {report['filament_m']} m of filament")
-    for h, n, limit in report["heads"]:
-        print(f"  {h}: {n} head swaps since maintenance" + (f" of {limit:g} ({100 * n / limit:.1f}%)" if limit else ""))
-    for k, what, left, unit in report["due"]:
-        print(f"  DUE {k}: {what} ({'overdue by ' + str(-left) if left < 0 else str(left) + ' left'} {unit}); when done: maintenance.py done {k}")
+    wp, wh, wm = report["week"]
+    lines = [f"This week: {wp} prints, {wh} h, {wm} m of filament. In all: {hours} h, {prints} prints, {report['filament_m']} m."]
+    lines += [f"{h}: {n} head swaps since maintenance" + (f" of {limit:g} ({100 * n / limit:.1f}%)" if limit else "")
+              for h, n, limit in report["heads"]]
+    lines += [f"DUE {k}: {what} ({'overdue by ' + str(-left) if left < 0 else str(left) + ' left'} {unit}); when done: maintenance.py done {k}"
+              for k, what, left, unit in report["due"]]
     low = [s for s in report["spools"] if s[2] < LOW_SPOOL_G] if isinstance(report["spools"], list) else []
-    for i, name, g in low:
-        print(f"  LOW spool {i} {name}: {g} g left (reorder under {LOW_SPOOL_G} g)")
+    lines += [f"LOW spool {i} {name}: {g} g left (reorder under {LOW_SPOOL_G} g)" for i, name, g in low]
     if isinstance(report["spools"], str):
-        print("  " + report["spools"])
+        lines.append(report["spools"])
     if not report["due"] and not low:
-        print("  nothing due")
+        lines.append("Nothing due.")
+    text = "\n".join(lines)
+    print(text)
+    if a.ntfy:
+        title = "U1: " + ("maintenance due" if report["due"] else "spool low" if low else "weekly summary")
+        req = urllib.request.Request(a.ntfy, data=text.encode(), method="POST",
+                                     headers={"Title": title, "Tags": "wrench" if report["due"] or low else "printer"})
+        urllib.request.urlopen(req, timeout=15).close()
+        print("posted to ntfy")   # never echo the topic URL
 
 
 if __name__ == "__main__":
