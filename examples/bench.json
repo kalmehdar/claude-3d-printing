@@ -167,6 +167,28 @@
       "source": "models/gridfinity-bin.scad"
     },
     {
+      "id": "jar",
+      "name": "Screw-top jar",
+      "for": "A small jar and lid that print without supports and screw together first time: a 45 degree flank thread, the play from your measured slide fit, blunt thread starts so the lid finds the thread. Set inner_d and inner_h for a bigger one.",
+      "status": "Check first: not yet printed",
+      "state": "check",
+      "material": "PETG, two heads: black jar, red lid (or one colour)",
+      "credit": "Designed with Claude in OpenSCAD with BOSL2's trapezoidal threads (models/threaded-jar.scad)",
+      "group": "Storage",
+      "parts": [
+        [
+          "Jar",
+          "stl/threaded-jar-jar.stl",
+          "#1f1f22"
+        ],
+        [
+          "Lid",
+          "stl/threaded-jar-lid.stl",
+          "#c8102e"
+        ]
+      ]
+    },
+    {
       "id": "tags", "group": "Cables",
       "name": "Clip-on cable tags",
       "for": "One tag per lead end, the colour saying what the lead carries and the ID printed in. Each clip is sized to its own cable, from mains down to slim Cat6: measure yours and set LEADS.",
