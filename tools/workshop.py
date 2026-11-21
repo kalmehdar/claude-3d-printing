@@ -770,7 +770,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             script = urllib.parse.unquote_plus(p.split("script=", 1)[-1]) if "script=" in p else ""
             if "\n" in script or "\r" in script:
                 return "one G-code command at a time"
-            if not script.upper().startswith("SET_LED ") and self.printer_busy():
+            speed = re.fullmatch(r"M220 S(\d{1,3})", script.strip().upper())
+            if speed and not 50 <= int(speed.group(1)) <= 150:
+                return "speed is 50 to 150 percent"
+            if not (script.upper().startswith("SET_LED ") or speed) and self.printer_busy():   # light and speed are fine mid-print
                 return "a job is running; that command waits until it ends"
         if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")):
             import printer
