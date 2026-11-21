@@ -85,13 +85,19 @@ def find(env, patterns):
     sys.exit(f"set {env}: nothing found for {patterns}")
 
 
+MAC_ORCA = "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer"
+
+
 def orca_cli():
+    if not os.environ.get("ORCA_CLI") and os.path.exists(MAC_ORCA):
+        return MAC_ORCA
     return find("ORCA_CLI", ["orcaslicer-*/orca-slicer.exe", "OrcaSlicer*/orca-slicer.exe"])
 
 
 def vendor_dirs():
-    """Every system profile folder of every OrcaSlicer build under ~/tools (Bambu, Snapmaker, Prusa...)."""
-    return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True))
+    """Every system profile folder of every OrcaSlicer build under ~/tools or in /Applications on a Mac (Bambu, Snapmaker, Prusa...)."""
+    return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True)
+                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/"))
 
 
 def flatten(folder, name, kind):
@@ -99,14 +105,14 @@ def flatten(folder, name, kind):
     index = {}
     for f in glob.glob(os.path.join(folder, kind, "*.json")):
         try:
-            index[json.load(open(f, encoding="utf-8")).get("name")] = f
+            index[json.load(open(f, encoding="utf-8-sig")).get("name")] = f   # some vendor files start with a BOM
         except (ValueError, OSError):
             pass
     chain, n = [], name
     while n:
         if n not in index:
             sys.exit(f"no {kind} profile named {n!r} in {folder}")
-        d = json.load(open(index[n], encoding="utf-8"))
+        d = json.load(open(index[n], encoding="utf-8-sig"))
         chain.append(d)
         n = d.get("inherits")
     out = {}
@@ -205,7 +211,7 @@ def apply(profile, overrides, add=False):
 
 def scad_to_stl(path, tmp):
     exe = os.environ.get("OPENSCAD") or shutil.which("openscad") or next(
-        (c for c in (r"C:\Program Files\OpenSCAD\openscad.com",) + tuple(glob.glob(os.path.join(HOME, "tools", "openscad-*", "**", "openscad.com"), recursive=True)) if os.path.exists(c)), None)
+        (c for c in (r"C:\Program Files\OpenSCAD\openscad.com",) + tuple(glob.glob("/Applications/OpenSCAD*.app/Contents/MacOS/OpenSCAD")) + tuple(glob.glob(os.path.join(HOME, "tools", "openscad-*", "**", "openscad.com"), recursive=True)) if os.path.exists(c)), None)
     if not exe:
         sys.exit("OpenSCAD not found: set OPENSCAD")
     out = os.path.join(tmp, os.path.splitext(os.path.basename(path))[0] + ".stl")
