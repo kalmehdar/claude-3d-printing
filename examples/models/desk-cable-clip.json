@@ -1,0 +1,29 @@
+{
+  "parameterSets": {
+    "Cat6 (6 mm)": {
+      "cable_d": "6.0",
+      "clip_w": "10",
+      "pad": "20",
+      "base_t": "2"
+    },
+    "USB lead (4 mm)": {
+      "cable_d": "4.0",
+      "clip_w": "10",
+      "pad": "20",
+      "base_t": "2"
+    },
+    "HDMI (7.2 mm)": {
+      "cable_d": "7.2",
+      "clip_w": "10",
+      "pad": "20",
+      "base_t": "2"
+    },
+    "Mains lead (7.4 mm)": {
+      "cable_d": "7.4",
+      "clip_w": "10",
+      "pad": "20",
+      "base_t": "2"
+    }
+  },
+  "fileFormatVersion": "1"
+}

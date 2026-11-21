@@ -1,0 +1,50 @@
+{
+  "parameterSets": {
+    "1x1 screws": {
+      "part": "body",
+      "gx": "1",
+      "gy": "1",
+      "hu": "6",
+      "label": "SCREWS",
+      "pitch": "42",
+      "gap": "0.5",
+      "wall": "1.2",
+      "floor_t": "1.2",
+      "r_out": "3.75",
+      "foot_h": "4.75",
+      "inlay": "0.6",
+      "font": "Liberation Sans:style=Bold"
+    },
+    "2x1 bits": {
+      "part": "body",
+      "gx": "2",
+      "gy": "1",
+      "hu": "6",
+      "label": "BITS",
+      "pitch": "42",
+      "gap": "0.5",
+      "wall": "1.2",
+      "floor_t": "1.2",
+      "r_out": "3.75",
+      "foot_h": "4.75",
+      "inlay": "0.6",
+      "font": "Liberation Sans:style=Bold"
+    },
+    "2x2 tall": {
+      "part": "body",
+      "gx": "2",
+      "gy": "2",
+      "hu": "9",
+      "label": "PARTS",
+      "pitch": "42",
+      "gap": "0.5",
+      "wall": "1.2",
+      "floor_t": "1.2",
+      "r_out": "3.75",
+      "foot_h": "4.75",
+      "inlay": "0.6",
+      "font": "Liberation Sans:style=Bold"
+    }
+  },
+  "fileFormatVersion": "1"
+}
