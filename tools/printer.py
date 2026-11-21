@@ -306,9 +306,12 @@ def timelapse(folder, seconds=12):
     pics = sorted(f for f in os.listdir(folder) if f.endswith(".jpg"))
     if len(pics) < 10:
         raise ValueError(f"only {len(pics)} photos in {folder}; a timelapse needs 10 or more")
-    ff = shutil.which("ffmpeg") or next((p for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg") if os.path.exists(p)), None)
+    import glob
+    winget = glob.glob(os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages", "*FFmpeg*", "*", "bin", "ffmpeg.exe"))
+    ff = os.environ.get("FFMPEG") or shutil.which("ffmpeg") or next(
+        (p for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", *sorted(winget)) if os.path.exists(p)), None)
     if not ff:
-        raise OSError("ffmpeg is not installed (brew install ffmpeg)")
+        raise OSError("ffmpeg is not installed (Mac: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; or set FFMPEG)")
     fps = max(8, min(30, round(len(pics) / seconds)))
     out = os.path.join(folder, "timelapse.mp4")
     fd, lst = tempfile.mkstemp(prefix=".frames-", suffix=".txt", dir=folder)
