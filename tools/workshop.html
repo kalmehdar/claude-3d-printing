@@ -189,6 +189,22 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:3;grid-row:1}
 }
+/* row detail panel (desktop); phones use the sheet */
+#panel{position:fixed;top:0;right:0;width:420px;max-width:100vw;height:100vh;background:var(--panel);border-left:1px solid var(--line2);z-index:15;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
+#panel .ph{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
+#panel .ph .id{font:500 11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint)}
+#panel .ph .sp{flex:1}
+#panel .si{width:14px;height:14px;display:block}
+#panel .pb{padding:16px;overflow:auto;flex:1}
+#panel h3,.pbody h3{font-size:16px;font-weight:600;margin:0 0 14px;word-break:break-word;letter-spacing:-.01em}
+.pimg{width:100%;aspect-ratio:4/3;border-radius:var(--r);border:1px solid var(--line);background:radial-gradient(circle at 50% 40%,#25272d,#121316 75%) ;margin-bottom:14px;background-size:contain,auto;background-position:center;background-repeat:no-repeat}
+.pkv{display:grid;grid-template-columns:120px 1fr;gap:9px 12px;font-size:13px;margin-bottom:16px}
+.pkv span{color:var(--faint)} .pkv b{font-weight:500;font-variant-numeric:tabular-nums;word-break:break-word}
+.pnote{font-size:13px;color:var(--dim);background:var(--panel2);border-radius:var(--r2);padding:10px 12px;margin-bottom:16px}
+.pacts{display:flex;gap:6px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line)}
+.issue.open{background:var(--hover);box-shadow:inset 2px 0 0 var(--accent)}
+@media (min-width:1280px){.app.panel-open main{margin-right:420px;max-width:none;width:auto}}
+@media (max-width:900px){#panel{display:none!important}}
 /* command menu */
 #cmdk{max-width:min(620px,94vw);margin-top:12vh;top:0}
 #cmdk input{width:100%;height:50px;border:0;border-bottom:1px solid var(--line);background:none;padding:0 18px;font-size:15px;outline:none;box-shadow:none}
@@ -346,6 +362,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 </div>
 
 <dialog id="sheet"><div class="sheet-h"><h3 id="sheetTitle"></h3><button class="btn ghost sm" id="sheetClose" aria-label="Close">Close</button></div><div class="sheet-b" id="sheetBody"></div></dialog>
+<aside id="panel" hidden aria-label="Details"><div class="ph"><span id="pIcon"></span><span class="id" id="pId"></span><span class="sp"></span><span class="note">↑ ↓ to move</span><button class="btn sm ghost" id="pClose" aria-label="Close details">Close <kbd>Esc</kbd></button></div><div class="pb" id="pBody"></div></aside>
 <dialog id="cmdk" aria-label="Command menu"><input id="cmdkIn" placeholder="Type a command or search…" aria-label="Command" autocomplete="off" spellcheck="false"><div id="cmdkList" role="listbox"></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -367,7 +384,11 @@ const SI = {
 };
 const JOB_SI = {completed: "done", in_progress: "progress", cancelled: "cancelled", error: "error", klippy_shutdown: "error", klippy_disconnect: "error", interrupted: "error"};
 // one row: icon, id, title (+ quiet detail), meta (array of strings, already escaped), actions html; tabindex for arrow keys
-const issue = r => `<div class="issue" tabindex="0"${r.attrs || ""}${r.tip ? ` title="${esc(r.tip)}"` : ""}>${SI[r.icon] || SI.queued}<span class="id">${esc(r.id || "")}</span>
+const PANELS = {}; let panelId = null;
+const mats = t => [...new Set(String(t || "").split(";").filter(Boolean))].join(", ");   // 'PLA;PLA;PETG' -> 'PLA, PETG'
+const pkv = pairs => `<div class="pkv">${pairs.filter(p => p[1] !== "" && p[1] != null).map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")}</div>`;
+const issue = r => { if (r.panel && r.id) PANELS[r.id] = {icon: r.icon, id: r.id, title: r.title, body: r.panel, acts: r.acts || ""}; return issueHtml(r); };
+const issueHtml = r => `<div class="issue${r.id && r.id === panelId ? " open" : ""}" tabindex="0"${r.panel && r.id ? ` data-pid="${esc(r.id)}"` : ""}${r.attrs || ""}${r.tip ? ` title="${esc(r.tip)}"` : ""}>${SI[r.icon] || SI.queued}<span class="id">${esc(r.id || "")}</span>
   <div class="ttl"><span>${r.title}</span>${r.detail ? `<small>${r.detail}</small>` : ""}</div>
   <div class="meta">${(r.meta || []).filter(Boolean).map(m => `<span>${m}</span>`).join("")}</div><div class="acts">${r.acts || ""}</div></div>`;
 const ghead = (icon, label, n) => `<div class="ghead">${SI[icon] || ""}${esc(label)} <b>${n}</b></div>`;
@@ -448,7 +469,7 @@ $("#jumpBtn").onclick = openCmdk;
 function showKeys() {
   const row = (k, t) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>${t}</span><span>${k.split(" ").map(x => `<kbd>${x}</kbd>`).join(" ")}</span></div>`;
   openSheet("Keyboard shortcuts", row("⌘ K", "Search or jump") + row("/", "Search or jump") + row("G N", "Now") + row("G Q", "Queue") +
-    row("G F", "Files") + row("G D", "Designs") + row("G C", "Claude") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row: preview or photos") + row("L", "Light on or off") + row("?", "This list"));
+    row("G F", "Files") + row("G D", "Designs") + row("G C", "Claude") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row's details") + row("Esc", "Close the details") + row("L", "Light on or off") + row("?", "This list"));
 }
 let gPressed = 0;
 document.addEventListener("keydown", e => {
@@ -458,14 +479,16 @@ document.addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
   if (k === "arrowdown" || k === "arrowup" || k === "j" || k === "k") {   // move through the rows on this tab
     const rows = [...document.querySelectorAll(`#tab-${tab} .issue`)]; if (!rows.length) return;
-    const i = rows.indexOf(document.activeElement.closest(".issue")), down = k === "arrowdown" || k === "j";
-    rows[i < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, i + (down ? 1 : -1)))].focus(); e.preventDefault(); return;
+    const cur = document.activeElement.closest(".issue") || document.querySelector(".issue.open");
+    const i = rows.indexOf(cur), down = k === "arrowdown" || k === "j";
+    const next = rows[i < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, i + (down ? 1 : -1)))];
+    next.focus(); if (panelId && next.dataset.pid) openPanel(next.dataset.pid);   // an open panel follows the selection
+    e.preventDefault(); return;
   }
   if (k === "enter" && document.activeElement.classList.contains("issue")) {   // Enter opens: queue row = preview, history row = photos
-    const r = document.activeElement;
-    if (r.dataset.enter) previewGcode(r.dataset.enter); else if (r.dataset.enterPhotos) openPhotos(r.dataset.enterPhotos);
-    return;
+    const r = document.activeElement; if (r.dataset.pid) openPanel(r.dataset.pid); return;
   }
+  if (k === "escape" && panelId) { const row = document.querySelector(".issue.open"); closePanel(); if (row) row.focus(); return; }
   if (k === "escape" && document.activeElement.classList.contains("issue")) { document.activeElement.blur(); return; }
   if (k === "/") { e.preventDefault(); openCmdk(); return; }
   if (k === "?") { showKeys(); return; }
@@ -477,10 +500,46 @@ document.addEventListener("keydown", e => {
   if (k === "l") $("#lightBtn").click();
 });
 
+/* ---------- row detail panel ---------- */
+const wide = () => matchMedia("(min-width:901px)").matches;
+function openPanel(id) {
+  const d = PANELS[id]; if (!d) return;
+  const body = `<h3>${d.title}</h3>${d.body}${d.acts ? `<div class="pacts">${d.acts}</div>` : ""}`;
+  document.querySelectorAll(".issue.open").forEach(r => r.classList.remove("open"));
+  const row = document.querySelector(`.issue[data-pid="${CSS.escape(id)}"]`); if (row) row.classList.add("open");
+  panelId = id;
+  if (!wide()) { openSheet(d.id, body).dataset.pid = id; return; }
+  $("#pIcon").innerHTML = SI[d.icon] || ""; $("#pId").textContent = d.id; $("#pBody").innerHTML = body;
+  $("#panel").hidden = false; document.querySelector(".app").classList.add("panel-open");
+}
+function closePanel() {
+  panelId = null; $("#panel").hidden = true; document.querySelector(".app").classList.remove("panel-open");
+  document.querySelectorAll(".issue.open").forEach(r => r.classList.remove("open"));
+}
+$("#pClose").onclick = closePanel;
+// a click on a row (not on its buttons) opens its details
+document.querySelector("main").addEventListener("click", e => {
+  const row = e.target.closest(".issue[data-pid]"); if (!row || e.target.closest("button,a,input")) return;
+  openPanel(row.dataset.pid);
+});
+// panel buttons are copies of the row's own buttons: press the row's button so every guard and handler stays in one place
+function proxyPress(e) {
+  const b = e.target.closest("button"); if (!b || b.id === "pClose" || b.id === "sheetClose") return;
+  const id = panelId, row = id && document.querySelector(`.issue[data-pid="${CSS.escape(id)}"]`); if (!row) return;
+  const sel = "button" + Object.keys(b.dataset).map(k => `[data-${k.replace(/[A-Z]/g, c => "-" + c.toLowerCase())}="${CSS.escape(b.dataset[k])}"]`).join("");
+  const src = row.querySelector(sel); if (!src) return;
+  src.click(); if (!wide()) closeSheet();
+  setTimeout(() => { if (panelId === id) PANELS[id] && document.querySelector(`.issue[data-pid="${CSS.escape(id)}"]`) ? openPanel(id) : closePanel(); }, 900);
+}
+$("#pBody").addEventListener("click", proxyPress);
+$("#sheetBody").addEventListener("click", e => { if ($("#sheetBody").dataset.pid) proxyPress(e); });
+// leaving the tab closes the panel
+const _go = go; go = t => { closePanel(); _go(t); };
+
 /* ---------- sheet ---------- */
 const sheet = $("#sheet");
 let onSheetClose = null;
-function openSheet(title, html) { $("#sheetTitle").textContent = title; $("#sheetBody").innerHTML = html; if (!sheet.open) sheet.showModal(); return $("#sheetBody"); }
+function openSheet(title, html) { delete $("#sheetBody").dataset.pid; $("#sheetTitle").textContent = title; $("#sheetBody").innerHTML = html; if (!sheet.open) sheet.showModal(); return $("#sheetBody"); }
 function closeSheet() { if (sheet.open) sheet.close(); }
 sheet.addEventListener("close", () => { if (onSheetClose) { onSheetClose(); onSheetClose = null; } });
 $("#sheetClose").onclick = closeSheet;
@@ -664,6 +723,8 @@ async function loadRequests() {
   const row = r => issue({icon: {open: "waiting", taken: "progress", done: "done", dropped: "cancelled"}[r.state], id: "R-" + r.id,
     title: `${r.qty} × ${esc(r.what)}${r.colour ? ` in ${esc(r.colour)}` : ""}`, detail: r.note ? esc(r.note) : "",
     meta: [esc(r.who) + (r.by && r.state !== "open" && r.by !== r.who ? " → " + esc(r.by) : ""), RQ_WORD[r.state], short(r.t)],
+    panel: pkv([["What", esc(r.what)], ["How many", r.qty], ["Colour", esc(r.colour || "any")], ["Asked by", esc(r.who)], ["Asked", day(r.t)],
+                ["State", RQ_WORD[r.state] + (r.by && r.state !== "open" ? " (" + esc(r.by) + ")" : "")]]) + (r.note ? `<div class="pnote">${esc(r.note)}</div>` : ""),
     acts: (r.state === "open" ? `<button class="btn sm" data-rq="${r.id}" data-to="taken">I'll do it</button>` : "") +
       (r.state === "open" || r.state === "taken" ? `<button class="btn sm ghost" data-rq="${r.id}" data-to="done">Done</button><button class="btn sm ghost" data-rq="${r.id}" data-to="dropped">Drop</button>` : "")});
   $("#rqList").innerHTML = RQ_GROUP.map(([k, label, icon]) => { const g = k === "past" ? past : live.filter(r => r.state === k);
@@ -688,7 +749,10 @@ async function loadQueue() {
       return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename),
         meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", short(j.time_added),
                `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>`],
-        attrs: ` data-enter="${esc(j.filename)}"`,
+        panel: `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
+          ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : "") : ""],
+          ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
+          ["Added", day(j.time_added)]]),
         acts: `<button class="btn sm" data-prev="${esc(j.filename)}">Preview</button><button class="btn sm danger" data-rm="${esc(j.job_id)}">Remove</button>`}); }).join("")
       : `<div class="empty">The queue is empty. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
   } catch (e) { toast(e.message, true); }
@@ -949,7 +1013,12 @@ async function loadHistory() {
         tip: j.status.replace("_", " "),
         meta: [new Date(j.start_time * 1000).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}), ...(j.status === "in_progress" ? ["printing now"] : [hm(j.print_duration), (j.filament_used / 1000).toFixed(1) + " m", histCost(j)]),
                `<i class="mini" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></i>`],
-        attrs: photos ? ` data-enter-photos="${esc(runKey(j))}"` : "",
+        panel: (j.metadata ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, j.metadata)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Status", esc(j.status.replace("_", " "))], ["Started", day(j.start_time)],
+          ["Finished", j.end_time && j.status !== "in_progress" ? day(j.end_time) : ""], ["Printing time", j.status === "in_progress" ? "printing now" : hm(j.print_duration)],
+          ["Overall", j.status === "in_progress" ? "" : hm(j.total_duration)], ["Slicer said", j.metadata?.estimated_time ? hm(j.metadata.estimated_time) : ""],
+          ["Filament", (j.filament_used / 1000).toFixed(1) + " m" + (histCost(j) ? " · " + histCost(j) : "")],
+          ["Against slicer", a ? `filament ${Math.round(a.filament * 100)}%` : ""], ["Material", esc(mats(j.metadata?.filament_type))],
+          ["Layer height", j.metadata?.layer_height ? j.metadata.layer_height + " mm" : ""], ["Photos", photos ? "yes" : ""]]),
         acts: (photos ? `<button class="btn sm ghost" data-photos="${esc(runKey(j))}">Photos</button>` : "") + (j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : "")}); }).join("")
       : `<div class="empty">No prints yet.</div>`;
   } catch (e) { toast(e.message, true); }
@@ -974,7 +1043,9 @@ async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
   const sel = $("#calTest"); if (!sel.options.length) sel.innerHTML = Object.keys(r.tests).map(t => `<option value="${t}">${CAL_WORDS[t] || t}</option>`).join("");
   if (!$("#calFil").value && S.status) { const tc = S.status.print_task_config || {}; if (tc.filament_type) $("#calFil").value = [(tc.filament_vendor || [])[0], tc.filament_type[0]].filter(v => v && v !== "NONE").join(" "); }
-  $("#calList").innerHTML = r.results.length ? r.results.map(x => issue({icon: "done", id: "",
+  $("#calList").innerHTML = r.results.length ? r.results.map((x, i) => issue({icon: "done", id: "C-" + (r.results.length - i),
+      panel: (x.photo ? `<div class="pimg" style="background-image:url('${esc(x.photo)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Test", esc(CAL_WORDS[x.test] || x.test)], ["Value", esc(x.value)], ["Setting", esc(x.key || "")],
+        ["Filament", esc(x.filament || "")], ["Recorded by", esc(x.who)], ["When", day(x.t)]]) + (x.note ? `<div class="pnote">${esc(x.note)}</div>` : ""),
       title: `${esc(CAL_WORDS[x.test] || x.test)}: ${esc(x.value)}`, detail: [x.key, x.note].filter(Boolean).map(esc).join(" · "),
       meta: [esc(x.filament || ""), esc(x.who), short(x.t), x.photo ? `<i class="mini" style="background-image:url('${esc(x.photo)}')"></i>` : ""]})).join("")
     : `<div class="empty">No calibration results yet.</div>`;
