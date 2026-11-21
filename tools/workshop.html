@@ -960,7 +960,7 @@ async function openDesign(key) {
       ${d.material ? `<p class="note"><b>Material:</b> ${esc(d.material)}</p>` : ""}${d.status ? `<p class="note"><b>Status:</b> ${esc(d.status)}</p>` : ""}
       ${s.time ? `<div class="result">Last slice for the ${esc(DESIGNS.printer_label)}: <b>${esc(s.time)}</b>, <b>${s.total_g} g</b>, ${s.changes} colour changes</div>` : ""}
       <h4 style="margin:18px 0 10px">Slice and send to the printer</h4>
-      <div class="field"><label for="sPreset">Preset</label><select id="sPreset">${presets.map(([k, t]) => `<option value="${esc(k)}" ${k === "standard" ? "selected" : ""}>${esc(k)}: ${esc(t)}</option>`).join("")}</select></div>
+      <div class="field"><label for="sPreset">Preset</label><select id="sPreset">${presets.map(([k, t]) => `<option value="${esc(k)}" ${k === (S.info.presets?.quality ? "quality" : "standard") ? "selected" : ""}>${esc(k)}: ${esc(t)}</option>`).join("")}</select></div>
       <div class="field"><label for="sInfill">Infill %, blank for the preset's</label><input id="sInfill" inputmode="numeric" placeholder="e.g. 20"></div>
       <label class="check"><input type="checkbox" id="sSupports"> Supports</label>
       <label class="check"><input type="checkbox" id="sQueue" checked> Add to the queue when it is on the printer</label>
