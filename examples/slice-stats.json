@@ -86,6 +86,14 @@
     ],
     "total_g": 6.6,
     "changes": 0
+   },
+   "hingecard": {
+    "time": "32m 24s",
+    "grams": [
+     12.1
+    ],
+    "total_g": 12.1,
+    "changes": 0
    }
   }
  },
@@ -175,6 +183,14 @@
      7.1
     ],
     "total_g": 7.1,
+    "changes": 0
+   },
+   "hingecard": {
+    "time": "27m 4s",
+    "grams": [
+     12.1
+    ],
+    "total_g": 12.1,
     "changes": 0
    }
   }

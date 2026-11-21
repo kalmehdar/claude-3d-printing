@@ -44,7 +44,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
-| `tools/fit.py` | Your printer's measured fits (slide and press clearance from the fit card, the M3 heat-set insert hole from the insert card), so every design uses them instead of a material guess |
+| `tools/fit.py` | Your printer's measured fits (slide and press clearance from the fit card, the M3 heat-set insert hole from the insert card, the print-in-place hinge gap from the hinge card), so every design uses them instead of a material guess |
 | `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
 | `tools/slice_stats.py` | Slices every bench design with OrcaSlicer's command line and records real print time and grams per printer in `slice-stats.json`; the bench shows them with a printer switch |
 | `tools/printer_mcp.py` | Printer tools for the Claude desktop app and Claude Code (an MCP server, standard library only): status, camera picture, layer photos from past and overnight prints, designs, slice and send, start (needs the person's "bed is empty"), pause, resume, cancel, queue, unload, set filament, light, history, warnings, activity. Each person runs it in their own Claude app against Workshop, so their own Claude account does the work and the activity log shows their name. Setup in the file's docstring |
@@ -80,7 +80,8 @@ Running a Snapmaker U1? Read [docs/snapmaker-u1.md](docs/snapmaker-u1.md) first.
 1. Install [OpenSCAD](https://openscad.org/downloads.html). Take a development snapshot: it renders with the manifold backend, seconds instead of minutes.
 2. Install [Blender](https://www.blender.org/download/) for the mesh check (optional, but it catches problems early).
 3. Install your printer maker's slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, Snapmaker Orca).
-4. Install the plugin as in [Start in a minute](#start-in-a-minute), or copy `skills/` and `agents/` into `~/.claude/`.
+4. Optional: [BOSL2](https://github.com/BelfrySCAD/BOSL2) in OpenSCAD's library folder, for print-in-place hinges (`examples/models/hinge-card.scad`) and other ready-made parts.
+5. Install the plugin as in [Start in a minute](#start-in-a-minute), or copy `skills/` and `agents/` into `~/.claude/`.
 
 ## Ask Claude
 
