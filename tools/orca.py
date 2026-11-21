@@ -50,16 +50,28 @@ ALIASES = {
     "prime-volume": ("prime_volume", "mm3 purged into the tower at each colour change"),
     "tower-width": ("prime_tower_width", "mm"),
 }
+INSIDE_FLOW = {"set_other_flow_ratios": "1", "inner_wall_flow_ratio": "1.05", "sparse_infill_flow_ratio": "1.05",
+               "internal_solid_infill_flow_ratio": "1.05"}
 PRESETS = {
     "draft": {"layer_height": "0.28", "wall_loops": "2", "sparse_infill_density": "10%", "top_shell_layers": "3", "bottom_shell_layers": "3"},
     "standard": {},
-    "strong": {"wall_loops": "4", "sparse_infill_density": "40%", "sparse_infill_pattern": "gyroid", "top_shell_layers": "5", "bottom_shell_layers": "5"},
+    # strong/solid follow Maker's Muse, "Incredibly strong 3D printing settings using OrcaSlicer 2.3.2" (Apr 2026):
+    # an extra wall on every other layer so the walls interlock, wider inner walls, and a little more plastic inside only,
+    # so layers fuse harder while the outer wall (the look) is untouched.
+    # ponytail: 0.5 mm and 1.05 are starting values, not measured on Khalid's printers; tune after a break test.
+    "strong": {"wall_loops": "4", "alternate_extra_wall": "1", "sparse_infill_density": "40%", "sparse_infill_pattern": "gyroid",
+               "top_shell_layers": "5", "bottom_shell_layers": "5", "inner_wall_line_width": "0.5", **INSIDE_FLOW},
+    "solid": {"wall_loops": "4", "sparse_infill_density": "100%", "sparse_infill_pattern": "concentric",
+              "internal_solid_infill_pattern": "concentric", "top_shell_layers": "5", "bottom_shell_layers": "5",
+              "inner_wall_line_width": "0.5", **INSIDE_FLOW},
     "fine": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
 }
+PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
-                "strong": "for parts that take load: 4 walls, 40% gyroid, thick top and bottom", "fine": "smooth: 0.12 mm layers, 3 walls",
+                "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
+                "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
 
 
@@ -191,10 +203,10 @@ def parse_sets(pairs, keys):
     return out
 
 
-def apply(profile, overrides):
+def apply(profile, overrides, add=False):
     for k, v in overrides.items():
-        if k in profile:
-            profile[k] = [v] * len(profile[k]) if isinstance(profile[k], list) else v
+        if k in profile or add:
+            profile[k] = [v] * len(profile[k]) if isinstance(profile.get(k), list) else v
 
 
 def scad_to_stl(path, tmp):
@@ -237,9 +249,13 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         if preset not in PRESETS:
             sys.exit(f"no preset {preset!r}: {', '.join(PRESETS)}")
         keys = set(machine) | set(process) | {k for d in fil_data for k in d}
-        overrides = {**PRESETS[preset], **parse_sets(sets, keys)}
+        overrides = {**PRESETS[preset], **parse_sets(sets, keys | PRESET_KEYS)}
+        if overrides.get("alternate_extra_wall") == "1" and overrides.get("sparse_infill_pattern", process.get("sparse_infill_pattern")) == "lightning":
+            overrides["alternate_extra_wall"] = "0"   # Orca: the extra wall breaks with lightning infill
+            print("alternate extra wall turned off: it does not work with lightning infill", file=sys.stderr)
         for d in [machine, process] + fil_data:
             apply(d, overrides)
+        apply(process, {k: v for k, v in overrides.items() if k not in keys}, add=True)   # Orca defaults the flattened profile leaves out
         paths = []
         for i, d in enumerate([machine, process] + fil_data):
             p = os.path.join(tmp, f"{i}.json")
@@ -309,7 +325,7 @@ def add_material(system_name, printer, as_name=None):
 
 
 def install(printer, user_dir=None):
-    """Copy a printer setup into OrcaSlicer's user presets, with the draft/strong/fine presets as processes beside it."""
+    """Copy a printer setup into OrcaSlicer's user presets, with the Claude presets as processes beside it."""
     folder = printer_dir(printer)
     user_dir = user_dir or os.path.join(os.environ.get("APPDATA", HOME), "OrcaSlicer", "user", "default")
     machine = json.load(open(os.path.join(folder, "machine.json"), encoding="utf-8"))
@@ -339,7 +355,7 @@ def install(printer, user_dir=None):
         put("machine", machine, mname)
     for preset, o in PRESETS.items():
         d = dict(process)
-        apply(d, o)
+        apply(d, o, add=True)
         put("process", d, f"Claude {preset} @{mname}")
     for slug, f in materials(folder).items():
         put("filament", json.load(open(f, encoding="utf-8")), f"Claude {slug} @{mname}")
