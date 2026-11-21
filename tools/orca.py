@@ -68,6 +68,15 @@ PRESETS = {
               "internal_solid_infill_pattern": "concentric", "top_shell_layers": "5", "bottom_shell_layers": "5",
               "inner_wall_line_width": "0.5", **INSIDE_FLOW},
     "fine": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5"},
+    # quality: same 0.2 mm layers, the outside printed gently so walls, corners and text come out clean, for 3-12% more time (fit card +12%, all settings together).
+    # Measured 21 Nov on the U1 profile (fit card, gridfinity bin): slower outer walls, Arachne, precise outer wall, seam at the
+    # back and a third wall each cost 0-6%; ironing alone cost 12-37%, so it lives in "polished".
+    # ponytail: 80 mm/s and 3000 mm/s2 are common PETG starting values, not measured on the U1; tune after a seam/corner test.
+    "quality": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+                "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back"},
+    "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+                 "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
+                 "ironing_type": "top", "ironing_speed": "30", "ironing_flow": "10%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
 }
@@ -75,6 +84,8 @@ PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
+                "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
+                "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
 
 
@@ -100,7 +111,8 @@ def orca_cli():
 def vendor_dirs():
     """Every system profile folder of every OrcaSlicer build under ~/tools or in /Applications on a Mac (Bambu, Snapmaker, Prusa...)."""
     return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True)
-                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/"))
+                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/")
+                  + glob.glob(os.path.join(HOME, "Applications", "*.app", "Contents", "Resources", "profiles", "*", "")))
 
 
 def flatten(folder, name, kind):
@@ -274,7 +286,15 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         except subprocess.TimeoutExpired:
             sys.exit(f"OrcaSlicer ran past {timeout // 60} minutes")
     gcode = glob.glob(os.path.join(out, "*.gcode"))
-    s = stats(open(gcode[0], encoding="utf-8", errors="replace").read()) if gcode else {
+    text = open(gcode[0], encoding="utf-8", errors="replace").read() if gcode else ""
+    bed = re.search(r"^M190 S(\d+)", text, re.M) or re.search(r"^M140 S([1-9]\d*)", text, re.M)
+    if gcode and (not bed or bed.group(1) == "0"):
+        # seen 21 Nov 2026: a plate type the filament profile has no temperature for slices with the bed at 0
+        plate = re.search(r"^; curr_bed_type = (.+)$", text, re.M)
+        os.remove(gcode[0])
+        sys.exit(f"the bed temperature came out at 0 for {plate.group(1) if plate else 'this plate'}: "
+                 "set curr_bed_type to the printer's real plate (e.g. --set curr_bed_type=\"Textured PEI Plate\")")
+    s = stats(text) if gcode else {
         "error": "OrcaSlicer wrote nothing: " + " ".join((r.stdout + r.stderr).split())[-600:] + " (open the model in the app to see why)"}
     s.update({"printer": machine.get("name", printer), "preset": preset, "materials": [d.get("name") for d in fil_data],
               "settings": overrides, "project": os.path.join(out, f"{name}-sliced.3mf"), "gcode": gcode[0] if gcode else None})
@@ -389,7 +409,8 @@ def adopt_gcode(gcode_path, printer):
     for line in open(gcode_path, encoding="utf-8", errors="replace"):
         m = re.match(r"^; ([a-z0-9_]+) = (.*)$", line.rstrip("\n"))
         if m:
-            cfg[m.group(1)] = m.group(2).replace("\\n", "\n")
+            # OrcaSlicer writes \n for a newline and \\ for a backslash: undo both in one pass
+            cfg[m.group(1)] = re.sub(r"\\(.)", lambda e: {"n": "\n", "r": "\r"}.get(e.group(1), e.group(1)), m.group(2))
     if not cfg:
         sys.exit("no settings block in that G-code (slice it with OrcaSlicer or a fork)")
     path = os.path.join(printer_dir(printer), "machine.json")
