@@ -12,13 +12,18 @@ done
 
 if [ "${1:-}" = "--alpha" ]; then
   command -v gh >/dev/null || brew install gh
-  tag=$(gh api repos/Snapmaker/OrcaSlicer/releases --jq '[.[]|select(.draft|not)][0].tag_name')
-  tmp=$(mktemp -d)
-  gh release download "$tag" -R Snapmaker/OrcaSlicer -p '*Mac*.dmg' -D "$tmp"
-  mnt=$(hdiutil attach -nobrowse -readonly "$tmp"/*.dmg | awk -F'\t' '/\/Volumes\//{print $NF}')
+  # the newest pre-release (the stable one is already in /Applications from Homebrew)
+  tag=$(gh api repos/Snapmaker/OrcaSlicer/releases --jq '[.[]|select((.draft|not) and .prerelease)][0].tag_name // empty')
+  [ -n "$tag" ] || { echo "Snapmaker Orca has no pre-release right now"; exit 0; }
+  dmg=$(gh api "repos/Snapmaker/OrcaSlicer/releases/tags/$tag" --jq '[.assets[].name|select(test("Mac.*\\.dmg$"))][0] // empty')
+  [ -n "$dmg" ] || { echo "no Mac download in $tag"; exit 1; }
+  tmp=$(mktemp -d); mnt=""
+  trap '[ -n "$mnt" ] && hdiutil detach "$mnt" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+  gh release download "$tag" -R Snapmaker/OrcaSlicer -p "$dmg" -D "$tmp"
+  mnt=$(hdiutil attach -nobrowse -readonly "$tmp/$dmg" | awk -F'\t' '/\/Volumes\//{print $NF}')
+  app=$(ls -d "$mnt"/*.app | head -1)
   mkdir -p ~/Applications && rm -rf ~/Applications/"Snapmaker Orca $tag.app"
-  cp -R "$mnt"/*.app ~/Applications/"Snapmaker Orca $tag.app"
-  hdiutil detach "$mnt" >/dev/null && rm -rf "$tmp"
+  cp -R "$app" ~/Applications/"Snapmaker Orca $tag.app"
   echo "Snapmaker Orca $tag is in ~/Applications"
 fi
 

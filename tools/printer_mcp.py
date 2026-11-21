@@ -1,0 +1,432 @@
+"""Printer tools for the Claude desktop app (and Claude Code): an MCP server that drives a printer through Workshop.
+
+Each person runs it in their own Claude app, so their own Claude account does the work, and every action goes
+through Workshop's safety checks and lands in its activity log under their name.
+
+    WORKSHOP_URL=http://192.168.1.50:8090 WORKSHOP_USER=Khalid python printer_mcp.py
+
+Claude desktop app, Settings > Developer > Edit Config (claude_desktop_config.json):
+    {"mcpServers": {"printer": {"command": "python3", "args": ["/path/to/claude-3d-printing/tools/printer_mcp.py"],
+                                "env": {"WORKSHOP_URL": "http://192.168.1.50:8090", "WORKSHOP_USER": "Khalid"}}}}
+Claude Code:  claude mcp add printer -e WORKSHOP_URL=... -e WORKSHOP_USER=Khalid -- python3 /path/to/tools/printer_mcp.py
+
+Speaks MCP over stdio (JSON-RPC, one message per line). Standard library only; Python 3.8 or later.
+"""
+import base64
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+URL = os.environ.get("WORKSHOP_URL", "http://127.0.0.1:8090").rstrip("/")
+USER = os.environ.get("WORKSHOP_USER", "someone")
+VERSION = "1.0.0"
+
+
+def http(method, path, body=None, raw=False, timeout=60):
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"X-Workshop": "1", "X-Workshop-User": USER}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            out = r.read()
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read() or b"{}").get("error")
+            msg = msg.get("message") if isinstance(msg, dict) else msg
+        except ValueError:
+            msg = None
+        raise RuntimeError(msg or f"Workshop said HTTP {e.code}")
+    except OSError as e:
+        raise RuntimeError(f"cannot reach Workshop at {URL}: {e}")
+    if raw:
+        return out
+    d = json.loads(out or b"null")
+    return d["result"] if isinstance(d, dict) and "result" in d and len(d) <= 2 else d
+
+
+def mr(method, path, **kw):   # Moonraker, through Workshop's guarded proxy
+    return http(method, "/moonraker" + path, **kw)
+
+
+def q(s):
+    return urllib.parse.quote(str(s))
+
+
+# ---------- tools ----------
+
+def t_status(_):
+    objs = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3",
+            "print_task_config", "webhooks", "filament_feed%20left", "filament_feed%20right"]
+    s = mr("GET", "/printer/objects/query?" + "&".join(objs))["status"]
+    ps, ds, info = s["print_stats"], s.get("display_status", {}), s["print_stats"].get("info") or {}
+    p = ds.get("progress") or 0
+    lines = [f'State: {s["webhooks"]["state"] if s["webhooks"]["state"] != "ready" else ps["state"]}'
+             + (f' - {ps["filename"]}' if ps.get("filename") else "")]
+    if info.get("total_layer"):
+        lines.append(f'Layer {info["current_layer"]} of {info["total_layer"]}, {round(p * 100)}%')
+    if ps["state"] == "printing" and p > 0.02:
+        left = ps["print_duration"] * (1 - p) / p
+        lines.append(f"About {round(left / 60)} min left, finishes {time.strftime('%H:%M', time.localtime(time.time() + left))}")
+    lines.append(f'Bed {s["heater_bed"]["temperature"]:.0f} / {s["heater_bed"]["target"]:.0f} C')
+    tc = s.get("print_task_config") or {}
+    feed = {**s.get("filament_feed left", {}), **s.get("filament_feed right", {})}
+    words = {"load_finish": "in the head", "preload_finish": "parked at the feeder (load it before printing with it)",
+             "unload_finish": "empty"}
+    for i, h in enumerate(["extruder", "extruder1", "extruder2", "extruder3"]):
+        if h not in s:
+            continue
+        fil = " ".join(x for x in (((tc.get("filament_vendor") or [""] * 4)[i]), (tc.get("filament_type") or [""] * 4)[i],
+                                   (tc.get("filament_sub_type") or [""] * 4)[i]) if x and x != "NONE") or "nothing set"
+        col = ((tc.get("filament_color_rgba") or [""] * 4)[i] or "")[:6]
+        ch = feed.get(f"extruder{i}", {}).get("channel_state")
+        lines.append(f'T{i}: {fil}{" #" + col if col else ""}, {words.get(ch, ch or "?")}, '
+                     f'{s[h]["temperature"]:.0f} / {s[h]["target"]:.0f} C{" (active)" if s[h].get("state") == "ACTIVATE" else ""}')
+    try:   # the bed between two people: a finished part waiting, or cleared by whom
+        b = http("GET", "/api/bed")
+        if b.get("state") == "part waiting":
+            lines.append(f'Bed: {b.get("file") or "a print"} is waiting on it since {time.strftime("%H:%M", time.localtime(b["t"]))}; someone must take it off first')
+        elif b.get("state") == "clear" and b.get("who"):
+            lines.append(f'Bed: cleared by {b["who"]} at {time.strftime("%H:%M", time.localtime(b["t"]))}')
+    except (RuntimeError, KeyError, ValueError):
+        pass
+    try:   # grams left on each head's spool (Workshop counts what each print really used)
+        heads = http("GET", "/api/spools").get("heads", {})
+        left = [f'{h} {v["spool"]}: about {max(0, v["start_g"] - v["used_g"]):.0f} g left' for h, v in sorted(heads.items())]
+        if left:
+            lines.append("Spools: " + "; ".join(left))
+    except (RuntimeError, KeyError, ValueError):
+        pass
+    if ps.get("message"):
+        lines.append("Message: " + ps["message"])
+    try:   # what the photo watch last saw (Workshop checks a layer photo every 25 layers when it has an API key)
+        pw = http("GET", "/api/photo-checks")
+        c = next((x for x in pw.get("checks", []) if x.get("verdict")), None)
+        if c and ps.get("filename") and c.get("file") == ps["filename"]:
+            lines.append(f'Photo watch: layer {c["layer"]} at {time.strftime("%H:%M", time.localtime(c["t"]))}, '
+                         f'{"looks fine" if c["verdict"] == "ok" else "PAUSED: " + str(c.get("problem"))}. {c.get("reason") or ""}'.strip())
+    except (RuntimeError, KeyError, ValueError):
+        pass
+    recent = [a for a in http("GET", "/api/alerts") if time.time() - a["t"] < 3600][:3]
+    for a in recent:
+        lines.append(f'Warning {time.strftime("%H:%M", time.localtime(a["t"]))}: {a["text"]}' + (f' - {a["advice"]}' if a["advice"] else ""))
+    return "\n".join(lines)
+
+
+def t_snapshot(_):
+    jpg = http("GET", "/cam.jpg?t=" + str(time.time()), raw=True, timeout=20)
+    return [{"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
+            {"type": "text", "text": f"Camera, {time.strftime('%H:%M:%S')}. The camera sits low at bed level: it shows the plate "
+                                     "and the head well, but a thin leftover part can hide."}]
+
+
+def t_layer_photos(a):
+    r = http("GET", "/api/frames" + (f'?job={q(a["job"])}' if a.get("job") else ""))
+    fr = r["frames"]
+    if not fr:
+        return "No layer photos yet. Workshop saves one per layer while a print runs."
+    n = max(1, min(int(a.get("count") or 4), 8))
+    pick = sorted({round(i * (len(fr) - 1) / max(n - 1, 1)) for i in range(n)}) if n > 1 else [len(fr) - 1]   # spread over the job, ending at the newest
+    out = []
+    for i in pick:
+        f = fr[i]
+        out.append({"type": "image", "data": base64.b64encode(http("GET", f["url"], raw=True, timeout=20)).decode(), "mimeType": "image/jpeg"})
+        out.append({"type": "text", "text": f'{r["job"]}: layer {f["layer"]} at {f["time"]}'})
+    return out + [{"type": "text", "text": f'{len(fr)} photos saved for {r["job"]}; other prints with photos: {", ".join(j for j in r["jobs"] if j != r["job"]) or "none"}.'}]
+
+
+def t_calibration(a):
+    if a.get("value"):
+        r = http("POST", "/api/calibration", {k: a.get(k, "") for k in ("test", "value", "filament", "note")})
+        return f'Recorded {r["test"]} = {r["value"]} for {r["filament"] or "the loaded filament"}' + (" with a photo of the print." if r.get("photo") else ".") + (
+            f' It belongs in the profile key {r["key"]}.' if r.get("key") else "")
+    rows = http("GET", "/api/calibration")["results"][:20]
+    return "\n".join(f'{time.strftime("%d %b %H:%M", time.localtime(x["t"]))}  {x["test"]} = {x["value"]}  {x.get("filament", "")}  ({x["who"]})'
+                     + (f'  key {x["key"]}' if x.get("key") else "") + (f'  - {x["note"]}' if x.get("note") else "") for x in rows) or "No calibration results yet."
+
+
+def t_speed(a):
+    pct = int(a["percent"])
+    if not 50 <= pct <= 150:
+        raise ValueError("speed is 50 to 150 percent")
+    http("POST", "/moonraker/printer/gcode/script?script=" + q(f"M220 S{pct}"))
+    return f"Speed set to {pct}%."
+
+
+def t_requests(a):
+    if a.get("what"):
+        r = http("POST", "/api/requests", {k: a.get(k) for k in ("what", "qty", "colour", "note") if a.get(k) is not None})
+        return f'Asked for {r["qty"]} x {r["what"]}' + (f' in {r["colour"]}' if r.get("colour") else "") + f' (request {r["id"]}).'
+    if a.get("id") and a.get("state"):
+        http("POST", "/api/requests", {"id": int(a["id"]), "state": a["state"]})
+        return f'Request {a["id"]} is now {a["state"]}.'
+    rows = [r for r in http("GET", "/api/requests") if r["state"] in ("open", "taken")]
+    return "\n".join(f'{r["id"]}. {r["qty"]} x {r["what"]}{" in " + r["colour"] if r.get("colour") else ""} - asked by {r["who"]}, '
+                     f'{"waiting" if r["state"] == "open" else "being done by " + (r.get("by") or "?")}{" - " + r["note"] if r.get("note") else ""}'
+                     for r in rows) or "No open print requests."
+
+
+def t_parts(a):
+    p = http("GET", "/api/parts")
+    if len(p["objects"]) < 2:
+        return f'{p["file"] or "This print"} has {len(p["objects"])} part' + ("" if len(p["objects"]) == 1 else "s") + \
+            ": nothing to cancel on its own (cancelling the only part is the whole print, which stays a person's call)."
+    mark = a.get("mark")
+    png = http("GET", "/parts-map.png" + (f"?mark={q(mark)}" if mark else ""), raw=True, timeout=60)
+    jpg = http("GET", "/cam.jpg?t=" + str(time.time()), raw=True, timeout=20)
+    rows = [f'{o["name"]}: ' + ("cancelled" if o["name"] in p["excluded"] else "printing now" if o["name"] == p["current"] else "waiting its turn")
+            for o in p["objects"]]
+    return [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"},
+            {"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
+            {"type": "text", "text": f'{p["file"]}: bed from above (part outlines, ' + (f"{mark} in red, " if mark else "") +
+             "first layer in blue, front edge at the bottom), then the camera now.\n" + "\n".join(rows)}]
+
+
+def t_cancel_part(a):
+    if a.get("person_said_yes") is not True:
+        raise ValueError("ask first: show the person printer_parts with mark set to this part, and cancel only after they say yes")
+    r = http("POST", "/api/parts", {"name": a["name"]})
+    return f'Cancelled {r["cancelled"]}; still printing: {", ".join(r["left"])}.'
+
+
+def t_files(_):
+    files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
+    return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
+
+
+def t_designs(a):
+    d = http("GET", "/api/designs")
+    word = (a.get("search") or "").lower()
+    rows = [f'bench {m["bench"]} / {m["id"]}: {m["name"]}'
+            + (f' - {m["slice"]["time"]}, {m["slice"]["total_g"]} g on the {d["printer_label"]}' if (m.get("slice") or {}).get("time") else "")
+            + f' - colours {", ".join(p["colour"] for p in m["parts"] if p["printed"])}'
+            for m in d["designs"] if word in (m["name"] + " " + m["id"] + " " + m["for"]).lower()]
+    return f'Benches: {", ".join(f"{i}: {b}" for i, b in enumerate(d["benches"]))}\n' + ("\n".join(rows) or "No designs match.")
+
+
+def t_design_picture(a):
+    url = f'/api/look?bench={int(a.get("bench", 0))}&id={q(a["design"])}'
+    req = urllib.request.Request(URL + url, headers={"X-Workshop-User": USER})
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            png, size = r.read(), r.headers.get("X-Design-Size", "")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(json.loads(e.read() or b"{}").get("error") or f"HTTP {e.code}")
+    except OSError as e:
+        raise RuntimeError(f"cannot reach Workshop at {URL}: {e}")
+    return [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"},
+            {"type": "text", "text": f'{a["design"]}: top left angled, top right top, bottom left front, bottom right side. Size {size}.'}]
+
+
+def t_slice(a):
+    sets = []
+    if a.get("infill") is not None:
+        sets.append(f'infill={int(a["infill"])}')
+    if a.get("supports") is not None:
+        sets.append("supports=" + ("on" if a["supports"] else "off"))
+    r = http("POST", "/api/slice", {"bench": a.get("bench", 0), "id": a["design"], "preset": a.get("preset") or "standard",
+                                    "set": sets, "upload": True, "queue": bool(a.get("queue")),
+                                    "allow_substitute": bool(a.get("allow_substitute"))}, timeout=1200)
+    heads = "; ".join(f'{h["part"]} on {h["head"]} ({h["loaded"]})' for h in (r.get("heads") or []))
+    return (f'{r["file"]} is on the printer{" and in the queue" if r.get("queued") else ""}: {r["time"]}, {r["total_g"]} g, '
+            f'{r["changes"]} colour changes.' + (f" Heads: {heads}." if heads else "") + (f' {r["queue_note"]}' if r.get("queue_note") else ""))
+
+
+def t_start(a):
+    if not a.get("bed_clear"):
+        raise RuntimeError("Not started: the person must say the bed is empty (bed_clear=true), and you should look at "
+                           "printer_snapshot first. Ask them.")
+    mr("POST", "/printer/print/start?filename=" + q(a["filename"]))
+    return f'Started {a["filename"]}. Watch the first layers with printer_snapshot.'
+
+
+def t_simple(action):
+    def go(_):
+        mr("POST", f"/printer/print/{action}")
+        return {"pause": "Paused.", "resume": "Resumed.", "cancel": "Cancelled."}[action]
+    return go
+
+
+def t_queue(a):
+    act = a.get("action", "list")
+    if act == "list":
+        st = mr("GET", "/server/job_queue/status")
+        jobs = st["queued_jobs"]
+        return f'Queue is {st["queue_state"]}.\n' + ("\n".join(f'{j["job_id"]}: {j["filename"]}' for j in jobs) or "Nothing queued.")
+    if act == "add":
+        mr("POST", "/server/job_queue/job?filenames=" + q(a["filename"]))
+        return f'Queued {a["filename"]}.'
+    if act == "remove":
+        mr("DELETE", "/server/job_queue/job?job_ids=" + q(a["job_id"]))
+        return "Removed."
+    if act == "hold":
+        mr("POST", "/server/job_queue/pause")
+        return "Queue held."
+    if act == "start":
+        if not a.get("bed_clear"):
+            raise RuntimeError("Not started: the person must say the bed is empty (bed_clear=true).")
+        mr("POST", "/server/job_queue/start")
+        return "Started the next job; the queue is held again behind it."
+    raise RuntimeError("action is list, add, remove, hold or start")
+
+
+def t_unload(a):
+    http("POST", "/api/unload", {"head": a["head"]})
+    return f'Unloading {a["head"]}: about a minute per head. Check printer_status afterwards.'
+
+
+def t_filament(a):
+    return http("POST", "/api/filament", {"head": a["head"], "type": a["type"], "vendor": a.get("vendor") or "generic",
+                                          "sub": a.get("sub") or "generic", "colour": a["colour"].lstrip("#")})   # http() unwraps {"result": ...}
+
+
+def t_filament_types(_):
+    return "\n".join(f"{t}: " + "; ".join(f"{v} ({', '.join(s)})" for v, s in vs.items()) for t, vs in http("GET", "/api/filaments").items())
+
+
+def t_light(a):
+    mr("POST", "/printer/gcode/script?script=" + q(f'SET_LED LED=cavity_led WHITE={1 if a.get("on", True) else 0}'))
+    return "Light " + ("on." if a.get("on", True) else "off.")
+
+
+def t_history(a):
+    jobs = mr("GET", f'/server/history/list?limit={int(a.get("count") or 10)}&order=desc')["jobs"]
+    return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(j["start_time"]))}  {j["status"]:<10} '
+                     f'{j["print_duration"] / 60:.0f} min  {j["filament_used"] / 1000:.2f} m  {j["filename"]}' for j in jobs) or "No prints yet."
+
+
+def t_activity(_):
+    rows = http("GET", "/api/activity")[:20]
+    return "\n".join(f'{time.strftime("%H:%M", time.localtime(r["t"]))}  {r["who"]} {r["what"]}'
+                     + (f': {r["detail"]}' if r["detail"] else "") + f' ({r["via"]})' for r in rows) or "Nothing yet."
+
+
+def t_alerts(_):
+    rows = http("GET", "/api/alerts")
+    return "\n".join(f'{time.strftime("%m-%d %H:%M", time.localtime(a["t"]))}  {a["text"]}' + (f' - {a["advice"]}' if a["advice"] else "")
+                     for a in rows) or "No warnings."
+
+
+HEAD = {"type": "string", "description": "T0, T1, T2 or T3 (the printer's screen numbers them 1 to 4)"}
+TOOLS = [
+    ("printer_status", "What the printer is doing: state, layer, time left, bed, each head's filament and whether it is loaded, recent warnings.", {}, t_status),
+    ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
+    ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
+     {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
+    ("printer_calibration", "Calibration results (print-calibration skill): with no value, list them; with test and value, record the value the person picked from a test print, with a camera photo of it.",
+     {"test": {"type": "string", "enum": ["temperature", "max-flow", "pressure-advance", "flow-ratio", "retraction", "other"]},
+      "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"}}, t_calibration),
+    ("printer_requests", "Print requests between the two of us: with no arguments, the open ones; with what (and qty, colour, note), ask for a print; with id and state (taken, done, dropped), move one along.",
+     {"what": {"type": "string"}, "qty": {"type": "integer"}, "colour": {"type": "string"}, "note": {"type": "string"},
+      "id": {"type": "integer"}, "state": {"type": "string", "enum": ["open", "taken", "done", "dropped"]}}, t_requests),
+    ("printer_files", "Sliced G-code files on the printer, newest first.", {}, t_files),
+    ("printer_designs", "Designs Claude can slice (from the Print Benches), with real print time and grams where known.",
+     {"search": {"type": "string", "description": "words to filter by"}}, t_designs),
+    ("printer_design_picture", "A picture of a design from four sides (angled, top, front, side) in its print colours, with its size in mm. Look at it before slicing to check it is the right thing.",
+     {"design": {"type": "string", "description": "design id from printer_designs"}, "bench": {"type": "integer"}}, t_design_picture, ["design"]),
+    ("printer_slice", "Slice a design for the printer with the filament that is loaded (each colour goes to the head holding it) and put the G-code on the printer. Refuses a colour that is not loaded unless allow_substitute.",
+     {"design": {"type": "string", "description": "design id from printer_designs"}, "bench": {"type": "integer"},
+      "preset": {"type": "string", "enum": ["draft", "standard", "strong", "fine", "low-waste"]},
+      "infill": {"type": "integer", "description": "percent"}, "supports": {"type": "boolean"},
+      "queue": {"type": "boolean", "description": "also add it to the job queue"}, "allow_substitute": {"type": "boolean"}}, t_slice, ["design"]),
+    ("printer_start", "Start printing a file now. Only when the person has said the bed is empty (bed_clear) and printer_snapshot shows an empty plate. The printer also refuses if a head the file uses is not loaded or the file would leave the bed cold.",
+     {"filename": {"type": "string"}, "bed_clear": {"type": "boolean", "description": "true only if the person said the bed is empty"}}, t_start, ["filename", "bed_clear"]),
+    ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
+    ("printer_resume", "Resume a paused print.", {}, t_simple("resume")),
+    ("printer_cancel", "Cancel the current print (it cannot be resumed). Confirm with the person first unless the print is failing.", {}, t_simple("cancel")),
+    ("printer_queue", "The job queue: list, add a file, remove a job, hold the queue, or start the next job (bed_clear needed).",
+     {"action": {"type": "string", "enum": ["list", "add", "remove", "hold", "start"]}, "filename": {"type": "string"},
+      "job_id": {"type": "string"}, "bed_clear": {"type": "boolean"}}, t_queue, ["action"]),
+    ("printer_unload", "Unload a head's filament back to its spool (Snapmaker U1), or all heads. Not during a print.",
+     {"head": {"type": "string", "description": "T0 to T3, or all"}}, t_unload, ["head"]),
+    ("printer_set_filament", "Tell the printer what spool was loaded on a head, as its screen asks after loading (type from printer_filament_types; an unknown brand uses the type's generic settings). Not during a print.",
+     {"head": HEAD, "type": {"type": "string", "description": "e.g. PLA, PETG"}, "vendor": {"type": "string", "description": "brand, e.g. SUNLU"},
+      "sub": {"type": "string", "description": "sub-type, e.g. generic, HF, Silk"}, "colour": {"type": "string", "description": "hex RRGGBB"}},
+     t_filament, ["head", "type", "colour"]),
+    ("printer_filament_types", "The filament types, brands and sub-types the printer knows.", {}, t_filament_types),
+    ("printer_parts", "The parts of the running print (one per object the slicer defined): which is printing, waiting or cancelled, with a top-down bed picture and the camera. With mark, that part is filled red: show this to the person before printer_cancel_part.",
+     {"mark": {"type": "string", "description": "a part name to fill red, as printer_parts lists it"}}, t_parts),
+    ("printer_cancel_part", "Stop printing ONE part and keep the rest going (EXCLUDE_OBJECT). Ask first: show printer_parts with mark set to it and wait for the person's yes. Workshop refuses the last part left (that is the whole print, a person's own cancel).",
+     {"name": {"type": "string", "description": "the part's name from printer_parts"}, "person_said_yes": {"type": "boolean", "description": "true only after the person saw the marked picture and said yes"}}, t_cancel_part,
+     ["name", "person_said_yes"]),
+    ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
+     {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),
+    ("printer_light", "Turn the chamber light on or off.", {"on": {"type": "boolean"}}, t_light),
+    ("printer_history", "Past prints with their real time and filament used.", {"count": {"type": "integer"}}, t_history),
+    ("printer_activity", "Who did what to the printer recently (from Workshop, Claude and the command line).", {}, t_activity),
+    ("printer_warnings", "The printer's warnings and errors, kept even after its own console has scrolled past them, with advice.", {}, t_alerts),
+]
+BY_NAME = {t[0]: t for t in TOOLS}
+
+
+def tool_list():
+    out = []
+    for t in TOOLS:
+        name, desc, props, _ = t[:4]
+        schema = {"type": "object", "properties": props}
+        if len(t) > 4:
+            schema["required"] = t[4]
+        out.append({"name": name, "description": desc, "inputSchema": schema})
+    return out
+
+
+INSTRUCTIONS = ("These tools drive a 3D printer (a Snapmaker U1 with four heads, T0 to T3) through the household's Workshop page. "
+                "Safety: start a print only when the person has said the bed is empty AND printer_snapshot shows an empty plate; "
+                "never start on the picture alone. After starting, check the first layers with printer_snapshot. "
+                "Before printing with a head, printer_status must say it is in the head (parked filament runs out at once). "
+                "Every action is logged with the person's name.")
+
+
+def handle(msg):
+    method, mid = msg.get("method"), msg.get("id")
+    if method == "initialize":
+        return {"protocolVersion": (msg.get("params") or {}).get("protocolVersion", "2025-06-18"),
+                "capabilities": {"tools": {}}, "serverInfo": {"name": "printer", "version": VERSION}, "instructions": INSTRUCTIONS}
+    if method == "tools/list":
+        return {"tools": tool_list()}
+    if method == "tools/call":
+        p = msg.get("params") or {}
+        t = BY_NAME.get(p.get("name"))
+        if not t:
+            return {"content": [{"type": "text", "text": f"no tool {p.get('name')}"}], "isError": True}
+        try:
+            out = t[3](p.get("arguments") or {})
+            return {"content": out if isinstance(out, list) else [{"type": "text", "text": out}]}
+        except Exception as e:   # one bad call never takes the tools out of the Claude app
+            return {"content": [{"type": "text", "text": f"{e}"}], "isError": True}
+    if method == "ping":
+        return {}
+    if mid is not None:
+        raise LookupError(method)
+    return None   # a notification
+
+
+def main():
+    for stream in (sys.stdin, sys.stdout):   # MCP speaks UTF-8; Windows defaults to its own code page (seen on the Legion)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        try:
+            res = handle(msg)
+            reply = None if msg.get("id") is None else {"jsonrpc": "2.0", "id": msg["id"], "result": res}
+        except LookupError as e:
+            reply = {"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32601, "message": f"unknown method {e}"}}
+        if reply is not None:
+            sys.stdout.write(json.dumps(reply) + "\n")
+            sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

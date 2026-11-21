@@ -13,7 +13,9 @@ part = "card";   // one part only; kept for the export tool
 $fn = 48;
 font = "Liberation Sans:style=Bold";
 
-GAPS = [0.2, 0.3, 0.4];
+// gap is BOSL2's axial clearance; with 45 degree cones the vertical clearance under each cone is about the same,
+// so 0.2 equals one 0.2 mm layer and fuses (Legion d08cea, 21 Nov). Start at 0.3.
+GAPS = [0.3, 0.4, 0.5];
 t = 5;                  // leaf thickness = barrel diameter, so the whole card prints flat
 leaf = 16;              // leaf width (X), each side of the hinge
 len_y = 30;             // hinge length (Y)

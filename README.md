@@ -41,13 +41,15 @@ These pictures come from `tools/render.py`, from the same files you can download
 
 | Path | What it does |
 | --- | --- |
+| `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
 | `tools/fit.py` | Your printer's measured fits (slide and press clearance from the fit card, the M3 heat-set insert hole from the insert card, the print-in-place hinge gap from the hinge card), so every design uses them instead of a material guess |
-| `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
+| `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, quality, polished, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
 | `tools/slice_stats.py` | Slices every bench design with OrcaSlicer's command line and records real print time and grams per printer in `slice-stats.json`; the bench shows them with a printer switch |
+| `tools/printer_mcp.py` | Printer tools for the Claude desktop app and Claude Code (an MCP server, standard library only): status, camera picture, layer photos from past and overnight prints, designs, slice and send, start (needs the person's "bed is empty"), pause, resume, cancel, queue, unload, set filament, light, history, warnings, activity. Each person runs it in their own Claude app against Workshop, so their own Claude account does the work and the activity log shows their name. Setup in the file's docstring |
 | `tools/printer.py` | Drives a Klipper/Moonraker printer from the command line: status with loaded filament, camera frame, send, start only after `--bed-clear`, queue, pause/cancel, light, and `watch` (a camera frame per layer until the job ends). The `print-workflow` skill uses it to send, start, watch and log prints |
-| `tools/workshop.py` | Workshop: one page (phone, tablet, desktop) to watch a Klipper/Moonraker printer and its camera, run its job queue, preview any G-code toolpath in 3D before printing, browse every bench design in 3D and slice it with `orca.py` straight onto the printer. `python tools/workshop.py --printer <address>`; home network or VPN only |
+| `tools/workshop.py` | Workshop: one page (phone, tablet, desktop) to watch a Klipper/Moonraker printer and its camera, run its job queue, keep a photo of every layer and a timelapse of each print (30 days), preview any G-code toolpath in 3D before printing, browse every bench design in 3D and slice it with `orca.py` straight onto the printer. `python tools/workshop.py --printer <address>`; home network or VPN only |
 | `tools/install-mac.sh` | Installs or updates OrcaSlicer, Snapmaker Orca, the OpenSCAD snapshot and Blender on a Mac with Homebrew (`--alpha` adds Snapmaker Orca's newest pre-release) |
 | `tools/print_bench.py` | Builds the Print Bench page from a `bench.json`: one HTML file with the 3D viewer, size lines, a measure tool and download links |
 | `tools/make_3mf.py` | Packs a design's per-colour STLs into one 3MF project that Bambu Studio and OrcaSlicer open with every part on its filament and the colours set |
@@ -60,6 +62,18 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `tools/pcb.py` and friends | Circuit to orderable PCB: ERC, KiCad board from code, autorouting, DRC, JLCPCB files, 3D models (`pcb_kicad.py`, `kicad_env.py`, `trace_width.py`) |
 | `hardware/` | Electronics projects, each with specs, circuit, board, fab files and a printed case. First one: `hardware/led-bar` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
+
+## Drive your printer from the Claude app
+
+Talk to your printer the way you talk to Claude: "what's printing?", "slice the cable clip in black and queue it", "the bed's clear, start it", "unload T2".
+
+1. Run Workshop next to your Klipper/Moonraker printer (`python tools/workshop.py --printer <address>`), on a home network or a VPN.
+2. In the Claude desktop app: Settings, Developer, Edit Config, and add
+   `{"mcpServers": {"printer": {"command": "python3", "args": ["<repo>/tools/printer_mcp.py"], "env": {"WORKSHOP_URL": "http://<workshop>:8090", "WORKSHOP_USER": "<your name>"}}}}`, then restart the app.
+   In Claude Code: `claude mcp add printer -e WORKSHOP_URL=http://<workshop>:8090 -e WORKSHOP_USER=<your name> -- python3 <repo>/tools/printer_mcp.py`.
+3. Each person uses their own Claude account; every action goes through Workshop's checks (no start without "the bed is empty", none while a head is unloaded or the bed would be cold) and shows in its activity log under their name.
+
+Running a Snapmaker U1? Read [docs/snapmaker-u1.md](docs/snapmaker-u1.md) first.
 
 ## Full setup
 

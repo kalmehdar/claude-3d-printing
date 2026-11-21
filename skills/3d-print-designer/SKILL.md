@@ -47,6 +47,17 @@ Then read **only** the chosen material's file: [material-pla.md](material-pla.md
 
 If the model is feasible both ways, ask: *"This can print without supports (with some compromises like chamfered undersides or a split), or with supports for a cleaner shape. Which do you prefer?"* If supports are unavoidable (internal cavities, deep recesses), say why, minimise them, and check for soluble-support capability. With no answer, go support-free.
 
+## Step 3: Colours and materials on a multi-head printer
+
+A tool changer (Snapmaker U1, Prusa XL, E3D) gives each colour its own nozzle; an AMS-style printer shares one nozzle and purges between colours. Either way, each colour change costs time (and on a shared nozzle, filament), so design the colours, not just the shape:
+
+- **Few changes per layer, on few layers.** Colour that lives in a thin band (a 0.6 mm inlay on a face-down label, a top rim) changes heads on a handful of layers; colour scattered through the whole height changes on every layer. Prefer the first.
+- **Light over dark needs depth.** White or yellow over black shows through below about 0.6 mm (three 0.2 mm layers); make light inlays at least that deep, dark ones can be thinner.
+- **Only the loaded colours.** Ask what is on each head (or read it: `printer.py status` lists the U1's slots) and design to those; a fifth colour means a filament swap mid-print.
+- **Structure in one material.** PLA and PETG barely bond to each other: never put a load path across a PLA/PETG boundary. Mixed materials are for colour, labels and support interfaces.
+- **Support interface in the other material.** When supports are unavoidable and both are loaded, a PLA interface under a PETG part (or PETG under PLA) peels off cleanly and leaves a smooth surface. Set it in the slicer (OrcaSlicer: support and support-interface filament) and say which head it uses.
+- **Prime tower.** Keep one on a tool changer (idle nozzles cool and ooze); the `low-waste` preset in `tools/orca.py` makes it small.
+
 ## Workflow
 
 The same steps for a single part or an assembly.
@@ -184,6 +195,8 @@ The load-bearing FDM invariants, referenced throughout.
 
 ## Mechanical Parts
 
+For heat-set inserts, screw holes, nut traps, printed threads, snap fits, hinges, magnet pockets and Gridfinity, read [functional-parts.md](functional-parts.md): each number there is marked as sourced or a starting point to test, and the printer's measured fits (`tools/fit.py`) come first.
+
 For gears, snap-fits, living hinges and joints, see [mechanical.md](mechanical.md). Material-critical notes:
 
 - **Snap-fits:** PETG excels (5-8% strain), ABS is good (3-5%), PLA is fragile (1-1.5% max).
@@ -206,6 +219,8 @@ python "<skill-dir>/verify-model.py" model.scad --build-volume 256x256x256 --exp
 ```
 
 It compiles every `part` value and checks each for clean stderr, one body, manifold, on the plate, and fits the build volume. `clash_*` parts must render empty. It prints `GATE: PASS` or the failing parts. If OpenSCAD isn't installed where you're running, install it in your sandbox if you can (verification.md says how). Without it there's no gate and no STL, and a `.scad` alone is not something a slicer can open. **Read [verification.md](verification.md) before your first gate run.** It covers what each failure means, contracts, reporting, and the fallback without Python. Run the gate on initial generation and after any structural change. After a minor tweak, re-run it on just the changed parts (`--parts`).
+
+**Then look at it.** The gate proves the mesh is sound, not that it is the right shape. With the claude-3d-printing tools available, `python tools/look.py model.scad` writes one picture with four views (angled, top, front, side) in the model's colours and prints the real bounding box in mm; read the picture and check it against the spec: every size you were given, which face is down, that labels read the right way round (mirrored on a face-down label), and that nothing floats or sinks. Fix and look again before export.
 
 ## Design Review
 
@@ -257,6 +272,7 @@ Hand off the `.scad`, the STLs (and 3MF) saved in Workflow step 7, and any rende
 | [design-review.md](design-review.md) | Never yourself: it's the review sub-agent's brief |
 | [bambu-3mf-export.md](bambu-3mf-export.md) | When making a Bambu 3MF |
 | [fdm-design-principles.md](fdm-design-principles.md) | Only for hard support-free or structural cases |
+| [functional-parts.md](functional-parts.md) | Inserts, screw holes, nut traps, threads, snap fits, hinges, magnets, Gridfinity |
 | [printing-guidelines.md](printing-guidelines.md) | Only for tolerance or overhang data the material file lacks |
 | [mechanical.md](mechanical.md) | Only for gears, snap-fits, hinges, joints (threads: [pattern-fasteners.md](pattern-fasteners.md)) |
 | [printing-workflow.md](printing-workflow.md) | Only for a new user's export-to-print walkthrough |
