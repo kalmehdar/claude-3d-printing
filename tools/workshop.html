@@ -303,7 +303,7 @@ function render() {
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
     const loaded = !tc.filament_exist || tc.filament_exist[i];
     const canUnload = !active && loaded && tc.filament_exist && !(tc.filament_soft || [])[i];
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${canUnload ? `<button class="btn sm ghost" style="margin-top:6px" data-unload="${i}">Unload</button>` : ""}</div>`; }).join("");
+    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span><div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
   $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
@@ -323,7 +323,34 @@ $("#jobActions").addEventListener("click", async e => {
     poll();
   } catch (err) { toast(err.message, true); }
 });
+let FILAMENTS = null;
+async function setFilament(i) {
+  try { FILAMENTS ||= await api("/api/filaments"); } catch (e) { return toast(e.message, true); }
+  const tc = S.status.print_task_config || {}, cur = (tc.filament_type || [])[i];
+  const types = Object.keys(FILAMENTS);
+  const b = openSheet(`What's on T${i}?`, `
+    <div class="field"><label for="fType">Type</label><select id="fType">${types.map(t => `<option ${t === cur ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
+    <div class="field"><label for="fVendor">Brand (as on the spool; one the printer doesn't know uses its generic settings)</label><input id="fVendor" list="fVendors" value="${esc((tc.filament_vendor || [])[i] && tc.filament_vendor[i] !== "NONE" ? tc.filament_vendor[i] : "generic")}"><datalist id="fVendors"></datalist></div>
+    <div class="field"><label for="fSub">Sub-type</label><select id="fSub"></select></div>
+    <div class="field"><label for="fColour">Colour</label><input id="fColour" type="color" value="#${esc(((tc.filament_color_rgba || [])[i] || "FFFFFF").slice(0, 6))}"></div>
+    <div class="actions"><button class="btn primary" id="fSave">Save to the printer</button><button class="btn" id="fCancel">Cancel</button></div>
+    <p class="note">This is what the printer's screen asks after you load a spool. Saving resets that head's flow calibration, as the screen does. Snapmaker's chipped spools set themselves.</p>`);
+  const fill = () => { const v = FILAMENTS[b.querySelector("#fType").value] || {};
+    b.querySelector("#fVendors").innerHTML = Object.keys(v).map(x => `<option value="${esc(x)}">`).join("");
+    const subs = [...new Set([...(v[b.querySelector("#fVendor").value] || []), ...(v.generic || ["generic"])])];
+    b.querySelector("#fSub").innerHTML = subs.map(x => `<option ${x === (tc.filament_sub_type || [])[i] ? "selected" : ""}>${esc(x)}</option>`).join(""); };
+  b.querySelector("#fType").onchange = fill; b.querySelector("#fVendor").oninput = fill; fill();
+  b.querySelector("#fCancel").onclick = closeSheet;
+  b.querySelector("#fSave").onclick = async () => {
+    try {
+      const r = await post("/api/filament", {head: `T${i}`, type: b.querySelector("#fType").value, vendor: b.querySelector("#fVendor").value.trim(),
+        sub: b.querySelector("#fSub").value, colour: b.querySelector("#fColour").value.slice(1)});
+      toast(r.result); closeSheet(); poll();
+    } catch (e) { toast(e.message, true); }
+  };
+}
 $("#slots").addEventListener("click", e => {
+  const sf = e.target.closest("[data-setfil]"); if (sf) return setFilament(+sf.dataset.setfil);
   const b = e.target.closest("[data-unload]"); if (!b) return;
   const i = +b.dataset.unload, tc = S.status.print_task_config;
   confirmSheet(`Unload T${i}?`, `The printer heats T${i}, cuts the tip and winds the ${tc.filament_type[i]} ${tc.filament_sub_type[i]} back to its spool. It takes a minute or two.`, `Unload T${i}`, async () => {

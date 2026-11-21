@@ -15,6 +15,7 @@
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
+    python printer.py log [FILE]                  add finished jobs not yet in FILE (a markdown print log; default "log_file" in printer.json)
     python printer.py notify "Title" ["text"] [--level good|warn|bad]   post to Discord (watch posts when a job ends)
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
@@ -295,6 +296,15 @@ def unload(which):
         call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
 
 
+def heads_not_loaded(filename):
+    """Snapmaker U1: heads the file uses whose feeder does not report load_finish (filament only parked at the feeder
+    runs out at the first move). Empty on printers without feeders."""
+    import re
+    text = call("/server/files/gcodes/" + urllib.parse.quote(filename), raw=True, timeout=120).decode(errors="replace")
+    heads = sorted({int(t) for t in re.findall(r"^T([0-3])\s*$", text, re.M)}) or [0]
+    return [f"T{i} ({channel_state(i)})" for i in heads if channel_state(i) not in (None, "load_finish")]
+
+
 def known_filaments():
     """{type: {vendor: [sub-types]}} from the U1's own filament table (config/snapmaker/filament_parameters.json)."""
     d = json.loads(call("/server/files/config/snapmaker/filament_parameters.json", raw=True))
@@ -333,8 +343,33 @@ def set_filament(head, ftype, vendor, sub, colour, force=False):
             sys.exit(f"T{i} holds a Snapmaker chipped spool, which sets itself from its tag; pass --force to override")
         sys.exit(msg)
     now = query("print_task_config")["print_task_config"]
-    print(f'T{i}: {now["filament_vendor"][i]} {now["filament_type"][i]} {now["filament_sub_type"][i]} '
-          f'#{now["filament_color_rgba"][i][:6]}{v_note}')
+    return (f'T{i}: {now["filament_vendor"][i]} {now["filament_type"][i]} {now["filament_sub_type"][i]} '
+            f'#{now["filament_color_rgba"][i][:6]}{v_note}')
+
+
+def log_jobs(path, limit=50):
+    """Append finished jobs to a markdown print log, oldest first, skipping any already there (matched by start time + file)."""
+    jobs = [j for j in call(f"/server/history/list?limit={limit}&order=asc")["jobs"] if j["status"] != "in_progress"]
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else (
+        "# Print log\n\n| Date | File | Filament | Slicer time / g | Printer time | Outcome | Notes |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n")
+    added = []
+    for j in jobs:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(j["start_time"]))
+        if f"| {when} | {j['filename']} |" in text:
+            continue
+        m = j.get("metadata") or {}
+        est = m.get("estimated_time")
+        slicer = (f"{est // 3600:.0f} h {est % 3600 / 60:02.0f} m" if est else "?") + (
+            f" / {m['filament_weight_total']:.1f} g" if m.get("filament_weight_total") else "")
+        fil = m.get("filament_type") or m.get("filament_name") or ""
+        row = (f"| {when} | {j['filename']} | {fil} | {slicer} | {j['print_duration'] / 60:.0f} min, "
+               f"{j['filament_used'] / 1000:.2f} m | {j['status']} | |\n")
+        text += row
+        added.append(row.strip())
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return added
 
 
 def watch(every, frames):
@@ -363,6 +398,12 @@ def watch(every, frames):
             notify(f'{"Print finished" if done else "Print stopped"}: {s["file"] or "job"}',
                    f'{s["state"]} after {s["printing_min"]:.0f} min, {s["filament_used_m"]} m of filament. {s.get("message", "")}'.strip(),
                    "good" if done else "bad")
+            if CFG.get("log_file"):
+                try:
+                    for row in log_jobs(os.path.expanduser(CFG["log_file"])):
+                        print("logged:", row, flush=True)
+                except OSError as e:
+                    print("could not log:", e, flush=True)
             return s["state"]
         time.sleep(every)
 
@@ -404,6 +445,11 @@ def main():
         if state() in RUNNING:
             sys.exit("refused: a job is already running; queue it instead")
 
+    def need_loaded(filename):
+        missing = heads_not_loaded(filename)
+        if missing:
+            sys.exit("refused: not loaded into the head: " + ", ".join(missing) + ". Load from the printer's screen first.")
+
     if c == "status":
         print(json.dumps(status(), indent=1))
     elif c == "snap":
@@ -415,6 +461,7 @@ def main():
         print("on the printer:", send(x[0], a.queue), "(queued)" if a.queue else "")
     elif c == "start":
         need_clear()
+        need_loaded(x[0])
         print(call("/printer/print/start?filename=" + urllib.parse.quote(x[0]), "POST"))
     elif c == "queue":
         sub = x[0] if x else "list"
@@ -451,13 +498,19 @@ def main():
             for t, vendors in known_filaments().items():
                 print(f"{t}: " + "; ".join(f"{v} ({', '.join(subs)})" for v, subs in vendors.items()))
         elif len(x) >= 2:
-            set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force)
+            print(set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force))
         else:
             sys.exit("filament T0..T3 TYPE --colour RRGGBB [--vendor NAME] [--sub NAME], or filament list")
     elif c == "gcode":
         print(gcode(x[0], a.force))
     elif c == "watch":
         watch(int(x[0]) if x else 60, a.frames)
+    elif c == "log":
+        path = os.path.expanduser(x[0] if x else conf.get("log_file", ""))
+        if not path:
+            sys.exit('give the log file, or set "log_file" in printer.json')
+        added = log_jobs(path)
+        print("\n".join(added) if added else "nothing new to log")
     elif c == "history":
         for j in call(f"/server/history/list?limit={int(x[0]) if x else 10}&order=desc")["jobs"]:
             print(time.strftime("%Y-%m-%d %H:%M", time.localtime(j["start_time"])), f'{j["status"]:<11}',

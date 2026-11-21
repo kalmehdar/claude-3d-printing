@@ -307,6 +307,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return "one G-code command at a time"
             if not script.upper().startswith("SET_LED ") and self.printer_busy():
                 return "a job is running; that command waits until it ends"
+        if self.command == "POST" and p.startswith("/printer/print/start"):
+            import printer
+            printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+            try:
+                fname = urllib.parse.unquote(p.split("filename=", 1)[1].split("&")[0]) if "filename=" in p else ""
+                missing = printer.heads_not_loaded(fname) if fname else []
+            except OSError:
+                missing = []
+            if missing:
+                return "not loaded into the head: " + ", ".join(missing) + ". Load from the printer's screen first."
         if self.command == "POST" and p.startswith(("/server/job_queue/job", "/printer/print/start")):
             try:
                 with moonraker("GET", "/server/job_queue/status", timeout=5) as r:
@@ -355,6 +365,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 live = None
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live,
                                    "presets": getattr(orca, "PRESET_WORDS", {})})
+        if p == "/api/filaments":
+            import printer
+            printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+            try:
+                return self.send(200, printer.known_filaments())
+            except (OSError, ValueError) as e:
+                return self.send(502, {"error": f"could not read the printer's filament table: {e}"})
+        if p == "/api/filament" and self.command == "POST":
+            import printer
+            printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+            try:
+                r = json.loads(self.body() or b"{}")
+                if not isinstance(r, dict):
+                    raise ValueError
+                head, ftype = str(r.get("head", "")), str(r.get("type", ""))
+                vendor, sub, colour = str(r.get("vendor") or "generic"), str(r.get("sub") or "generic"), str(r.get("colour", ""))
+            except ValueError:
+                return self.send(400, {"error": "send head, type, vendor, sub and colour"})
+            if not re.fullmatch(r"T?[0-3]", head, re.I):
+                return self.send(400, {"error": "head is T0 to T3"})
+            try:   # set_filament refuses during a job and checks every name against the printer's own table
+                return self.send(200, {"result": printer.set_filament("T" + head.upper().lstrip("T"), ftype, vendor, sub, colour)})
+            except SystemExit as e:
+                return self.send(409, {"error": str(e.code)})
         if p == "/api/unload" and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")
