@@ -166,6 +166,15 @@ def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, ma
     return 200, result
 
 
+def rgb_gap(a, b):
+    """Distance between two colours given as hex (#rrggbb or rrggbb); unknown counts as far."""
+    try:
+        x, y = (bytes.fromhex(str(v).lstrip("#")[:6]) for v in (a, b))
+        return sum((i - j) ** 2 for i, j in zip(x, y))
+    except (ValueError, TypeError):
+        return 1 << 20
+
+
 def loaded_heads():
     """[{colour, material, label}] per head when the printer reports its filament (Snapmaker U1), else None.
     material is matched against the slicer setup's filament names (pla-snapspeed, petg-hf...)."""
@@ -181,6 +190,12 @@ def loaded_heads():
         have = list(orca.materials(orca.printer_dir(CFG["profile"])))
     except SystemExit:
         have = []
+    colours = {}
+    for n in have:
+        try:
+            colours[n] = (json.load(open(os.path.join(orca.printer_dir(CFG["profile"]), f"filament-{n}.json"))).get("filament_colour") or [""])[0]
+        except (OSError, ValueError, SystemExit):
+            pass
     heads = []
     exist = t.get("filament_exist") or [True] * len(t["filament_color_rgba"])
     for ty, sub, c, here in zip(t.get("filament_type", []), t.get("filament_sub_type", []), t["filament_color_rgba"], exist):
@@ -189,7 +204,10 @@ def loaded_heads():
             continue
         exact = f"{ty}-{sub}".lower().replace(" ", "-") if sub and sub.lower() != "generic" else ty.lower()
         words = [w.lower().replace(" ", "-") for w in (sub, ty) if w and w.lower() != "generic"]
-        pick = (exact if exact in have else None) or next((n for w in words for n in have if w in n.split("-")), None) or next(
+        same = [n for w in words for n in have if w in n.split("-")]
+        if len(same) > 1 and colours:   # one profile per colour (petg-black, petg-white...): the nearest colour to the head's
+            same.sort(key=lambda n: rgb_gap(colours.get(n), c[:6]))
+        pick = (exact if exact in have else None) or (same[0] if same else None) or next(
             (n for n in have if ty.lower() in n), have[0] if have else ty.lower())   # PETG generic -> petg, not petg-hf
         heads.append({"colour": "#" + c[:6].lower(), "material": pick, "label": f"{ty} {sub} #{c[:6]}".strip()})
     return heads

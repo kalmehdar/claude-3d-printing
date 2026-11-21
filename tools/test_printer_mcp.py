@@ -123,4 +123,7 @@ assert not printer.bed_off_midprint({"state": "printing", "bed": "40/0", "layer"
 # photo folders are URL- and path-safe whatever the file is called
 printer.call = lambda path, *a, **k: {"jobs": [{"job_id": "000009", "filename": ".Benchy (2) é.gcode", "status": "in_progress"}]}
 assert printer.run_folder(".Benchy (2) é.gcode") == "Benchy__2___-000009", printer.run_folder(".Benchy (2) é.gcode")
+# Workshop: one profile per colour -> the nearest colour wins
+import workshop
+assert workshop.rgb_gap("#1A1A1A", "1C1C1C") < workshop.rgb_gap("#F2F2F2", "1C1C1C") < workshop.rgb_gap(None, "1C1C1C")
 print("printer_mcp.py checks passed")
