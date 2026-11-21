@@ -398,6 +398,31 @@ def alert_change(prev, s):
         printer.push(f"Print resumed: {f}", "", "info", click=CFG.get("url"))
 
 
+def filament_prices(path):
+    """{material: price per kg} from a filament register (a markdown table with a Material column and a price in pounds,
+    like the Almehdar repo's registers/filament.md). Rows without a price (to order, from the receipt) are skipped; the
+    first priced row per material wins. Empty when no register is set."""
+    out = {}
+    try:
+        rows = [[c.strip() for c in l.strip().strip("|").split("|")] for l in open(path, encoding="utf-8") if l.lstrip().startswith("|")]
+    except (OSError, TypeError):
+        return out
+    if not rows:
+        return out
+    head = [h.lower() for h in rows[0]]
+    if "material" not in head:
+        return out
+    mi = head.index("material")
+    pi = next((i for i, h in enumerate(head) if "price" in h), None)
+    for r in rows[2:]:
+        if pi is None or len(r) <= max(mi, pi):
+            continue
+        m = re.search(r"£\s*(\d+(?:\.\d+)?)", r[pi])
+        if m and r[mi]:
+            out.setdefault(r[mi].upper(), float(m.group(1)))
+    return out
+
+
 def printer_conf():
     import printer
     return printer.load_conf()
@@ -640,7 +665,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             conf = printer_conf()
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "push": push,
-                                   "presets": getattr(orca, "PRESET_WORDS", {})})
+                                   "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
         if p.startswith("/api/activity"):
             import printer
             try:
@@ -774,12 +799,13 @@ def main():
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--allow-host", action="append", default=[], help="a host name the page may be opened by (IP addresses and localhost always work)")
     ap.add_argument("--port", type=int, default=8090)
+    ap.add_argument("--register", help="a filament register (markdown table with Material and a price per kg in pounds) for print costs")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(url=f"http://{a.bind if a.bind != '0.0.0.0' else 'localhost'}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else 'localhost'}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings

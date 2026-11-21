@@ -126,4 +126,12 @@ assert printer.run_folder(".Benchy (2) é.gcode") == "Benchy__2___-000009", prin
 # Workshop: one profile per colour -> the nearest colour wins
 import workshop
 assert workshop.rgb_gap("#1A1A1A", "1C1C1C") < workshop.rgb_gap("#F2F2F2", "1C1C1C") < workshop.rgb_gap(None, "1C1C1C")
+# Workshop: prices per kg from a filament register; unpriced rows skipped, first priced row per material wins
+with tempfile.TemporaryDirectory() as d:
+    reg = os.path.join(d, "filament.md")
+    open(reg, "w").write("# Stock\n\n| Spool | Material | Colour | Price per kg |\n| --- | --- | --- | --- |\n"
+                         "| SnapSpeed | PLA | Blue | from the receipt |\n| SUNLU | PETG | Black | £7.86 (4 kg bundle) |\n"
+                         "| SUNLU | PETG | Red | £9.00 |\n")
+    assert workshop.filament_prices(reg) == {"PETG": 7.86}, workshop.filament_prices(reg)
+    assert workshop.filament_prices(os.path.join(d, "none.md")) == {} and workshop.filament_prices(None) == {}
 print("printer_mcp.py checks passed")

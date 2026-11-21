@@ -338,7 +338,8 @@ function render() {
   $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
   $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
-  $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" : "-";
+  const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
+  $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
   document.title = (active ? `${p}% · ` : "") + "Workshop";
   const acts = [];
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
@@ -486,7 +487,7 @@ function renderFiles() {
   $("#fCards").innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
     return `<div class="fcard"><div class="img" style="background-image:url('${thumbUrl(f.path, m)}')"></div><div class="body">
       <div class="t">${esc(f.path)}</div>
-      <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
+      <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
       <div class="s">${day(f.modified)}${m.slicer ? " · " + esc(m.slicer) : ""}</div>
       <div class="acts"><button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button></div>
     </div></div>`; }).join("") : `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
@@ -619,7 +620,7 @@ function renderDesigns() {
   $("#dCards").innerHTML = list.map(d => { const s = d.slice || {};
     return `<div class="fcard"><div class="img" data-mini="${d.bench}:${esc(d.id)}"><div class="sw">${d.parts.filter(p => p.printed).map(p => `<i style="background:${esc(p.colour)}"></i>`).join("")}</div></div><div class="body">
       <div class="t">${esc(d.name)} ${d.state ? `<span class="chip ${esc(d.state)}">${d.state === "ready" ? "Ready" : d.state === "check" ? "Check first" : esc(d.state)}</span>` : ""}</div>
-      <div class="s">${s.time ? `${esc(s.time)} · ${s.total_g} g · ${s.changes} colour changes` : s.error ? "Not sliced yet" : ""}</div>
+      <div class="s">${s.time ? `${esc(s.time)} · ${s.total_g} g${cost(s.total_g, d.material) ? " · " + cost(s.total_g, d.material) : ""} · ${s.changes} colour changes` : s.error ? "Not sliced yet" : ""}</div>
       <div class="acts"><button class="btn sm primary" data-open="${d.bench}:${esc(d.id)}">Open</button></div></div></div>`; }).join("") || `<div class="empty">No designs match.</div>`;
   list.forEach(d => miniRender(d));
 }
@@ -703,10 +704,12 @@ async function loadHistory() {
     $("#hStats").innerHTML = [["Prints finished", t.total_jobs ?? "-"], ["This month", month], ["Hours printing", t.total_print_time ? (t.total_print_time / 3600).toFixed(1) : "-"], ["Filament used", t.total_filament_used ? (t.total_filament_used / 1000).toFixed(0) + " m" : "-"]]
       .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
     $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => `<div class="row"><div class="thumb" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></div>
-      <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m</div></div>
+      <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m${histCost(j) ? " · " + histCost(j) : ""}</div></div>
       <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${(FR.jobs || []).includes(runKey(j)) ? `<button class="btn sm ghost" data-photos="${esc(runKey(j))}">Photos</button>` : ""}${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
   } catch (e) { toast(e.message, true); }
 }
+const histCost = j => { const mat = (j.metadata || {}).filament_type || "";   // the printer's own metres, not the slicer's guess
+  return j.filament_used ? cost(gramsFromMetres(j.filament_used / 1000, mat), mat) : ""; };
 const runKey = j => (j.filename.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^\.+/, "") || "job") + "-" + j.job_id;   // matches printer.run_folder
 $("#hList").addEventListener("click", e => { const p = e.target.closest("[data-photos]"); if (p) return openPhotos(p.dataset.photos);
   const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
@@ -755,6 +758,11 @@ function renderBanner() {
 }
 /* ---------- layer photos (saved by printer.py watch) ---------- */
 const FR = {job: "", list: [], follow: true};
+// cost from the filament register's price per kg (Workshop --register); unknown price -> nothing shown, never a guess
+function priceFor(material) { const p = (S.info || {}).prices || {}; const m = String(material || "").toUpperCase();
+  const k = Object.keys(p).find(k => m.includes(k)); return k ? p[k] : null; }
+function cost(grams, material) { const p = priceFor(material); return p && grams ? "£" + (grams * p / 1000).toFixed(2) : ""; }
+const gramsFromMetres = (m, material) => m * 2.405 * (String(material).toUpperCase().includes("PLA") ? 1.24 : 1.25);   // 1.75 mm filament
 const runName = j => j.replace(/-0*(\d+)$/, " (print $1)");
 function openPhotos(job) { FR.job = job; FR.pinned = true; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => $("#framesCard").scrollIntoView({behavior: "smooth"})); }
 function showFrame() {
