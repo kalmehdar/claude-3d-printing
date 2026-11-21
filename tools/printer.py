@@ -403,6 +403,16 @@ def run_waiting(cmd, done, limit):
     raise SystemExit(f"{cmd}: the printer did not finish in {limit} s; check it")
 
 
+def wait_until(done, limit):
+    """True once done() is, False after limit seconds; polls every 2 s like run_waiting."""
+    end = time.time() + limit
+    while time.time() < end:
+        if done():
+            return True
+        time.sleep(2)
+    return False
+
+
 def unload(which):
     """Snapmaker U1: unload heads exactly as its screen's Unload all does (recorded 21 Nov 2026): AUTO_FEEDING_BATCH
     ACTION=START; per head DOING STAGE=prepare (pick the head, heat it, preheat the next) then DOING STAGE=doing
@@ -441,10 +451,19 @@ def unload(which):
         for k, (i, name) in enumerate(todo):
             nxt = f" NEXT_EXTRUDER={todo[k + 1][0]}" if k + 1 < len(todo) else ""
             print(f"{name}: heating...", flush=True)
-            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} UNLOAD=1", lambda: hot(i), 240)
-            print(f"{name}: unloading...", flush=True)
-            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} UNLOAD=1",
-                        lambda: idle() and channel_state(i) == "unload_finish", 300)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} UNLOAD=1",
+                        lambda: hot(i) or channel_state(i) != "load_finish", 240)
+            # Stock 2.1.2 sometimes finishes the whole unload in prepare (21 Nov, twice on T2): a doing sent then is
+            # refused as state_mismatch and the head is marked unload_fail. So after prepare, wait until the head
+            # settles: unloaded (done), or still loaded with the printer idle (then doing). Anything else is mid-unload.
+            if not wait_until(lambda: channel_state(i) == "unload_finish" or (channel_state(i) == "load_finish" and idle()), 120):
+                sys.exit(f"{name}: the feeder still reports {channel_state(i)} two minutes after prepare; check that head on the printer's screen")
+            if channel_state(i) == "load_finish":
+                print(f"{name}: unloading...", flush=True)
+                run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} UNLOAD=1",
+                            lambda: idle() and channel_state(i) == "unload_finish", 300)
+            if channel_state(i) != "unload_finish":
+                sys.exit(f"{name}: the feeder reports {channel_state(i)}, not unloaded; check that head on the printer's screen")
             print(f"{name}: unloaded")
     finally:
         call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
