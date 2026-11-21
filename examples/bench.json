@@ -108,6 +108,22 @@
       "source": "models/insert-card.scad"
     },
     {
+      "id": "piphinge",
+      "name": "Print-in-place hinge ladder",
+      "for": "Four hinges printed flat and already assembled, each with a bigger gap round its pin (0.3 to 0.6 mm). Turn each one after printing: the smallest that swings freely is your print-in-place gap. Tell Claude and every printed hinge, pivot or captive part after uses it.",
+      "status": "Check first: not yet printed",
+      "state": "check",
+      "material": "Any, one head; print it in the material you design for",
+      "credit": "Designed with Claude in OpenSCAD (models/pip-hinge.scad); stored with tools/fit.py --pip",
+      "parts": [
+        [
+          "Hinges",
+          "stl/pip-hinge-card.stl",
+          "#1f1f22"
+        ]
+      ]
+    },
+    {
       "id": "bins",
       "name": "Colour-coded Gridfinity bins",
       "for": "Eleven bins that fill a 5 x 5 Gridfinity tray, 42 mm tall, each name printed into a band in its category colour: red power, blue network, white storage, plain black for the rest.",

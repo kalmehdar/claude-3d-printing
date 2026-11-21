@@ -86,6 +86,14 @@
     ],
     "total_g": 6.6,
     "changes": 0
+   },
+   "piphinge": {
+    "time": "42m 22s",
+    "grams": [
+     15.5
+    ],
+    "total_g": 15.5,
+    "changes": 0
    }
   }
  },
@@ -175,6 +183,14 @@
      7.1
     ],
     "total_g": 7.1,
+    "changes": 0
+   },
+   "piphinge": {
+    "time": "37m 32s",
+    "grams": [
+     16.8
+    ],
+    "total_g": 16.8,
     "changes": 0
    }
   }

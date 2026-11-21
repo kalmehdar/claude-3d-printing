@@ -55,6 +55,7 @@ Horizontal holes: a teardrop top (BOSL2 `teardrop`) prints without supports.
 | PETG living hinge | Folding test: PETG about 850 cycles, PLA about 160 to 200 | [sourced] UT Austin paper |
 | Living hinge thickness | 0.3 to 0.8 mm, at least 5 mm long | [sourced] Hubs |
 | Print-in-place clearance | 0.3 mm to start, 0.25 on a well-tuned printer; 0.15 and below fuses | [sourced, forum] Prusa forum, Snapmaker blog |
+| Printed pin-and-barrel hinge | `use <examples/models/pip-hinge.scad>` then `hinge(pip_gap)`: gap all round the pin (never under 0.3, so more than one layer under it), 45 degree teardrop roof on the hole, axis along the bed, leaves flat. `pip_gap` comes from `tools/fit.py scad` once the hinge ladder (same file) is printed | [start] measure with the ladder |
 | Press fit / slide fit | From the fit card (`tools/fit.py`); without it, press 0 to +0.1 per side, slide +0.2 to 0.3 per side | [start] |
 
 ## Magnets (disc, press fit)
