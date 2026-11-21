@@ -218,4 +218,14 @@ for script, ok in (("M220 S115", True), ("M220 S50", True), ("M220 S200", False)
                    ("SET_LED LED=cavity_led WHITE=1", True), ("G28", False), ("M104 S250", False)):
     why = g.guard("/printer/gcode/script?script=" + workshop.urllib.parse.quote(script))
     assert (why is None) == ok, (script, why)
+# slicer accuracy from history (the real fit test and plaque numbers of 21 Nov 2026)
+acc = workshop.accuracy([
+    {"status": "completed", "filename": "fit.gcode", "print_duration": 2280, "total_duration": 2580, "filament_used": 6686,
+     "metadata": {"estimated_time": 2280, "filament_total": 6689.31, "filament_type": "PETG"}},
+    {"status": "completed", "filename": "plaque.gcode", "print_duration": 7200, "total_duration": 7320, "filament_used": 12967,
+     "metadata": {"estimated_time": 6600, "filament_total": 12932.6, "filament_type": "PLA;PLA;PLA;PLA"}},
+    {"status": "cancelled", "filename": "x.gcode", "print_duration": 60, "total_duration": 600, "filament_used": 669,
+     "metadata": {"estimated_time": 2280, "filament_total": 6689.31}}])
+assert acc["n"] == 2 and acc["jobs"][0]["time"] == 1.0 and acc["jobs"][0]["prep_min"] == 5.0
+assert acc["jobs"][1]["time"] == 1.091 and acc["jobs"][1]["colours"] == 4 and acc["time"] == 1.091
 print("printer_mcp.py checks passed")

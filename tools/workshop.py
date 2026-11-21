@@ -600,6 +600,26 @@ def photo_watch(file, layer, photo):
         log({"error": str(e)[:200]})
 
 
+def accuracy(jobs):
+    """Slicer against printer for finished jobs: per job the ratios, and medians to correct estimates with.
+    jobs: Moonraker history entries. time = print_duration / slicer estimate; prep = total - print minutes (heating,
+    homing, probing the slicer does not count); filament = printer mm / slicer mm (colour changes push it up)."""
+    rows = []
+    for j in jobs:
+        m = j.get("metadata") or {}
+        est, mm = m.get("estimated_time"), m.get("filament_total")
+        if j.get("status") != "completed" or not est or not mm or not j.get("print_duration"):
+            continue
+        rows.append({"file": j["filename"], "t": j.get("end_time") or j.get("start_time"),
+                     "time": round(j["print_duration"] / est, 3), "prep_min": round((j["total_duration"] - j["print_duration"]) / 60, 1),
+                     "filament": round(j["filament_used"] / mm, 3), "colours": len(str(m.get("filament_type", "")).split(";"))})
+    def median(xs):
+        xs = sorted(xs)
+        return xs[len(xs) // 2] if xs else None
+    return {"jobs": rows, "time": median([r["time"] for r in rows]), "prep_min": median([r["prep_min"] for r in rows]),
+            "filament": median([r["filament"] for r in rows]), "n": len(rows)}
+
+
 def printer_conf():
     import printer
     return printer.load_conf()
@@ -864,6 +884,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/accuracy":   # slicer vs printer from the printer's own history
+            try:
+                with moonraker("GET", "/server/history/list?limit=100&order=desc", timeout=15) as r:
+                    return self.send(200, accuracy(json.load(r)["result"]["jobs"]))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": str(e)})
         if p == "/api/photo-checks":   # the photo watch's recent verdicts, newest first (no photos, no keys)
             rows = []
             try:

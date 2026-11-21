@@ -249,6 +249,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
+      <div class="card" id="accCard" hidden style="margin-bottom:16px"><h2>Slicer against the printer</h2><div class="note" id="accInfo"></div></div>
       <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
         <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
           value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
@@ -350,7 +351,9 @@ function render() {
   let left = null;
   let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
-  else if (active && est) { left = Math.max(est - ps.print_duration, 0); guess = true; }   // early on: the slicer's estimate
+  else if (active && est) {   // early on: the slicer's estimate, corrected by what past prints really took
+    const k = ACC && ACC.n >= 2 ? ACC.time : 1, prep = ACC && ACC.n >= 2 && !(info.current_layer > 0) ? ACC.prep_min * 60 : 0;
+    left = Math.max(est * k - ps.print_duration, 0) + prep; guess = true; }
   $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
   $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
@@ -719,6 +722,7 @@ async function openDesign(key) {
 async function loadHistory() {
   try {
     loadCalibration();
+    await loadAccuracy();
     if (!FR.jobs) await loadFrames();
     const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
     const t = tot?.job_totals || {};
@@ -726,7 +730,7 @@ async function loadHistory() {
     $("#hStats").innerHTML = [["Prints finished", t.total_jobs ?? "-"], ["This month", month], ["Hours printing", t.total_print_time ? (t.total_print_time / 3600).toFixed(1) : "-"], ["Filament used", t.total_filament_used ? (t.total_filament_used / 1000).toFixed(0) + " m" : "-"]]
       .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
     $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => `<div class="row"><div class="thumb" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></div>
-      <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m${histCost(j) ? " · " + histCost(j) : ""}</div></div>
+      <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m${histCost(j) ? " · " + histCost(j) : ""}${(a => a ? ` · slicer ${hm(j.metadata.estimated_time)}, took ${hm(j.total_duration)} overall; filament ${Math.round(a.filament * 100)}% of the slicer's` : "")(accFor(j))}</div></div>
       <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${(FR.jobs || []).includes(runKey(j)) ? `<button class="btn sm ghost" data-photos="${esc(runKey(j))}">Photos</button>` : ""}${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
   } catch (e) { toast(e.message, true); }
 }
@@ -735,6 +739,17 @@ const histCost = j => { const mat = (j.metadata || {}).filament_type || "";   //
 /* ---------- calibration results ---------- */
 const CAL_WORDS = {"temperature": "Temperature tower", "max-flow": "Max flow", "pressure-advance": "Pressure advance",
                    "flow-ratio": "Flow ratio", "retraction": "Retraction", "other": "Other"};
+// how the slicer's numbers compare with what the printer really did (Workshop /api/accuracy, from printer history)
+let ACC = null;
+async function loadAccuracy() {
+  try { ACC = await api("/api/accuracy"); } catch (e) { return; }
+  $("#accCard").hidden = !ACC.n; if (!ACC.n) return;
+  const pct = r => (r >= 1 ? "+" : "") + Math.round((r - 1) * 100) + "%";
+  $("#accInfo").innerHTML = `From ${ACC.n} finished print${ACC.n > 1 ? "s" : ""}: printing takes <b>${pct(ACC.time)}</b> against the slicer's time,
+    and heating, homing and probing add about <b>${Math.round(ACC.prep_min)} min</b> before the first layer. Filament used is <b>${pct(ACC.filament)}</b>
+    against the slicer (prints with colour changes use more). Finish times on the Now page are corrected by these.`;
+}
+function accFor(j) { return ACC && ACC.jobs.find(a => a.file === j.filename && Math.abs((a.t || 0) - (j.end_time || j.start_time || 0)) < 5); }
 async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
   const sel = $("#calTest"); if (!sel.options.length) sel.innerHTML = Object.keys(r.tests).map(t => `<option value="${t}">${CAL_WORDS[t] || t}</option>`).join("");
@@ -875,7 +890,7 @@ api("/api/info").then(i => { S.info = i;
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
 loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAlerts(); loadActivity(); } }, 10000);
-loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
+loadAccuracy(); loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
 askWho(false);
 camLoop();
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");
