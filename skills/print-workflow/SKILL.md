@@ -9,6 +9,8 @@ The loop: **ask, model, export, audit, preview, hand over, and print it** when C
 
 The tools ship with this skill: `tools/` sits two folders above this skill's base directory (the plugin root, or the repo root in a clone). Use that path in every command below; if the skill was copied on its own without `tools/`, clone github.com/kalmehdar/claude-3d-printing and use its `tools/`.
 
+First time on a machine: `python tools/c3dp.py doctor` says what is missing (OpenSCAD, OrcaSlicer, Blender, measured fits, printer setups). In the Claude desktop app, with no terminal, the `design` MCP server (`tools/design_mcp.py`) gives the same steps as tools: `design_save`, `design_look`, `design_export`, `design_slice`, `design_fit`, `design_project`.
+
 ## 1. Ask (one message, then stop)
 
 - The printer and its bed size, the nozzle, how many colours it can print and the material. Skip what the user already said.

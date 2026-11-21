@@ -41,6 +41,8 @@ These pictures come from `tools/render.py`, from the same files you can download
 
 | Path | What it does |
 | --- | --- |
+| `tools/c3dp.py` | One command for all of it: `c3dp doctor` checks what is installed, `c3dp look`, `export`, `slice`, `fit`, `printer`, `spools`, `mcp design`; `c3dp setup` puts it on your PATH |
+| `tools/design_mcp.py` | Design-and-slice tools for the Claude desktop app and Claude Code (an MCP server, standard library only): save and read OpenSCAD designs, a four-view picture, export colour parts, slice with presets and named settings, a mesh check (Blender), fits, a colour 3MF project, open in OrcaSlicer, Spoolman stock |
 | `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit, and printability notes: steep overhang area and the longest bridge, with the fix |
@@ -73,6 +75,20 @@ Talk to your printer the way you talk to Claude: "what's printing?", "slice the 
    `{"mcpServers": {"printer": {"command": "python3", "args": ["<repo>/tools/printer_mcp.py"], "env": {"WORKSHOP_URL": "http://<workshop>:8090", "WORKSHOP_USER": "<your name>"}}}}`, then restart the app.
    In Claude Code: `claude mcp add printer -e WORKSHOP_URL=http://<workshop>:8090 -e WORKSHOP_USER=<your name> -- python3 <repo>/tools/printer_mcp.py`.
 3. Each person uses their own Claude account; every action goes through Workshop's checks (no start without "the bed is empty", none while a head is unloaded or the bed would be cold) and shows in its activity log under their name.
+
+## Design and slice from the Claude app
+
+Ask for a part in the Claude desktop app ("a wall hook for a 20 mm rail, in black PETG, strong") and Claude writes the OpenSCAD
+design, shows you four views, exports the parts and slices them for your printer, with time and grams.
+
+1. Install OpenSCAD and OrcaSlicer (see Full setup), then check with `python tools/c3dp.py doctor`.
+   Installed this repo as a Claude Code plugin? Both servers (`design` and `printer`) come with it: Claude Code asks for the
+   Python command (`python` on Windows), your designs folder and, if you have them, Spoolman and Workshop addresses. Skip step 2.
+2. In the Claude desktop app: Settings, Developer, Edit Config, and add
+   `{"mcpServers": {"design": {"command": "python3", "args": ["<repo>/tools/design_mcp.py"], "env": {"DESIGN_DIR": "<a folder for your designs>"}}}}`, then restart the app.
+   In Claude Code: `claude mcp add design -e DESIGN_DIR=<folder> -- python3 <repo>/tools/design_mcp.py`. On Windows the command is `python`.
+3. Designs are written only inside that folder. Add `"SPOOLMAN_URL": "http://<spoolman>:7912"` to `env` and every slice says
+   whether a spool has enough left.
 
 Running a Snapmaker U1? Read [docs/snapmaker-u1.md](docs/snapmaker-u1.md) first.
 
