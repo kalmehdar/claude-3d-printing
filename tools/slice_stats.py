@@ -12,6 +12,14 @@ shows them with a printer switch. Only the numbers are written: no slicer profil
   any other   --profiles: a folder holding machine.json, process.json and one filament-<anything>.json per material
               (filament-pla.json, filament-petg.json); the folder's machine.json sets the bed.
 
+A design may carry two optional fields:
+  "slice": {"prime_tower_width": "20", ...}   OrcaSlicer settings for this design only (a wide part that leaves no room
+                                               for the default prime tower, say)
+  "plates": "each"                             every part on its own plate (separate prints that don't fit the bed
+                                               together); the numbers are added up
+  "plates": [[0, 1], [2], [3]]                 the same, with parts grouped by their place in "parts" (a body and its
+                                               labels stay on one plate)
+
 OrcaSlicer: set ORCA_CLI to orca-slicer.exe (upstream OrcaSlicer 2.5 or later), or it is looked for in ~/tools.
 Profiles for bambu-p1s: ORCA_PROFILES, or any OrcaSlicer install found under ~/tools.
 Standard library only.
@@ -20,6 +28,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,6 +60,37 @@ def stats(gcode):
     return orca.stats(open(gcode, encoding="utf-8", errors="replace").read())
 
 
+def seconds(t):
+    return sum(int(n) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[u] for n, u in re.findall(r"(\d+)([dhms])", t))
+
+
+def clock(sec):
+    h, m = divmod(round(sec / 60), 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+def slice_one(exe, parts, name, machine, process, filament, overrides, tmp):
+    """One plate: pack the parts into a colour 3MF, slice it, read the numbers from the G-code."""
+    import make_3mf
+    if overrides:
+        d = json.load(open(process, encoding="utf-8"))
+        orca.apply(d, overrides, add=True)
+        process = os.path.join(tmp, "process.json")
+        json.dump(d, open(process, "w", encoding="utf-8"))
+    data, slots = make_3mf.build(parts, name, bed_of(machine))
+    p3 = os.path.join(tmp, "plate.3mf")
+    open(p3, "wb").write(data)
+    n = max(1, len(slots) if isinstance(slots, (list, tuple)) else int(slots or 1))
+    cmd = [exe, "--slice", "0", "--load-settings", f"{machine};{process}",
+           "--load-filaments", ";".join([filament] * n), "--outputdir", tmp, p3]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        return {"error": "slicer ran past 15 minutes"}
+    g = glob.glob(os.path.join(tmp, "*.gcode"))
+    return stats(g[0]) if g else {"error": f"slicer exit {r.returncode}: {(r.stdout + r.stderr).strip()[-200:]}"}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("bench")
@@ -62,7 +102,6 @@ def main():
     if a.printer != "bambu-p1s" and not a.profiles:
         sys.exit("--profiles is needed for any printer but bambu-p1s")
     exe = orca.orca_cli()
-    import make_3mf
 
     bench = json.load(open(a.bench, encoding="utf-8"))
     base = os.path.dirname(os.path.abspath(a.bench))
@@ -77,20 +116,22 @@ def main():
         parts = [(e[0], os.path.join(base, e[1]), e[2]) for e in m["parts"] if not (len(e) > 3 and e[3] == "not printed")]
         if not parts:
             continue
-        with tempfile.TemporaryDirectory() as tmp:
-            machine, process, filament = bambu(m.get("material", ""), tmp) if a.printer == "bambu-p1s" else custom(a.profiles, m.get("material", ""))
-            data, slots = make_3mf.build(parts, m["name"], bed_of(machine))
-            p3 = os.path.join(tmp, m["id"] + ".3mf")
-            open(p3, "wb").write(data)
-            n = max(1, len(slots) if isinstance(slots, (list, tuple)) else int(slots or 1))
-            cmd = [exe, "--slice", "0", "--load-settings", f"{machine};{process}",
-                   "--load-filaments", ";".join([filament] * n), "--outputdir", tmp, p3]
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-                g = glob.glob(os.path.join(tmp, "*.gcode"))
-                s = stats(g[0]) if g else {"error": f"slicer exit {r.returncode}: {(r.stdout + r.stderr).strip()[-200:]}"}
-            except subprocess.TimeoutExpired:
-                s = {"error": "slicer ran past 15 minutes"}
+        pl = m.get("plates")
+        plates = [[p] for p in parts] if pl == "each" else [[parts[i] for i in g] for g in pl] if pl else [parts]
+        results = []
+        for plate in plates:
+            with tempfile.TemporaryDirectory() as tmp:
+                machine, process, filament = bambu(m.get("material", ""), tmp) if a.printer == "bambu-p1s" else custom(a.profiles, m.get("material", ""))
+                results.append(slice_one(exe, plate, m["name"], machine, process, filament, m.get("slice"), tmp))
+        bad = [r for r in results if "error" in r]
+        if bad:
+            s = bad[0]
+        elif len(results) == 1:
+            s = results[0]
+        else:   # separate plates: time and grams add up; grams per filament slot
+            grams = [round(sum(r["grams"][i] for r in results if i < len(r["grams"])), 1) for i in range(max(len(r["grams"]) for r in results))]
+            s = {"time": clock(sum(seconds(r["time"]) for r in results)), "grams": grams, "total_g": round(sum(grams), 1),
+                 "changes": sum(r.get("changes", 0) for r in results), "plates": len(results)}
         entry["designs"][m["id"]] = s
         print(f"{m['id']:<16} {s.get('time', '-'):>12}  {s.get('total_g', '-')} g  {s.get('error', '')}")
     json.dump(allstats, open(out_path, "w", encoding="utf-8", newline="\n"), indent=1)
