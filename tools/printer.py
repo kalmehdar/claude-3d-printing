@@ -9,6 +9,9 @@
     python printer.py pause | resume | cancel
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
     python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
+    python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
+                                                  Snapmaker U1: tell the printer what was loaded on a head (as its screen does)
+    python printer.py filament list               the types, vendors and sub-types the printer knows
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
@@ -25,6 +28,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -151,6 +155,47 @@ def unload(which):
         print(f"{name}: {'still reports filament, check the head' if left else 'unloaded'}")
 
 
+def known_filaments():
+    """{type: {vendor: [sub-types]}} from the U1's own filament table (config/snapmaker/filament_parameters.json)."""
+    d = json.loads(call("/server/files/config/snapmaker/filament_parameters.json", raw=True))
+    return {t: {v[len("vendor_"):]: [x[len("sub_"):] for x in subs] for v, subs in vendors.items() if v.startswith("vendor_")}
+            for t, vendors in d.items() if isinstance(vendors, dict)}
+
+
+def set_filament(head, ftype, vendor, sub, colour, force=False):
+    """Snapmaker U1: SET_PRINT_FILAMENT_CONFIG, what the screen sends after you edit a head's filament. Names are matched to the
+    printer's table (any case); an unknown vendor or sub-type falls back to the type's generic settings, as the firmware does."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; change the filament after it ends")
+    i = int(head.upper().lstrip("T"))
+    known = known_filaments()
+    t = next((k for k in known if k.lower() == ftype.lower()), None)
+    if not t:
+        sys.exit(f"the printer does not know type {ftype!r}; it knows: {', '.join(known)}")
+    v = next((k for k in known[t] if k.lower() == vendor.lower()), None)
+    v_note = "" if v else f" (vendor {vendor!r} not in its table: generic {t} settings)"
+    v = v or vendor
+    subs = known[t].get(v, []) + known[t].get("generic", [])
+    sb = next((k for k in subs if k.lower() == sub.lower()), sub)
+    hexc = colour.lstrip("#").upper()
+    if len(hexc) != 6 or any(c not in "0123456789ABCDEF" for c in hexc):
+        sys.exit("colour as six hex digits, e.g. 1f1f22")
+    cmd = (f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={i} VENDOR={v} FILAMENT_TYPE={t} FILAMENT_SUBTYPE={sb} "
+           f"FILAMENT_COLOR_RGBA={hexc}FF" + (" FORCE=1" if force else ""))
+    if " " in v + t + sb:
+        sys.exit("names with spaces need the printer's screen")   # Klipper parameters cannot hold spaces
+    try:
+        call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=60)
+    except urllib.error.HTTPError as e:
+        msg = json.loads(e.read() or b"{}").get("error", {}).get("message", str(e))
+        if "official filament" in msg:
+            sys.exit(f"T{i} holds a Snapmaker chipped spool, which sets itself from its tag; pass --force to override")
+        sys.exit(msg)
+    now = query("print_task_config")["print_task_config"]
+    print(f'T{i}: {now["filament_vendor"][i]} {now["filament_type"][i]} {now["filament_sub_type"][i]} '
+          f'#{now["filament_color_rgba"][i][:6]}{v_note}')
+
+
 def watch(every, frames):
     os.makedirs(frames, exist_ok=True)
     last, seen_running = None, False
@@ -197,6 +242,9 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--frames", default="printer-frames")
     ap.add_argument("--level", default="info", choices=list(LEVEL))
+    ap.add_argument("--vendor", default="generic")
+    ap.add_argument("--sub", default="generic")
+    ap.add_argument("--colour", default="FFFFFF")
     a = ap.parse_args()
     if a.cmd == "notify":
         r = notify(a.args[0], " ".join(a.args[1:]), a.level)
@@ -253,6 +301,14 @@ def main():
         if not x:
             sys.exit("unload T0..T3, or unload all")
         unload(x[0])
+    elif c == "filament":
+        if x and x[0] == "list":
+            for t, vendors in known_filaments().items():
+                print(f"{t}: " + "; ".join(f"{v} ({', '.join(subs)})" for v, subs in vendors.items()))
+        elif len(x) >= 2:
+            set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force)
+        else:
+            sys.exit("filament T0..T3 TYPE --colour RRGGBB [--vendor NAME] [--sub NAME], or filament list")
     elif c == "gcode":
         print(gcode(x[0], a.force))
     elif c == "watch":
