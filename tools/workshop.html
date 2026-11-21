@@ -692,6 +692,7 @@ async function openDesign(key) {
 /* ---------- history ---------- */
 async function loadHistory() {
   try {
+    if (!FR.jobs) await loadFrames();
     const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
     const t = tot?.job_totals || {};
     const month = h.jobs.filter(j => new Date(j.start_time * 1000).getMonth() === new Date().getMonth() && j.status === "completed").length;
@@ -699,10 +700,12 @@ async function loadHistory() {
       .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
     $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => `<div class="row"><div class="thumb" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></div>
       <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m</div></div>
-      <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
+      <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${(FR.jobs || []).includes(runKey(j)) ? `<button class="btn sm ghost" data-photos="${esc(runKey(j))}">Photos</button>` : ""}${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
   } catch (e) { toast(e.message, true); }
 }
-$("#hList").addEventListener("click", e => { const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
+const runKey = j => j.filename.split("/").pop().replace(/\.[^.]+$/, "") + "-" + j.job_id;   // matches printer.run_folder
+$("#hList").addEventListener("click", e => { const p = e.target.closest("[data-photos]"); if (p) return openPhotos(p.dataset.photos);
+  const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
 
 
 /* ---------- who, head states, banner, alerts, activity ---------- */
@@ -748,23 +751,26 @@ function renderBanner() {
 }
 /* ---------- layer photos (saved by printer.py watch) ---------- */
 const FR = {job: "", list: [], follow: true};
+const runName = j => j.replace(/-0*(\d+)$/, " (print $1)");
+function openPhotos(job) { FR.job = job; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => $("#framesCard").scrollIntoView({behavior: "smooth"})); }
 function showFrame() {
   const f = FR.list[+$("#frRange").value]; if (!f) return;
   $("#frImg").src = f.url; $("#frImg").alt = `Layer ${f.layer ?? "?"} photo`;
-  $("#frInfo").textContent = `Layer ${f.layer ?? "?"} at ${f.time} · photo ${+$("#frRange").value + 1} of ${FR.list.length}`;
+  $("#frInfo").textContent = `${runName(FR.job)} · layer ${f.layer ?? "?"} at ${f.time} · photo ${+$("#frRange").value + 1} of ${FR.list.length}`;
 }
 async function loadFrames() {
   let r; try { r = await api("/api/frames" + (FR.job ? "?job=" + enc(FR.job) : "")); } catch (e) { return; }
   $("#framesCard").hidden = !r.frames.length; if (!r.frames.length) return;
   const sel = $("#frJob"); sel.hidden = r.jobs.length < 2;
-  sel.innerHTML = r.jobs.map(j => `<option ${j === r.job ? "selected" : ""}>${esc(j)}</option>`).join("");
+  FR.jobs = r.jobs;
+  sel.innerHTML = r.jobs.slice(0, 20).map(j => `<option value="${esc(j)}" ${j === r.job ? "selected" : ""}>${esc(runName(j))}</option>`).join("");
   const rng = $("#frRange"), atEnd = +rng.value >= FR.list.length - 1;
   FR.job = r.job; FR.list = r.frames; rng.max = FR.list.length - 1;
   if (FR.follow && atEnd) rng.value = rng.max;   // keep showing the newest unless someone is scrolling back
   showFrame();
 }
 $("#frRange").oninput = () => { FR.follow = +$("#frRange").value >= FR.list.length - 1; showFrame(); };
-$("#frJob").onchange = () => { FR.job = $("#frJob").value; FR.list = []; FR.follow = true; loadFrames(); };
+$("#frJob").onchange = () => openPhotos($("#frJob").value);
 async function loadAlerts() {
   try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
   const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only

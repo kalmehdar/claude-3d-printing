@@ -350,7 +350,7 @@ def frames(job=""):
         m = re.match(r"(\d{8})-(\d{2})(\d{2})\d{2}-layer(\d+)\.jpg$", f)
         out.append({"name": f, "url": f"/frames/{urllib.parse.quote(job)}/{f}",
                     "time": f"{m.group(2)}:{m.group(3)}" if m else "", "layer": int(m.group(4)) if m else None})
-    return {"jobs": jobs[:12], "job": job, "frames": out}
+    return {"jobs": jobs, "job": job, "frames": out}
 
 
 def wake_camera():

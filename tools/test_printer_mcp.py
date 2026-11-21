@@ -103,10 +103,11 @@ def fake_snap(out):
     open(out, "wb").write(b"jpg")
     return out
 printer.snap = fake_snap
+printer.call = lambda path, *a, **k: {"jobs": [{"job_id": "000042", "filename": "sub/Panel.gcode", "status": "in_progress"}]}
 with tempfile.TemporaryDirectory() as d:
     a = printer.layer_photo("sub/Panel.gcode", "3", d)
     b = printer.layer_photo("sub/Panel.gcode", "3", d)        # second caller, same layer: no new photo
     c = printer.layer_photo("sub/Panel.gcode", "4", d)
     assert a == b and a != c and len(snaps) == 2, (a, b, c, snaps)
-    assert os.path.dirname(a) == os.path.join(d, "Panel") and a.endswith("-layer3.jpg")
+    assert os.path.dirname(a) == os.path.join(d, "Panel-000042") and a.endswith("-layer3.jpg")
 print("printer_mcp.py checks passed")

@@ -205,9 +205,21 @@ def snap(out):
     return out
 
 
+def run_folder(job_file):
+    """Photo folder for the print now running: <file name>-<Moonraker history job id>, so a reprint gets its own folder."""
+    stem = os.path.splitext(os.path.basename(job_file or "job"))[0]
+    try:
+        j = call("/server/history/list?limit=1&order=desc")["jobs"][0]
+        if j["filename"] == job_file and j["status"] == "in_progress":
+            return f'{stem}-{j["job_id"]}'
+    except (OSError, KeyError, IndexError, ValueError):
+        pass
+    return stem
+
+
 def layer_photo(job_file, layer, frames=None):
-    """One photo per layer per job, shared by watch and Workshop: returns the existing photo for this layer, or takes one."""
-    d = os.path.join(frames or FRAMES, os.path.splitext(os.path.basename(job_file or "job"))[0])
+    """One photo per layer per print run, shared by watch and Workshop: returns the existing photo for this layer, or takes one."""
+    d = os.path.join(frames or FRAMES, run_folder(job_file))
     os.makedirs(d, exist_ok=True)
     tag = f"-layer{layer}.jpg"
     have = sorted(f for f in os.listdir(d) if f.endswith(tag))
