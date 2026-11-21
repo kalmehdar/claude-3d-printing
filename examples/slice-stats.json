@@ -94,6 +94,15 @@
     ],
     "total_g": 12.1,
     "changes": 0
+   },
+   "jar": {
+    "time": "2h 2m 28s",
+    "grams": [
+     13.6,
+     11.0
+    ],
+    "total_g": 24.6,
+    "changes": 0
    }
   }
  },
@@ -192,6 +201,15 @@
     ],
     "total_g": 12.1,
     "changes": 0
+   },
+   "jar": {
+    "time": "48m 19s",
+    "grams": [
+     9.7,
+     7.1
+    ],
+    "total_g": 16.8,
+    "changes": 53
    }
   }
  }

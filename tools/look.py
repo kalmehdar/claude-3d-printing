@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 # (label, rotations applied in order, each an OpenSCAD rotate([x, y, z])): turn that face up toward a camera looking
@@ -52,6 +53,42 @@ def run(args):
     if r.returncode:
         sys.exit("OpenSCAD failed: " + (r.stderr or r.stdout)[-800:])
     return r.stderr
+
+
+def colours_in(png):
+    """How many different pixel colours a PNG holds (OpenSCAD writes 8-bit RGB or RGBA, no interlace), so a blank
+    picture can be told from a real one without guessing from the file size."""
+    data = open(png, "rb").read()
+    w, h, depth, ctype = struct.unpack(">IIBB", data[16:26])
+    bpp = {2: 3, 6: 4}.get(ctype)
+    if depth != 8 or not bpp:
+        return 99   # not a format this check reads: assume it is a real picture
+    raw, i = b"", 8
+    while i < len(data):
+        n, kind = struct.unpack(">I4s", data[i:i + 8])
+        if kind == b"IDAT":
+            raw += data[i + 8:i + 8 + n]
+        i += 12 + n
+    raw, stride, prev, seen = zlib.decompress(raw), w * bpp, bytearray(w * bpp), set()
+    for y in range(h):
+        f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for x in range(stride):   # undo the PNG row filter: none, sub, up, average, paeth
+            a = line[x - bpp] if x >= bpp else 0
+            b, c = prev[x], prev[x - bpp] if x >= bpp else 0
+            if f == 1:
+                line[x] = (line[x] + a) & 255
+            elif f == 2:
+                line[x] = (line[x] + b) & 255
+            elif f == 3:
+                line[x] = (line[x] + (a + b) // 2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        seen.update(bytes(line[x:x + 3]) for x in range(0, stride, bpp))
+        if len(seen) > 2:
+            return len(seen)
+        prev = line
+    return len(seen)
 
 
 def bbox(stl):
@@ -133,8 +170,14 @@ def main():
         # orthographic: the visible height is distance x tan(fov / 2) x 2 with OpenSCAD's 22.5 degree field of view
         span = max(sheet_h, sheet_w * height / a.size) * 1.08
         dist = span / 2 / math.tan(math.radians(11.25))
-        run(["-o", out, f"--imgsize={a.size},{height}", "--projection=o", "--colorscheme=Tomorrow",
-             f"--camera={sheet_w / 2:.3f},{sheet_h / 2:.3f},0,0,0,0,{dist:.3f}"] + defs + [sheet])
+        png = ["-o", out, f"--imgsize={a.size},{height}", "--projection=o", "--colorscheme=Tomorrow",
+               f"--camera={sheet_w / 2:.3f},{sheet_h / 2:.3f},0,0,0,0,{dist:.3f}"] + defs + [sheet]
+        run(png)
+        if colours_in(out) <= 2:
+            # 21 Nov 2026: OpenSCAD's quick preview drew a BOSL2 thread with a bore cut through it as nothing, so the
+            # picture came out blank while the STL was right; a full render draws it
+            run(["--render"] + png)
+            print("the quick preview came out blank, so the views are a full render", file=sys.stderr)
     print(f"size: {size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm (x by y by z)")
     print(f"views: {out}  (top left angled, top right top, bottom left front, bottom right side)")
 
