@@ -129,7 +129,7 @@ Interleave knuckles from two parts, insert pin through all.
 When BOSL2 is installed, use its `knuckle_hinge(..., in_place = true)`: interlocking 45 degree cones hold the leaves, so the hinge comes off the bed assembled. Rules:
 
 - **Lay it flat:** the hinge axis runs along the bed, and the barrel sits at the leaves' mid-height (`position(RIGHT)`, not `TOP + RIGHT`), so it rests on the bed and doesn't hang. Leaf thickness = `knuckle_diam`.
-- **Gap from the hinge card:** `examples/models/hinge-card.scad` prints 0.2, 0.3 and 0.4 mm side by side (about 30 minutes). Use the smallest that frees with a little force and swings without rubbing. Until it's measured, start at 0.3.
+- **Gap from the hinge card:** `examples/models/hinge-card.scad` prints 0.2, 0.3 and 0.4 mm side by side (about 30 minutes). Use the smallest that frees with a little force and swings without rubbing, stored with `python tools/fit.py set ... --hinge <mm>`; designs read `hinge_gap` from `python tools/fit.py scad`. Until it's measured, 0.3.
 - **Check it's free before printing:** export and run the mesh audit. Each hinge must be exactly two separate pieces; one piece means the gap closed in the model.
 - Keep `offset` at least barrel radius + 0.3 so the barrel clears the other leaf.
 
