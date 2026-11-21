@@ -36,3 +36,8 @@ assert orca.PRESETS["strong"]["alternate_extra_wall"] == "1" and orca.PRESETS["s
 assert all(isinstance(v, str) for p in orca.PRESETS.values() for v in p.values())
 assert set(orca.PRESETS) == set(orca.PRESET_WORDS)
 print("orca.py checks passed")
+
+import slice_stats  # noqa: E402
+assert slice_stats.seconds("5h 47m 45s") == 20865 and slice_stats.seconds("1d 2h") == 93600
+assert slice_stats.clock(20865) == "5h 48m" and slice_stats.clock(2578) == "43m"   # plates added up, to the minute
+print("slice_stats checks passed")

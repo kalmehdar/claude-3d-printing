@@ -78,6 +78,14 @@
     ],
     "total_g": 6.0,
     "changes": 0
+   },
+   "insertcard": {
+    "time": "22m 21s",
+    "grams": [
+     6.6
+    ],
+    "total_g": 6.6,
+    "changes": 0
    }
   }
  },
@@ -159,6 +167,14 @@
      6.0
     ],
     "total_g": 6.0,
+    "changes": 0
+   },
+   "insertcard": {
+    "time": "16m 0s",
+    "grams": [
+     7.1
+    ],
+    "total_g": 7.1,
     "changes": 0
    }
   }
