@@ -114,4 +114,13 @@ with tempfile.TemporaryDirectory() as d:
     old = os.path.join(d, "Old-000001"); os.makedirs(old)
     os.utime(old, (time.time() - 31 * 86400,) * 2)
     assert printer.prune_photos(30, d) == ["Old-000001"] and os.path.isdir(os.path.join(d, "Panel-000042"))   # 30 days, newer kept
+# watch's cold-bed pause: mid-print only, never in the end macro or before the first layer
+assert printer.bed_off_midprint({"state": "printing", "bed": "40/0", "layer": "30/675"})
+assert not printer.bed_off_midprint({"state": "printing", "bed": "78/0", "layer": "675/675"})   # PRINT_END turned it off
+assert not printer.bed_off_midprint({"state": "printing", "bed": "30/0", "layer": "0/675"})
+assert not printer.bed_off_midprint({"state": "printing", "bed": "80/80", "layer": "30/675"})
+assert not printer.bed_off_midprint({"state": "printing", "bed": "40/0", "layer": None})
+# photo folders are URL- and path-safe whatever the file is called
+printer.call = lambda path, *a, **k: {"jobs": [{"job_id": "000009", "filename": ".Benchy (2) é.gcode", "status": "in_progress"}]}
+assert printer.run_folder(".Benchy (2) é.gcode") == "Benchy__2___-000009", printer.run_folder(".Benchy (2) é.gcode")
 print("printer_mcp.py checks passed")

@@ -31,6 +31,8 @@ import json
 import os
 import subprocess
 import shutil
+import tempfile
+import re
 import socket
 import struct
 import sys
@@ -204,13 +206,15 @@ def wake_camera():
 
 def snap(out):
     wake_camera()
-    open(out, "wb").write(call(CAMERA, raw=True, timeout=15))
+    data = call(CAMERA, raw=True, timeout=15)
+    open(out + ".part", "wb").write(data)
+    os.replace(out + ".part", out)   # a reader never sees half a JPEG
     return out
 
 
 def run_folder(job_file):
     """Photo folder for the print now running: <file name>-<Moonraker history job id>, so a reprint gets its own folder."""
-    stem = os.path.splitext(os.path.basename(job_file or "job"))[0]
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.splitext(os.path.basename(job_file or "job"))[0]).lstrip(".") or "job"   # URL- and path-safe
     try:
         j = call("/server/history/list?limit=1&order=desc")["jobs"][0]
         if j["filename"] == job_file and j["status"] == "in_progress":
@@ -241,16 +245,19 @@ def timelapse(folder, seconds=12):
         raise OSError("ffmpeg is not installed (brew install ffmpeg)")
     fps = max(8, min(30, round(len(pics) / seconds)))
     out = os.path.join(folder, "timelapse.mp4")
-    lst = os.path.join(folder, ".frames.txt")
-    with open(lst, "w") as f:   # concat list, not a shell glob: file names never reach a shell
+    fd, lst = tempfile.mkstemp(prefix=".frames-", suffix=".txt", dir=folder)
+    part = lst[:-4] + ".mp4"
+    with os.fdopen(fd, "w") as f:   # concat list, not a shell glob: file names never reach a shell
         f.writelines(f"file '{p}'\nduration {1 / fps:.4f}\n" for p in pics)
     try:
         subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-vf", "scale=1280:-2,format=yuv420p",
-                        "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-movflags", "+faststart", out + ".part.mp4"],
+                        "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-movflags", "+faststart", part],
                        check=True, timeout=600, cwd=folder)
-        os.replace(out + ".part.mp4", out)
+        os.replace(part, out)
     finally:
-        os.remove(lst)
+        for f in (lst, part):
+            if os.path.exists(f):
+                os.remove(f)
     return out
 
 
@@ -260,9 +267,12 @@ def prune_photos(days=30, frames=None):
     cut = time.time() - days * 86400
     for d in os.listdir(root) if os.path.isdir(root) else []:
         p = os.path.join(root, d)
-        if os.path.isdir(p) and not d.startswith(".") and os.path.getmtime(p) < cut:
-            shutil.rmtree(p)
-            gone.append(d)
+        try:
+            if os.path.isdir(p) and not os.path.islink(p) and os.path.getmtime(p) < cut:
+                shutil.rmtree(p)
+                gone.append(d)
+        except OSError:
+            pass   # one stuck folder does not stop the rest
     return gone
 
 
@@ -378,7 +388,7 @@ def heads_not_loaded(filename):
     text = call("/server/files/gcodes/" + urllib.parse.quote(filename), raw=True, timeout=120).decode(errors="replace")
     heads = sorted({int(t) for t in re.findall(r"^T([0-3])\s*$", text, re.M)}) or [0]
     problems = [f"T{i} not loaded into the head ({channel_state(i)})" for i in heads if channel_state(i) not in (None, "load_finish")]
-    bed = re.search(r"^M190 S(\d+)", text, re.M)
+    bed = re.search(r"^M1[49]0 S(\d+)", text, re.M)   # the first bed command, wait or not (the start G-code's)
     if bed and bed.group(1) == "0":   # a plate type the filament has no temperature for: it would print on a cold bed
         problems.append("the file heats the bed to 0 C (re-slice for the real plate)")
     return problems
@@ -451,9 +461,17 @@ def log_jobs(path, limit=50):
     return added
 
 
+def bed_off_midprint(s):
+    """Printing above the first layer with the bed heater off, not on the last layer (the U1's PRINT_END turns heaters off
+    while the job still reads as printing)."""
+    cur, _, tot = (s.get("layer") or "0/0").partition("/")
+    return (s.get("state") == "printing" and str(s.get("bed", "")).endswith("/0") and cur.isdigit() and tot.isdigit()
+            and 0 < int(cur) < int(tot))
+
+
 def watch(every, frames):
     os.makedirs(frames, exist_ok=True)
-    last, seen_running = None, False
+    last, seen_running, cold_n = None, False, 0
     while True:
         try:
             s = status()
@@ -462,7 +480,8 @@ def watch(every, frames):
             time.sleep(every)
             continue
         seen_running |= s["state"] in RUNNING
-        if s["state"] == "printing" and s["bed"].endswith("/0") and (s["layer"] or "0/0").split("/")[0] not in ("0", "None"):
+        cold_n = cold_n + 1 if bed_off_midprint(s) else 0
+        if cold_n == 2:   # two readings in a row, not one blip
             # seen 21 Nov 2026: resuming a U1 job after a runout left the bed heater off; a cold first layer comes loose
             call("/printer/print/pause", "POST")
             record("paused (bed heater off)", s["file"] or "", who="watch")
@@ -565,6 +584,9 @@ def main():
             print(call("/server/job_queue/job?job_ids=" + urllib.parse.quote(x[1]), "DELETE"))
         elif sub == "start":
             need_clear()
+            jobs = call("/server/job_queue/status").get("queued_jobs") or []
+            if jobs:
+                need_loaded(jobs[0]["filename"])
             print(call("/server/job_queue/start", "POST"))
             call("/server/job_queue/pause", "POST")   # one job per bed check: hold the queue behind it
             print("started the next job; the queue is held again behind it")

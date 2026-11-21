@@ -704,7 +704,7 @@ async function loadHistory() {
       <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${(FR.jobs || []).includes(runKey(j)) ? `<button class="btn sm ghost" data-photos="${esc(runKey(j))}">Photos</button>` : ""}${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
   } catch (e) { toast(e.message, true); }
 }
-const runKey = j => j.filename.split("/").pop().replace(/\.[^.]+$/, "") + "-" + j.job_id;   // matches printer.run_folder
+const runKey = j => (j.filename.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^\.+/, "") || "job") + "-" + j.job_id;   // matches printer.run_folder
 $("#hList").addEventListener("click", e => { const p = e.target.closest("[data-photos]"); if (p) return openPhotos(p.dataset.photos);
   const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
 

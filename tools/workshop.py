@@ -252,7 +252,11 @@ def alerts(limit=12):
 
 def watch_alerts():
     try:
-        _alerts.extend(json.loads(x) for x in open(ALERT_LOG, encoding="utf-8").read().splitlines()[-200:] if x.strip())
+        for x in open(ALERT_LOG, encoding="utf-8").read().splitlines()[-200:]:
+            try:
+                _alerts.append(json.loads(x))
+            except ValueError:
+                pass   # a half-written line from a crash
     except OSError:
         pass
     import printer
@@ -262,8 +266,8 @@ def watch_alerts():
     while True:
         try:
             scan_alerts()
-        except (OSError, ValueError, KeyError):
-            pass
+        except Exception as e:   # this thread also takes the photos and timelapses: it must never die
+            print("alert scan failed:", e, flush=True)
         try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
             s = printer.status()
             if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
@@ -274,21 +278,24 @@ def watch_alerts():
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
                 was = None
-        except (OSError, ValueError, KeyError):
-            pass
+        except Exception as e:
+            print("layer photo failed:", e, flush=True)
         if time.time() - pruned > 3600:
             try:
                 for d in printer.prune_photos(30):
                     print("removed photos older than 30 days:", d, flush=True)
-            except OSError:
-                pass
+            except Exception as e:
+                print("photo prune failed:", e, flush=True)
             pruned = time.time()
         time.sleep(20)
 
 
 CLAUDE_JOBS = []   # [{id, who, text, state, output, t}], newest last; kept in memory while Workshop runs
-CLAUDE_TOOLS = ["Bash(python3 tools/printer.py *)", "Bash(python3 tools/orca.py *)", "Bash(python3 tools/make_3mf.py *)",
-                "Bash(python3 tools/look.py *)", "Read"]
+CLAUDE_TOOLS = [f"Bash(python3 tools/printer.py {c}*)" for c in   # each subcommand named: no raw `gcode`, no notify, no config
+                ("status", "snap", "files", "send ", "start ", "queue", "pause", "resume", "cancel", "light ", "unload ", "filament ",
+                 "history", "watch", "timelapse")] + [
+                "Bash(python3 tools/orca.py *)", "Bash(python3 tools/make_3mf.py *)", "Bash(python3 tools/look.py *)",
+                f"Read(/{REPO}/**)"]   # "//" = an absolute path in Claude Code permission rules; benches added per call
 
 
 def claude_prompt(who, text, bed_clear):
@@ -312,7 +319,7 @@ def run_claude(job, bed_clear):
     env = dict(os.environ, PRINTER_ACTOR=f"Claude for {job['who']}", PRINTER_HOST=CFG["printer"])
     try:
         r = subprocess.run([exe, "-p", claude_prompt(job["who"], job["text"], bed_clear), "--output-format", "json",
-                            "--max-turns", "30", "--allowedTools", *CLAUDE_TOOLS],
+                            "--max-turns", "30", "--allowedTools", *CLAUDE_TOOLS, *{f"Read(/{os.path.dirname(b)}/**)" for b in CFG.get("benches", [])}],
                            cwd=REPO, env=env, capture_output=True, text=True, timeout=1500)
         d = json.loads(r.stdout or "{}")
         job["output"] = d.get("result") or (r.stderr or "no reply")[-600:]
@@ -325,13 +332,14 @@ def run_claude(job, bed_clear):
 _unloading = []
 
 
+import threading as _threading
+_unload_lock = _threading.Lock()
+
+
 def start_unload(head):
-    """Run printer.unload (the U1 screen's own batch protocol) in a thread; it takes about a minute per head."""
-    import threading
+    """Run printer.unload (the U1 screen's own batch protocol) in a thread; about a minute per head. False if one is running."""
     import printer
     printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
-    if _unloading and _unloading[0].is_alive():
-        return
 
     def go():
         try:
@@ -339,9 +347,13 @@ def start_unload(head):
         except SystemExit as e:
             sys.stderr.write(f"unload {head}: {e}\n")
 
-    t = threading.Thread(target=go, daemon=True)
-    _unloading[:] = [t]
-    t.start()
+    with _unload_lock:   # two people pressing Unload at once start one unload
+        if _unloading and _unloading[0].is_alive():
+            return False
+        t = _threading.Thread(target=go, daemon=True)
+        _unloading[:] = [t]
+        t.start()
+    return True
 
 
 _last_wake = [0.0]
@@ -365,7 +377,10 @@ def frames(job=""):
     except OSError:
         return {"jobs": [], "frames": []}
     job = job if job in jobs else (jobs[0] if jobs else "")
-    pics = sorted(f for f in os.listdir(os.path.join(root, job)) if f.endswith(".jpg")) if job else []
+    try:
+        pics = sorted(f for f in os.listdir(os.path.join(root, job)) if f.endswith(".jpg")) if job else []
+    except OSError:   # removed between the two listings
+        pics = []
     out = []
     for f in pics:
         m = re.match(r"(\d{8})-(\d{2})(\d{2})\d{2}-layer(\d+)\.jpg$", f)
@@ -505,14 +520,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return "one G-code command at a time"
             if not script.upper().startswith("SET_LED ") and self.printer_busy():
                 return "a job is running; that command waits until it ends"
-        if self.command == "POST" and p.startswith("/printer/print/start"):
+        if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")):
             import printer
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
             try:
-                fname = urllib.parse.unquote(p.split("filename=", 1)[1].split("&")[0]) if "filename=" in p else ""
+                if p.startswith("/printer/print/start"):
+                    fname = urllib.parse.unquote(p.split("filename=", 1)[1].split("&")[0]) if "filename=" in p else ""
+                    if not fname:
+                        return "say which file to start (filename in the address)"
+                else:   # the queue starts its first job: same checks
+                    with moonraker("GET", "/server/job_queue/status", timeout=10) as r:
+                        jobs = json.load(r)["result"].get("queued_jobs") or []
+                    fname = jobs[0]["filename"] if jobs else ""
                 missing = printer.heads_not_loaded(fname) if fname else []
-            except OSError:
-                missing = []
+            except Exception:   # unknown counts as unsafe, as printer_busy does: refuse rather than guess
+                return "could not check the file's heads and bed; try again"
             if missing:
                 return "; ".join(missing)
         if self.command == "POST" and p.startswith(("/server/job_queue/job", "/printer/print/start")):
@@ -573,7 +595,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 lines = open(printer.ACTIVITY, encoding="utf-8").read().splitlines()[-80:]
             except OSError:
                 lines = []
-            return self.send(200, [json.loads(x) for x in lines[::-1] if x.strip()])
+            out = []
+            for x in lines[::-1]:
+                try:
+                    out.append(json.loads(x))
+                except ValueError:
+                    pass
+            return self.send(200, out)
         if p.startswith("/api/frames"):
             return self.send(200, frames(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("job", [""])[0]))
         m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.(jpg|mp4))", p)
@@ -655,7 +683,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(400, {"error": "head is T0 to T3, or all"})
             if self.printer_busy():
                 return self.send(409, {"error": "a job is running; unload after it ends"})
-            start_unload(head)
+            if not start_unload(head):
+                return self.send(409, {"error": "an unload is already running; wait for it to finish"})
             record("unload", head, who=actor(self))
             return self.send(202, {"started": head})
         if p == "/api/slice" and self.command == "POST":

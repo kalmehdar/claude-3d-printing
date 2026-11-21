@@ -307,7 +307,7 @@ def handle(msg):
         try:
             out = t[3](p.get("arguments") or {})
             return {"content": out if isinstance(out, list) else [{"type": "text", "text": out}]}
-        except (RuntimeError, KeyError, ValueError, TypeError) as e:
+        except Exception as e:   # one bad call never takes the tools out of the Claude app
             return {"content": [{"type": "text", "text": f"{e}"}], "isError": True}
     if method == "ping":
         return {}
