@@ -94,6 +94,14 @@
     ],
     "total_g": 12.1,
     "changes": 0
+   },
+   "snapcard": {
+    "time": "16m 10s",
+    "grams": [
+     3.5
+    ],
+    "total_g": 3.5,
+    "changes": 0
    }
   }
  },
@@ -191,6 +199,14 @@
      12.1
     ],
     "total_g": 12.1,
+    "changes": 0
+   },
+   "snapcard": {
+    "time": "10m 16s",
+    "grams": [
+     3.4
+    ],
+    "total_g": 3.4,
     "changes": 0
    }
   }
