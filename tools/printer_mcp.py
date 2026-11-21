@@ -102,6 +102,21 @@ def t_snapshot(_):
                                      "and the head well, but a thin leftover part can hide."}]
 
 
+def t_layer_photos(a):
+    r = http("GET", "/api/frames" + (f'?job={q(a["job"])}' if a.get("job") else ""))
+    fr = r["frames"]
+    if not fr:
+        return "No layer photos yet. Workshop saves one per layer while a print runs."
+    n = max(1, min(int(a.get("count") or 4), 8))
+    pick = sorted({round(i * (len(fr) - 1) / max(n - 1, 1)) for i in range(n)}) if n > 1 else [len(fr) - 1]   # spread over the job, ending at the newest
+    out = []
+    for i in pick:
+        f = fr[i]
+        out.append({"type": "image", "data": base64.b64encode(http("GET", f["url"], raw=True, timeout=20)).decode(), "mimeType": "image/jpeg"})
+        out.append({"type": "text", "text": f'{r["job"]}: layer {f["layer"]} at {f["time"]}'})
+    return out + [{"type": "text", "text": f'{len(fr)} photos saved for {r["job"]}; other prints with photos: {", ".join(j for j in r["jobs"] if j != r["job"]) or "none"}.'}]
+
+
 def t_files(_):
     files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
@@ -224,6 +239,8 @@ HEAD = {"type": "string", "description": "T0, T1, T2 or T3 (the printer's screen
 TOOLS = [
     ("printer_status", "What the printer is doing: state, layer, time left, bed, each head's filament and whether it is loaded, recent warnings.", {}, t_status),
     ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
+    ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
+     {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
     ("printer_files", "Sliced G-code files on the printer, newest first.", {}, t_files),
     ("printer_designs", "Designs Claude can slice (from the Print Benches), with real print time and grams where known.",
      {"search": {"type": "string", "description": "words to filter by"}}, t_designs),

@@ -39,7 +39,10 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.reply(200, {"result": STATUS})
         if p.startswith("/api/alerts"):
             return self.reply(200, [])
-        if p.startswith("/cam.jpg"):
+        if p.startswith("/api/frames"):
+            return self.reply(200, {"jobs": ["panel"], "job": "panel", "frames": [
+                {"name": f"x-layer{i}.jpg", "url": f"/frames/panel/x-layer{i}.jpg", "time": "06:3%d" % i, "layer": i} for i in range(10)]})
+        if p.startswith("/frames/") or p.startswith("/cam.jpg"):
             return self.reply(200, b"\xff\xd8fakejpeg\xff\xd9", "image/jpeg")
         if p.startswith("/moonraker/printer/print/start"):
             return self.reply(409, {"error": "T0 not loaded into the head (preload_finish)"})
@@ -62,13 +65,14 @@ calls = [
     {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "printer_start", "arguments": {"filename": "a.gcode", "bed_clear": True}}},
     {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "printer_set_filament", "arguments": {"head": "T0", "type": "PETG", "colour": "#1c1c1c"}}},
     {"jsonrpc": "2.0", "id": 8, "method": "nonsense/method"},
+    {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "printer_layer_photos", "arguments": {"count": 3}}},
 ]
 env = dict(os.environ, WORKSHOP_URL=f"http://127.0.0.1:{srv.server_address[1]}", WORKSHOP_USER="Tester")
 out = subprocess.run([sys.executable, os.path.join(HERE, "printer_mcp.py")], input="\n".join(json.dumps(c) for c in calls) + "\n",
                      capture_output=True, text=True, env=env, timeout=60).stdout
 replies = {r["id"]: r for r in map(json.loads, out.splitlines())}
 
-assert set(replies) == {1, 2, 3, 4, 5, 6, 7, 8}, sorted(replies)               # notifications get no reply
+assert set(replies) == {1, 2, 3, 4, 5, 6, 7, 8, 9}, sorted(replies)               # notifications get no reply
 assert replies[1]["result"]["serverInfo"]["name"] == "printer"
 names = [t["name"] for t in replies[2]["result"]["tools"]]
 assert "printer_start" in names and all(t["inputSchema"]["type"] == "object" for t in replies[2]["result"]["tools"])
@@ -82,6 +86,9 @@ assert replies[5]["result"]["isError"] and "bed is empty" in replies[5]["result"
 assert replies[6]["result"]["isError"] and "not loaded" in replies[6]["result"]["content"][0]["text"]   # Workshop's refusal passes through
 assert replies[7]["result"]["content"][0]["text"] == "T0: SUNLU PETG generic #1C1C1C"
 assert replies[8]["error"]["code"] == -32601
+lp = replies[9]["result"]["content"]
+assert [c["text"] for c in lp if c["type"] == "text"][:3] == ["panel: layer 0 at 06:30", "panel: layer 4 at 06:34", "panel: layer 9 at 06:39"], lp
+assert sum(c["type"] == "image" for c in lp) == 3
 posts = [s for s in SEEN if s[0] == "POST"]
 assert posts and all(h.get("X-Workshop") == "1" and h.get("X-Workshop-User") == "Tester" for _, _, h, _ in posts)
 assert json.loads(next(b for m, p, h, b in posts if p == "/api/filament"))["colour"] == "1c1c1c"
