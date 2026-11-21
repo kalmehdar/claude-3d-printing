@@ -167,4 +167,31 @@ with tempfile.TemporaryDirectory() as d:
     row = workshop.calibration({"test": "temperature", "value": "240", "filament": "SUNLU PETG white"}, who="Tester")[0]
     assert row["key"] == "nozzle_temperature" and row["value"] == "240" and row["photo"].startswith("/calibration-photo/")
     assert os.path.isfile(os.path.join(workshop.CAL_PHOTOS, row["photo"].rsplit("/", 1)[1]))
+# photo watch: pauses only when two looks agree on a clear failure with high confidence; cosmetic faults never pause
+with tempfile.TemporaryDirectory() as d:
+    workshop.PHOTO_LOG = os.path.join(d, "checks.jsonl")
+    workshop.time.sleep = lambda s: None
+    printer.snap = fake_snap
+    printer.status = lambda: {"state": "printing"}
+    pauses, pushes = [], []
+    class _R:
+        def read(self): return b"{}"
+    workshop.moonraker = lambda method, path, **k: (pauses.append(path), _R())[1]
+    workshop.record = lambda *a, **k: None
+    printer.push = lambda *a, **k: pushes.append(a)
+    photo = os.path.join(d, "x-layer50.jpg"); open(photo, "wb").write(b"jpg")
+    def verdicts(*vs):
+        it = iter(vs)
+        workshop.look_at_photo = lambda jpg, layer: dict(next(it))
+    bad = {"verdict": "pause", "problem": "spaghetti", "confidence": 0.95, "reason": "tangles"}
+    ok = {"verdict": "ok", "problem": "none", "confidence": 0.9, "reason": "fine"}
+    verdicts(bad, ok); workshop.photo_watch("a.gcode", 50, photo)
+    assert not pauses, "one look is not enough"
+    verdicts({**bad, "problem": "other"}); workshop.photo_watch("a.gcode", 50, photo)
+    assert not pauses, "a cosmetic fault never pauses"
+    verdicts({**bad, "confidence": 0.6}); workshop.photo_watch("a.gcode", 50, photo)
+    assert not pauses, "unsure never pauses"
+    verdicts(bad, bad); workshop.photo_watch("a.gcode", 50, photo)
+    assert pauses == ["/printer/print/pause"] and pushes, (pauses, pushes)
+    assert len(open(workshop.PHOTO_LOG).read().splitlines()) == 6
 print("printer_mcp.py checks passed")

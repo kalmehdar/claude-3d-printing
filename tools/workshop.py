@@ -14,6 +14,11 @@ What it serves:
     /api/slice  (POST)    {"bench": n, "id": design, "preset": "standard", "set": ["infill=30"], "upload": true, "queue": false}
                           packs the design's colour parts into a 3MF, slices it with tools/orca.py and uploads the G-code
 
+Photo watch: with a Claude API key in ANTHROPIC_API_KEY or ~/.config/claude-3d-printing/anthropic-key (mode 600), Claude
+looks at the layer photo at layer 2 and every 25 layers. It pauses the print and sends the phone alert only on spaghetti, a
+part off the plate or a blob round the nozzle, when it is sure and a second fresh photo agrees; every check is logged in
+photo-checks.jsonl beside it. No key, no checks.
+
 Moonraker on many printers has no password. Run this only on a home network or behind a VPN such as Tailscale,
 never on an open port. Standard library only; the page loads three.js from a CDN.
 """
@@ -285,6 +290,7 @@ def watch_alerts():
     import threading
     printer.load_conf()
     last, was, pruned, prev = None, None, 0, None
+    checked, watcher = {}, None   # photo watch: last 25-layer block checked per file, the running check
     while True:
         try:
             scan_alerts()
@@ -299,6 +305,12 @@ def watch_alerts():
                 f = printer.layer_photo(s["file"], s["layer"].split("/")[0])
                 last = (s["file"], s["layer"])
                 was = os.path.dirname(f)
+                n = int(s["layer"].split("/")[0] or 0)
+                due = n == 2 or (n and n // PHOTO_EVERY > checked.get(s["file"], 0))
+                if due and api_key() and not (watcher and watcher.is_alive()):
+                    checked[s["file"]] = n // PHOTO_EVERY
+                    watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f), daemon=True)
+                    watcher.start()
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
@@ -464,6 +476,99 @@ def calibration(entry=None, who="?"):
     except OSError:
         pass
     return out
+
+
+# ---------- photo watch: Claude looks at layer photos while nobody is watching (Khalid, 21 Nov 2026) ----------
+API_KEY_FILE = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "anthropic-key")
+PHOTO_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "photo-checks.jsonl")
+PHOTO_MODEL = "claude-opus-5-5"
+PHOTO_EVERY = 25          # layers between checks, after the first-layer check at layer 2
+PAUSE_ON = {"spaghetti", "detached", "nozzle_blob"}   # clear failures only; cosmetic faults never pause a print
+PHOTO_PROMPT = """This is a photo from the camera inside a Snapmaker U1 3D printer, taken during a print at layer {layer}.
+The camera sits low at the front, at bed level: it sees the build plate edge-on and the white tool head above it. Glare,
+reflections, the dark textured plate, parked tool heads at the back and motion blur are normal.
+
+Decide whether the print has clearly failed in a way that gets worse if it keeps going:
+- spaghetti: loose tangles or strands of plastic where the part should be, or extruding into the air
+- detached: the part has come off the plate, moved, or been knocked over
+- nozzle_blob: a lump of plastic stuck around the nozzle or the tool head
+Anything else (stringing, rough surfaces, a small blob on the plate, things you cannot see clearly) is not a failure.
+
+Say pause only when you are sure from what you can see. When unsure or the view is unclear, say ok and lower confidence."""
+PHOTO_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict", "problem", "confidence", "reason"],
+                "properties": {"verdict": {"type": "string", "enum": ["ok", "pause"]},
+                               "problem": {"type": "string", "enum": ["none", "spaghetti", "detached", "nozzle_blob", "other"]},
+                               "confidence": {"type": "number"}, "reason": {"type": "string"}}}
+
+
+def api_key():
+    """The Claude API key for automated work: ANTHROPIC_API_KEY, else a file only this user can read. Never logged or shown."""
+    k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if k:
+        return k
+    try:
+        if os.stat(API_KEY_FILE).st_mode & 0o077:   # readable by others: refuse rather than use a leaked key
+            return None
+        return open(API_KEY_FILE, encoding="utf-8").read().strip() or None
+    except OSError:
+        return None
+
+
+def look_at_photo(jpg, layer):
+    """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError."""
+    import base64
+    key = api_key()
+    if not key:
+        raise ValueError("no API key")
+    body = {"model": PHOTO_MODEL, "max_tokens": 2000, "fallbacks": "default",
+            "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": PHOTO_SCHEMA}},
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
+                {"type": "text", "text": PHOTO_PROMPT.format(layer=layer)}]}]}
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
+        "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2026-10-21",
+        "anthropic-beta": "server-side-fallback-2026-07-01"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            res = json.load(r)
+    except urllib.error.HTTPError as e:   # never echo the request: it carries the key
+        raise OSError(f"Claude API HTTP {e.code}")
+    if res.get("stop_reason") != "end_turn":
+        raise ValueError(f"no verdict (stop_reason {res.get('stop_reason')})")
+    text = next(b["text"] for b in res["content"] if b.get("type") == "text")
+    v = json.loads(text)
+    v["usage"] = {k: res.get("usage", {}).get(k) for k in ("input_tokens", "output_tokens")}
+    return v
+
+
+def photo_watch(file, layer, photo):
+    """Check a layer photo; pause only on a clear failure that a second, fresh photo confirms. Logs every check."""
+    import printer
+    def log(row):
+        os.makedirs(os.path.dirname(PHOTO_LOG), exist_ok=True)
+        with open(PHOTO_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.time(), "file": file, "layer": layer, **row}) + "\n")
+    try:
+        v = look_at_photo(photo, layer)
+        log({"photo": photo, **v})
+        if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= 0.85):
+            return
+        time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
+        second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
+        printer.snap(second)
+        v2 = look_at_photo(second, layer)
+        log({"photo": second, "second_look": True, **v2})
+        if not (v2["verdict"] == "pause" and v2["problem"] in PAUSE_ON and v2["confidence"] >= 0.85):
+            return
+        if printer.status()["state"] != "printing":
+            return
+        moonraker("POST", "/printer/print/pause", timeout=10).read()
+        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}[v2["problem"]]
+        record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
+        printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
+                     "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
+    except (OSError, ValueError, KeyError, StopIteration) as e:
+        log({"error": str(e)[:200]})
 
 
 def printer_conf():
