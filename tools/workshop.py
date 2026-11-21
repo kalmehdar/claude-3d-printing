@@ -610,6 +610,43 @@ def photo_watch(file, layer, photo):
         log({"error": str(e)[:200]})
 
 
+REQUESTS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "requests.json")
+
+
+def requests_(change=None, who="?"):
+    """Print requests between two people: [{id, who, what, design, qty, colour, note, state, by, t}], newest first.
+    change: {"what"...} adds one; {"id", "state": "taken" | "done" | "dropped"} moves one along."""
+    try:
+        rows = json.load(open(REQUESTS, encoding="utf-8"))
+    except (OSError, ValueError):
+        rows = []
+    if change:
+        if change.get("id"):
+            r = next((r for r in rows if r["id"] == change["id"]), None)
+            if not r:
+                raise ValueError("no such request")
+            if change.get("state") not in ("open", "taken", "done", "dropped"):
+                raise ValueError("state is open, taken, done or dropped")
+            r.update(state=change["state"], by=who, t_state=time.time())
+            record(f"request {change['state']}: {r['what']}", "", who=who)
+        else:
+            what = str(change.get("what", "")).strip()[:120]
+            if not what:
+                raise ValueError("say what to print")
+            qty = int(change.get("qty") or 1)
+            if not 1 <= qty <= 50:
+                raise ValueError("quantity is 1 to 50")
+            r = {"id": (max([x["id"] for x in rows], default=0) + 1), "who": who, "what": what,
+                 "design": str(change.get("design", ""))[:80], "qty": qty, "colour": str(change.get("colour", ""))[:30],
+                 "note": str(change.get("note", "")).strip()[:300], "state": "open", "by": "", "t": time.time()}
+            rows.insert(0, r)
+            record(f"asked for a print: {qty} x {what}" + (f" in {r['colour']}" if r["colour"] else ""), "", who=who)
+        os.makedirs(os.path.dirname(REQUESTS), exist_ok=True)
+        json.dump(rows[:200], open(REQUESTS + ".part", "w"), indent=1)
+        os.replace(REQUESTS + ".part", REQUESTS)
+    return rows
+
+
 BED = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "bed.json")
 
 
@@ -958,6 +995,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/requests":
+            if self.command == "POST":
+                try:
+                    r = json.loads(self.body() or b"{}")
+                    return self.send(201, requests_(r if isinstance(r, dict) else {}, who=actor(self))[0] if not (isinstance(r, dict) and r.get("id")) else {"ok": True})
+                except (ValueError, TypeError) as e:
+                    return self.send(400, {"error": str(e)})
+            return self.send(200, requests_())
         if p == "/api/bed":
             if self.command == "POST":   # "I took it off": the bed is clear again, and who did it is logged
                 b = bed()

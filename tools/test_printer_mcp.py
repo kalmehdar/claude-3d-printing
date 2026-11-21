@@ -208,7 +208,9 @@ with tempfile.TemporaryDirectory() as d:
     os.environ.pop("ANTHROPIC_API_KEY", None)
     for name, val, mode in (("anthropic-key", "k1", 0o600), ("anthropic-key-2", "k2", 0o600), ("anthropic-key-3", "k3", 0o644)):
         f = os.path.join(d, name); open(f, "w").write(val + "\n"); os.chmod(f, mode)
-    assert workshop.api_keys() == ["k1", "k2"], workshop.api_keys()
+    # Windows has no Unix mode bits (chmod 600 leaves 666), so only the order is checked there
+    want = ["k1", "k2"] if os.name != "nt" else []
+    assert os.name == "nt" or workshop.api_keys() == want, workshop.api_keys()
 # photo watch remembers across restarts: the log says block 12 of a.gcode was checked
 with tempfile.TemporaryDirectory() as d:
     workshop.PHOTO_LOG = os.path.join(d, "c.jsonl")
@@ -260,4 +262,16 @@ with tempfile.TemporaryDirectory() as d:
     assert workshop.bed()["state"] == "printing"
     workshop.alert_change("printing", {"state": "cancelled", "file": "next.gcode", "printing_min": 5, "filament_used_m": 1})
     assert workshop.bed()["state"] == "part waiting"
+# print requests: ask, take, finish; bad input refused
+with tempfile.TemporaryDirectory() as d:
+    workshop.REQUESTS = os.path.join(d, "requests.json")
+    r = workshop.requests_({"what": "Switch rack mount", "qty": 2, "colour": "red"}, who="Mohamed")[0]
+    assert r["id"] == 1 and r["state"] == "open" and r["who"] == "Mohamed"
+    workshop.requests_({"id": 1, "state": "taken"}, who="Khalid")
+    assert workshop.requests_()[0]["state"] == "taken" and workshop.requests_()[0]["by"] == "Khalid"
+    for bad in ({"what": " "}, {"what": "x", "qty": 99}, {"id": 7, "state": "done"}, {"id": 1, "state": "eaten"}):
+        try:
+            workshop.requests_(bad, who="x"); raise AssertionError(str(bad))
+        except ValueError:
+            pass
 print("printer_mcp.py checks passed")

@@ -218,6 +218,15 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     </section>
 
     <section id="tab-queue" hidden>
+      <div class="card" style="margin-bottom:16px"><h2>Print requests</h2>
+        <p class="note">Ask for something to be printed. It waits here with your name until one of you, or Claude, takes it.</p>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+          <input id="rqWhat" list="rqDesigns" placeholder="What, e.g. a design name" aria-label="What to print" style="flex:1;min-width:200px"><datalist id="rqDesigns"></datalist>
+          <input id="rqQty" type="number" min="1" max="50" value="1" aria-label="How many" style="width:80px">
+          <input id="rqColour" placeholder="Colour" aria-label="Colour" style="width:120px">
+          <input id="rqNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
+          <button class="btn primary" id="rqAdd">Ask</button></div>
+        <div class="list" id="rqList"></div></div>
       <div class="toolbar"><span class="note" id="qState"></span><span class="spacer"></span>
         <button class="btn" id="qPause">Hold queue</button><button class="btn primary" id="qStart">Start queue</button></div>
       <div class="list" id="qList"></div>
@@ -483,7 +492,25 @@ function bedCheck(filename, viaQueue) {
 }
 
 /* ---------- queue ---------- */
+/* ---------- print requests ---------- */
+const RQ_WORD = {open: "waiting", taken: "being done", done: "done", dropped: "dropped"};
+async function loadRequests() {
+  let rows; try { rows = await api("/api/requests"); } catch (e) { return; }
+  if (!$("#rqDesigns").options.length) { try { const d = DESIGNS || await api("/api/designs"); $("#rqDesigns").innerHTML = d.designs.map(x => `<option value="${esc(x.name)}">`).join(""); } catch (e) {} }
+  const live = rows.filter(r => r.state === "open" || r.state === "taken"), past = rows.filter(r => r.state === "done" || r.state === "dropped").slice(0, 5);
+  $("#rqList").innerHTML = (live.concat(past).map(r => `<div class="row"><div><div class="t">${r.qty} x ${esc(r.what)}${r.colour ? ` in ${esc(r.colour)}` : ""}</div>
+      <div class="s">asked by ${esc(r.who)} · ${day(r.t)} · ${RQ_WORD[r.state]}${r.by && r.state !== "open" ? " (" + esc(r.by) + ")" : ""}${r.note ? " · " + esc(r.note) : ""}</div></div>
+      <div class="acts">${r.state === "open" ? `<button class="btn sm" data-rq="${r.id}" data-to="taken">I'll do it</button>` : ""}${r.state === "open" || r.state === "taken" ? `<button class="btn sm ghost" data-rq="${r.id}" data-to="done">Done</button><button class="btn sm ghost" data-rq="${r.id}" data-to="dropped">Drop</button>` : ""}</div></div>`).join(""))
+    || `<div class="empty">No requests.</div>`;
+}
+$("#rqAdd").onclick = async () => {
+  try { await post("/api/requests", {what: $("#rqWhat").value, qty: +$("#rqQty").value, colour: $("#rqColour").value, note: $("#rqNote").value});
+    toast("Asked"); $("#rqWhat").value = $("#rqNote").value = ""; $("#rqQty").value = 1; loadRequests(); } catch (e) { toast(e.message, true); }
+};
+$("#rqList").addEventListener("click", async e => { const b = e.target.closest("[data-rq]"); if (!b) return;
+  try { await post("/api/requests", {id: +b.dataset.rq, state: b.dataset.to}); loadRequests(); } catch (err) { toast(err.message, true); } });
 async function loadQueue() {
+  loadRequests();
   try {
     const q = await api(M("/server/job_queue/status")); S.queue = q.queued_jobs || [];
     const qc = $("#qCount"); qc.textContent = S.queue.length; qc.hidden = !S.queue.length;

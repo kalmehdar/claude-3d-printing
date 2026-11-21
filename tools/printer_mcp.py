@@ -158,6 +158,19 @@ def t_speed(a):
     return f"Speed set to {pct}%."
 
 
+def t_requests(a):
+    if a.get("what"):
+        r = http("POST", "/api/requests", {k: a.get(k) for k in ("what", "qty", "colour", "note") if a.get(k) is not None})
+        return f'Asked for {r["qty"]} x {r["what"]}' + (f' in {r["colour"]}' if r.get("colour") else "") + f' (request {r["id"]}).'
+    if a.get("id") and a.get("state"):
+        http("POST", "/api/requests", {"id": int(a["id"]), "state": a["state"]})
+        return f'Request {a["id"]} is now {a["state"]}.'
+    rows = [r for r in http("GET", "/api/requests") if r["state"] in ("open", "taken")]
+    return "\n".join(f'{r["id"]}. {r["qty"]} x {r["what"]}{" in " + r["colour"] if r.get("colour") else ""} - asked by {r["who"]}, '
+                     f'{"waiting" if r["state"] == "open" else "being done by " + (r.get("by") or "?")}{" - " + r["note"] if r.get("note") else ""}'
+                     for r in rows) or "No open print requests."
+
+
 def t_files(_):
     files = sorted(mr("GET", "/server/files/list?root=gcodes"), key=lambda f: -f["modified"])[:40]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"]))}  {f["path"]}' for f in files) or "No files."
@@ -285,6 +298,9 @@ TOOLS = [
     ("printer_calibration", "Calibration results (print-calibration skill): with no value, list them; with test and value, record the value the person picked from a test print, with a camera photo of it.",
      {"test": {"type": "string", "enum": ["temperature", "max-flow", "pressure-advance", "flow-ratio", "retraction", "other"]},
       "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"}}, t_calibration),
+    ("printer_requests", "Print requests between the two of us: with no arguments, the open ones; with what (and qty, colour, note), ask for a print; with id and state (taken, done, dropped), move one along.",
+     {"what": {"type": "string"}, "qty": {"type": "integer"}, "colour": {"type": "string"}, "note": {"type": "string"},
+      "id": {"type": "integer"}, "state": {"type": "string", "enum": ["open", "taken", "done", "dropped"]}}, t_requests),
     ("printer_files", "Sliced G-code files on the printer, newest first.", {}, t_files),
     ("printer_designs", "Designs Claude can slice (from the Print Benches), with real print time and grams where known.",
      {"search": {"type": "string", "description": "words to filter by"}}, t_designs),
