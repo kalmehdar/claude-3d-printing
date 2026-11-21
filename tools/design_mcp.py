@@ -108,6 +108,31 @@ def t_export(a):
     return run("export_parts.py", scad, "--out", out, "--bed", a.get("bed", "256x256x256"), timeout=900)
 
 
+def t_check(a):
+    """mesh_audit.py in Blender over a design's parts: a .scad is exported to a temporary folder first."""
+    sys.path.insert(0, TOOLS)
+    import c3dp
+    blender = c3dp.blender()
+    if not blender:
+        raise RuntimeError("Blender is needed for the mesh check (set BLENDER, or install it); slicing works without it")
+    target = path_in(a["path"], must_exist=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        if target.lower().endswith(".scad"):
+            run("export_parts.py", target, "--out", tmp, "--bed", a.get("bed", "256x256x256"), timeout=900)
+            folder = tmp
+        elif os.path.isdir(target):
+            folder = target
+        else:
+            import shutil
+            shutil.copy(target, tmp)
+            folder = tmp
+        r = subprocess.run([blender, "--background", "--factory-startup", "--python", os.path.join(TOOLS, "mesh_audit.py"), "--",
+                            folder, "--bed", str(a.get("bed", "256x256x256")).split("x")[0]], capture_output=True, text=True, timeout=900)
+    report = "\n".join(l for l in r.stdout.splitlines() if not l.startswith(("Blender ", "Read ", "Import ", "Warning", "Fra:", "Timer "))).strip()
+    head = "FAULTS: fix these before slicing" if r.returncode == 1 else ("mesh check passed" if r.returncode == 0 else f"Blender exited {r.returncode}")
+    return head + "\n" + (report or r.stderr[-800:])
+
+
 def spool_check(summary):
     """Spoolman stock against what the slice needs: each material's grams against the fullest matching spool."""
     if not SPOOLMAN or "grams" not in summary:
@@ -241,6 +266,9 @@ TOOLS_LIST = [
       "set": {"type": "object", "description": "OpenSCAD variables to override, e.g. {\"wall\": 2}"}, "size": {"type": "integer"}}, t_look, ["path"]),
     ("design_export", "Export every colour part of an OpenSCAD design to its own STL and check each fits the bed.",
      {"path": STR, "out": STR, "bed": {"type": "string", "description": "WxDxH mm, default 256x256x256"}}, t_export, ["path"]),
+    ("design_check", "Check a design's parts for what makes a slicer choke or a print fail: holes in the mesh, inside-out faces, separate pieces, thin areas, steep overhangs, long bridges, pieces floating above the plate, and bed fit (Blender). Run it after design_export, before slicing.",
+     {"path": {"type": "string", "description": "a .scad design, a folder of STLs, or one STL"},
+      "bed": {"type": "string", "description": "WxDxH mm, default 256x256x256"}}, t_check, ["path"]),
     ("design_slice", "Slice in OrcaSlicer: print time, grams per filament, colour changes, a 3MF project and G-code. Named settings like infill=30 supports=on; spool stock when Spoolman is set up.",
      {"models": MODELS, "printer": PRINTER, "preset": {"type": "string", "description": "from design_presets, default standard"},
       "materials": {"type": "array", "items": STR, "description": "one per colour, from design_materials, e.g. petg-black"},
@@ -268,7 +296,7 @@ BY_NAME = {t[0]: t for t in TOOLS_LIST}
 
 INSTRUCTIONS = (f"These tools design and slice 3D prints. Designs live in {DESIGN_DIR}. Workflow: write an OpenSCAD design with "
                 "design_save (one `part` value per colour, a `// parts:` line, sizes as named variables, clearances from design_fit), "
-                "check it with design_look, export with design_export, slice with design_slice (preset and named settings), then "
+                "check it with design_look, export with design_export, check the parts with design_check, slice with design_slice (preset and named settings), then "
                 "design_project or design_open_in_slicer. Fits come from design_fit, never a guess. Printing is the printer server's job.")
 
 

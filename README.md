@@ -42,7 +42,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | Path | What it does |
 | --- | --- |
 | `tools/c3dp.py` | One command for all of it: `c3dp doctor` checks what is installed, `c3dp look`, `export`, `slice`, `fit`, `printer`, `spools`, `mcp design`; `c3dp setup` puts it on your PATH |
-| `tools/design_mcp.py` | Design-and-slice tools for the Claude desktop app and Claude Code (an MCP server, standard library only): save and read OpenSCAD designs, a four-view picture, export colour parts, slice with presets and named settings, fits, a colour 3MF project, open in OrcaSlicer, Spoolman stock |
+| `tools/design_mcp.py` | Design-and-slice tools for the Claude desktop app and Claude Code (an MCP server, standard library only): save and read OpenSCAD designs, a four-view picture, export colour parts, slice with presets and named settings, a mesh check (Blender), fits, a colour 3MF project, open in OrcaSlicer, Spoolman stock |
 | `tools/look.py` | One picture with four views (angled, top, front, side) of an OpenSCAD design in its colours, plus its real size in mm, so Claude checks the shape before exporting |
 | `tools/export_parts.py` | Exports each colour part of an OpenSCAD model to its own STL and checks it fits your bed |
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit |
