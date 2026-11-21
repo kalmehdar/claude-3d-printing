@@ -87,6 +87,13 @@ def t_status(_):
         ch = feed.get(f"extruder{i}", {}).get("channel_state")
         lines.append(f'T{i}: {fil}{" #" + col if col else ""}, {words.get(ch, ch or "?")}, '
                      f'{s[h]["temperature"]:.0f} / {s[h]["target"]:.0f} C{" (active)" if s[h].get("state") == "ACTIVATE" else ""}')
+    try:   # grams left on each head's spool (Workshop counts what each print really used)
+        heads = http("GET", "/api/spools").get("heads", {})
+        left = [f'{h} {v["spool"]}: about {max(0, v["start_g"] - v["used_g"]):.0f} g left' for h, v in sorted(heads.items())]
+        if left:
+            lines.append("Spools: " + "; ".join(left))
+    except (RuntimeError, KeyError, ValueError):
+        pass
     if ps.get("message"):
         lines.append("Message: " + ps["message"])
     try:   # what the photo watch last saw (Workshop checks a layer photo every 25 layers when it has an API key)

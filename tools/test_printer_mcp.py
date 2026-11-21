@@ -42,6 +42,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.reply(200, [])
         if p.startswith("/api/photo-checks"):
             return self.reply(200, {"enabled": True, "every": 25, "checks": []})
+        if p.startswith("/api/spools"):
+            return self.reply(200, {"low_g": 200, "heads": {}})
         if p.startswith("/api/calibration") and self.command == "POST":
             return self.reply(201, {"test": "temperature", "value": "240", "filament": "SUNLU PETG", "key": "nozzle_temperature", "photo": "/x.jpg"})
         if p.startswith("/api/frames"):
@@ -228,4 +230,16 @@ acc = workshop.accuracy([
      "metadata": {"estimated_time": 2280, "filament_total": 6689.31}}])
 assert acc["n"] == 2 and acc["jobs"][0]["time"] == 1.0 and acc["jobs"][0]["prep_min"] == 5.0
 assert acc["jobs"][1]["time"] == 1.091 and acc["jobs"][1]["colours"] == 4 and acc["time"] == 1.091
+# spools: the printer's measured total split by the slicer's per-head share (the panel's real metadata, 21 Nov 2026)
+panel = {"filament_used_mm": [1227.1, 84557.68, 0.0, 0.0], "filament_weight": [3.69, 254.23, 0.0, 0.0]}
+assert workshop.split_use(85784.78, panel) == {"T0": 3.7, "T1": 254.2}, workshop.split_use(85784.78, panel)
+assert workshop.split_use(42892.39, panel) == {"T0": 1.8, "T1": 127.1}   # cancelled halfway: half of each
+with tempfile.TemporaryDirectory() as d:
+    workshop.SPOOLS = os.path.join(d, "spools.json")
+    workshop.spools({"T0": {"spool": "white", "start_g": 1000, "used_g": 0}, "T1": {"spool": "black", "start_g": 400, "used_g": 20}})
+    pushes.clear()
+    workshop.take_off_spools("panel.gcode", 85784.78, panel)
+    sp = workshop.spools()
+    assert sp["T0"]["used_g"] == 3.7 and sp["T1"]["used_g"] == 274.2, sp
+    assert pushes and "T1 black" in pushes[-1][1], pushes   # 400 - 274 = 126 g left: under 200, warned once
 print("printer_mcp.py checks passed")

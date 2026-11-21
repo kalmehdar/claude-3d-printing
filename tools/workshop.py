@@ -409,6 +409,12 @@ def alert_change(prev, s):
            "error": (f"Printer error: {f}", (s.get("message") or "Look at the printer.").strip(), "bad")}.get(s["state"])
     if msg and prev in ("printing", "paused"):
         printer.push(*msg, click=CFG.get("url"))
+        if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
+            try:
+                with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
+                    take_off_spools(s.get("file"), (s.get("filament_used_m") or 0) * 1000, json.load(r)["result"])
+            except (OSError, ValueError, KeyError) as e:
+                print("spool update failed:", e, flush=True)
     elif s["state"] == "printing" and prev == "paused":
         printer.push(f"Print resumed: {f}", "", "info", click=CFG.get("url"))
 
@@ -598,6 +604,55 @@ def photo_watch(file, layer, photo):
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
     except (OSError, ValueError, KeyError, StopIteration) as e:
         log({"error": str(e)[:200]})
+
+
+SPOOLS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "spools.json")
+LOW_G = 200   # warn when a spool drops under this (Almehdar register: flag a reorder under 200 g)
+
+
+def spools(data=None):
+    """{"T0": {"spool", "start_g", "used_g", "since"}, ...}: the spool on each head and what it has used; data saves."""
+    if data is not None:
+        os.makedirs(os.path.dirname(SPOOLS), exist_ok=True)
+        json.dump(data, open(SPOOLS + ".part", "w"), indent=1)
+        os.replace(SPOOLS + ".part", SPOOLS)
+        return data
+    try:
+        return json.load(open(SPOOLS, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def split_use(actual_mm, meta):
+    """Grams per head for a finished or stopped print: the printer's measured total, shared out in the slicer's per-head
+    proportions (stock firmware reports one total), each head's mm turned to grams with the slicer's own density."""
+    mm, g = meta.get("filament_used_mm") or [], meta.get("filament_weight") or []
+    total = sum(mm)
+    if not total or not actual_mm:
+        return {}
+    return {f"T{i}": round(actual_mm * (m / total) * (g[i] / m), 1) for i, m in enumerate(mm) if m and i < len(g)}
+
+
+def take_off_spools(file, actual_mm, meta):
+    """After a print: grams off each head's spool, a log line, and a phone alert for any spool now under LOW_G."""
+    import printer
+    use, data = split_use(actual_mm, meta), spools()
+    low = []
+    for head, grams in use.items():
+        sp = data.get(head)
+        if not sp:
+            continue
+        sp["used_g"] = round(sp.get("used_g", 0) + grams, 1)
+        left = sp["start_g"] - sp["used_g"]
+        if left < LOW_G <= left + grams:
+            low.append(f'{head} {sp["spool"]}: about {max(left, 0):.0f} g left')
+    if use:
+        spools(data)
+        record("filament used: " + ", ".join(f"{h} {g} g" for h, g in use.items()), file, who="Workshop")
+    if low:
+        printer.push("Spool running low", "; ".join(low) + ". Time to reorder (the Almehdar register flags under 200 g).", "warn",
+                     click=CFG.get("url"))
+    return use
 
 
 def accuracy(jobs):
@@ -884,6 +939,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/spools":
+            if self.command == "POST":   # a new spool on a head: {head, spool, grams}
+                try:
+                    r = json.loads(self.body() or b"{}")
+                    head = str(r.get("head", "")).upper()
+                    if not re.fullmatch(r"T[0-3]", head):
+                        raise ValueError("head is T0 to T3")
+                    grams = float(r.get("grams") or 1000)
+                    if not 10 <= grams <= 5000:
+                        raise ValueError("grams is 10 to 5000")
+                    data = spools()
+                    data[head] = {"spool": str(r.get("spool", "")).strip()[:60] or "spool", "start_g": grams, "used_g": 0, "since": time.time()}
+                    spools(data)
+                    record(f"new spool on {head}: {data[head]['spool']}, {grams:.0f} g", "", who=actor(self))
+                    return self.send(201, data[head])
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+            return self.send(200, {"low_g": LOW_G, "heads": spools()})
         if p == "/api/accuracy":   # slicer vs printer from the printer's own history
             try:
                 with moonraker("GET", "/server/history/list?limit=100&order=desc", timeout=15) as r:
