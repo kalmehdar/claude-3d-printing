@@ -63,7 +63,8 @@ These pictures come from `tools/render.py`, from the same files you can download
 1. Install [OpenSCAD](https://openscad.org/downloads.html). Take a development snapshot: it renders with the manifold backend, seconds instead of minutes.
 2. Install [Blender](https://www.blender.org/download/) for the mesh check (optional, but it catches problems early).
 3. Install your printer maker's slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, Snapmaker Orca).
-4. Install the plugin as in [Start in a minute](#start-in-a-minute), or copy `skills/` and `agents/` into `~/.claude/`.
+4. Optional: [BOSL2](https://github.com/BelfrySCAD/BOSL2) in OpenSCAD's library folder, for print-in-place hinges (`examples/models/hinge-card.scad`) and other ready-made parts.
+5. Install the plugin as in [Start in a minute](#start-in-a-minute), or copy `skills/` and `agents/` into `~/.claude/`.
 
 ## Ask Claude
 
