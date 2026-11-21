@@ -299,7 +299,7 @@ def watch_alerts():
         try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
             s = printer.status()
             if prev and s["state"] != prev:
-                alert_change(prev, s)
+                alert_change(prev, s, was)
             prev = s["state"]
             if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
                 f = printer.layer_photo(s["file"], s["layer"].split("/")[0])
@@ -329,50 +329,14 @@ def watch_alerts():
         time.sleep(20)
 
 
-CLAUDE_JOBS = []   # [{id, who, text, state, output, t}], newest last; kept in memory while Workshop runs
-CLAUDE_TOOLS = [f"Bash(python3 tools/printer.py {c}*)" for c in   # each subcommand named: no raw `gcode`, no notify, no config
-                ("status", "snap", "files", "send ", "start ", "queue", "pause", "resume", "cancel", "light ", "unload ", "filament ",
-                 "history", "watch", "timelapse")] + [
-                "Bash(python3 tools/orca.py *)", "Bash(python3 tools/make_3mf.py *)", "Bash(python3 tools/look.py *)",
-                f"Read(/{REPO}/**)"]   # "//" = an absolute path in Claude Code permission rules; benches added per call
-
-
-def claude_prompt(who, text, bed_clear):
-    return f"""You are driving a Snapmaker U1 3D printer for {who}, from the Workshop page. Their request:
-
-{text}
-
-{"They ticked: the bed is empty." if bed_clear else "They did NOT say the bed is empty."}
-
-Rules (from skills/print-workflow step 7 and docs/snapmaker-u1.md in this folder; read them if unsure):
-- Use only python3 tools/printer.py, tools/orca.py, tools/make_3mf.py and tools/look.py from this folder. Designs are in the benches Workshop serves.
-- Start a print only when they ticked that the bed is empty AND a fresh `python3 tools/printer.py snap bed.jpg` (read the image) shows an empty plate. Otherwise prepare everything, say so, and do not start.
-- Never use `gcode --force`, and never send motion, heating or feeding commands except through printer.py's own start, pause, resume, cancel, unload and filament commands for what they asked.
-- If anything is unclear or unsafe, do not act: say what you need from them.
-Reply in two to five short plain sentences: what you did, what the printer is doing now, and anything they must do."""
-
-
-def run_claude(job, bed_clear):
-    import subprocess
-    exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
-    env = dict(os.environ, PRINTER_ACTOR=f"Claude for {job['who']}", PRINTER_HOST=CFG["printer"])
-    try:
-        r = subprocess.run([exe, "-p", claude_prompt(job["who"], job["text"], bed_clear), "--output-format", "json",
-                            "--max-turns", "30", "--allowedTools", *CLAUDE_TOOLS, *{f"Read(/{os.path.dirname(b)}/**)" for b in CFG.get("benches", [])}],
-                           cwd=REPO, env=env, capture_output=True, text=True, timeout=1500)
-        d = json.loads(r.stdout or "{}")
-        job["output"] = d.get("result") or (r.stderr or "no reply")[-600:]
-        job["state"] = "error" if d.get("is_error") or r.returncode else "done"
-    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
-        job["output"], job["state"] = f"Claude could not run: {e}", "error"
-    record("Claude replied", job["output"][:200], who=f"Claude for {job['who']}")
-
-
 _unloading = []
 
 
 import threading as _threading
 _unload_lock = _threading.Lock()
+_look_slots = _threading.BoundedSemaphore(2)
+# a multipart upload field print=true: Moonraker starts the file the moment it lands
+UPLOAD_PRINT = re.compile(rb'name="print"[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*\r?\n\s*true', re.I)
 
 
 def start_unload(head):
@@ -398,7 +362,7 @@ def start_unload(head):
 _last_wake = [0.0]
 
 
-def alert_change(prev, s):
+def alert_change(prev, s, folder=None):
     """Phone push (ntfy, if set in printer.json) when a print pauses, finishes or stops, whoever started it."""
     import printer
     f = s.get("file") or "the print"
@@ -414,9 +378,11 @@ def alert_change(prev, s):
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
             try:
                 with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
-                    take_off_spools(s.get("file"), (s.get("filament_used_m") or 0) * 1000, json.load(r)["result"])
+                    meta = json.load(r)["result"]
+                use = take_off_spools(s.get("file"), (s.get("filament_used_m") or 0) * 1000, meta)
+                log_print(s, meta, use, folder)
             except (OSError, ValueError, KeyError) as e:
-                print("spool update failed:", e, flush=True)
+                print("spool update or print log failed:", e, flush=True)
     elif s["state"] == "printing" and prev not in ("printing", "paused"):
         bed("printing", who="", file=f)
     if s["state"] == "printing" and prev == "paused":
@@ -519,8 +485,9 @@ def api_keys():
     keys = [os.environ.get("ANTHROPIC_API_KEY", "").strip()]
     for f in [API_KEY_FILE] + [f"{API_KEY_FILE}-{n}" for n in range(2, 6)]:
         try:
-            if not os.stat(f).st_mode & 0o077:
-                keys.append(open(f, encoding="utf-8").read().strip())
+            if os.name == "nt" or not os.stat(f).st_mode & 0o077:   # Windows reports 0o666 whatever the ACL says; the profile folder is per user
+                text = open(f, encoding="utf-8").read().strip()   # the bare key, or put-key's ANTHROPIC_API_KEY=... line
+                keys.append(text.split("=", 1)[1].strip() if text.startswith("ANTHROPIC_API_KEY=") else text)
         except OSError:
             pass
     return [k for k in dict.fromkeys(keys) if k]
@@ -530,8 +497,16 @@ def api_key():
     return (api_keys() or [None])[0]
 
 
-def look_at_photo(jpg, layer):
-    """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError."""
+FIRST_LAYER_TEXT = """
+The second picture is a top-down drawing of what the slicer planned for the first layer (blue lines, front edge at the
+bottom, 50 mm grid). Compare it with the photo: is there plastic on the plate where the plan has it, and has anything
+been dragged, lifted or left out? A first layer is thin and the camera sees it edge-on, so only call detached when a part
+or line has clearly lifted, moved or is missing; anything you cannot see clearly is ok with lower confidence."""
+
+
+def look_at_photo(jpg, layer, plan=None):
+    """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError.
+    plan: PNG bytes of the first layer's planned paths (the first-layer check), sent as a second picture."""
     import base64
     keys = api_keys()
     if not keys:
@@ -540,7 +515,8 @@ def look_at_photo(jpg, layer):
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": PHOTO_SCHEMA}},
             "messages": [{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
-                {"type": "text", "text": PHOTO_PROMPT.format(layer=layer)}]}]}
+                *([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(plan).decode()}}] if plan else []),
+                {"type": "text", "text": PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "")}]}]}
     res, last = None, None
     for n, key in enumerate(keys, 1):   # the next key only when this one is refused, rate-limited or the API is overloaded
         req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
@@ -587,15 +563,21 @@ def photo_watch(file, layer, photo):
         os.makedirs(os.path.dirname(PHOTO_LOG), exist_ok=True)
         with open(PHOTO_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps({"t": time.time(), "file": file, "layer": layer, **row}) + "\n")
+    plan = None
+    if layer <= 2:   # the first-layer check: what the slicer planned for layer 1 goes beside the photo
+        try:
+            plan = layer1_png(file)
+        except Exception as e:
+            log({"error": "no first-layer plan: " + str(e)[:150]})
     try:
-        v = look_at_photo(photo, layer)
-        log({"photo": photo, **v})
+        v = look_at_photo(photo, layer, plan)
+        log({"photo": photo, "first_layer": bool(plan), **v})
         if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= 0.85):
             return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
-        v2 = look_at_photo(second, layer)
+        v2 = look_at_photo(second, layer, plan)
         log({"photo": second, "second_look": True, **v2})
         if not (v2["verdict"] == "pause" and v2["problem"] in PAUSE_ON and v2["confidence"] >= 0.85):
             return
@@ -610,12 +592,122 @@ def photo_watch(file, layer, photo):
         log({"error": str(e)[:200]})
 
 
+_PLANS = {}   # file -> first-layer paths, read once per file from the printer
+
+
+def layer1_paths(file):
+    """The first layer's extrusion paths, read from the start of the G-code on the printer (it stops reading at layer 2)."""
+    if file not in _PLANS:
+        import bedmap
+        with moonraker("GET", "/server/files/gcodes/" + "/".join(urllib.parse.quote(x) for x in file.split("/")), timeout=60) as r:
+            _PLANS[file] = bedmap.first_layer(line.decode("utf-8", "replace") for line in r)
+    return _PLANS[file]
+
+
+def layer1_png(file):
+    import bedmap
+    return bedmap.render(CFG.get("bed", 270), layer1_paths(file))
+
+
+# ---------- cancel one part: ask first, then only that part (Khalid, 21 Nov 2026) ----------
+PART_NAME = re.compile(r"[A-Za-z0-9_.\-]{1,120}")
+
+
+def parts():
+    """The parts the running print defines (EXCLUDE_OBJECT_DEFINE), which are cancelled, which prints now, which are left."""
+    with moonraker("GET", "/printer/objects/query?exclude_object&print_stats=filename,state", timeout=10) as r:
+        st = json.load(r)["result"]["status"]
+    e, ps = st.get("exclude_object") or {}, st.get("print_stats") or {}
+    objs, done = e.get("objects") or [], e.get("excluded_objects") or []
+    return {"file": ps.get("filename") or "", "state": ps.get("state") or "", "objects": objs, "excluded": done,
+            "current": e.get("current_object"), "left": [o["name"] for o in objs if o["name"] not in done]}
+
+
+def parts_png(mark=None):
+    import bedmap
+    p = parts()
+    try:
+        paths = layer1_paths(p["file"]) if p["file"] else []
+    except Exception:   # the outline picture still works without the first-layer drawing
+        paths = []
+    return bedmap.render(CFG.get("bed", 270), paths, p["objects"], mark=mark, done=p["excluded"])
+
+
+def cancel_part(name, who):
+    """Stop printing one part (EXCLUDE_OBJECT NAME=...) and keep the rest going. Never the last part left: that would be
+    the whole print, which stays a person's own cancel. Returns (status, body)."""
+    if not PART_NAME.fullmatch(name or ""):
+        return 400, {"error": "not a part name"}
+    p = parts()
+    if p["state"] not in ("printing", "paused"):
+        return 409, {"error": "nothing is printing"}
+    if name not in p["left"]:
+        return 400, {"error": f"{name} is not a part still printing"}
+    if len(p["left"]) < 2:
+        return 409, {"error": "it is the only part left, so cancelling it would stop the whole print; cancel the print itself instead"}
+    moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(f"EXCLUDE_OBJECT NAME={name}"), timeout=20).read()
+    record(f"cancelled one part: {name}", p["file"], who=who)
+    return 200, {"ok": True, "cancelled": name, "left": [n for n in p["left"] if n != name]}
+
+
+# ---------- print log: one row in the print register when a print ends (Khalid, 21 Nov 2026) ----------
+OUTCOME = {"complete": "Completed", "cancelled": "Cancelled", "error": "Stopped by an error"}
+PRESET_IN_NAME = re.compile(r"-(draft|standard|strong|solid|fine|quality|polished|low-waste)\.gcode$")
+
+
+def log_print(s, meta, use, folder=None):
+    """Append a row to the print register (--print-log, a markdown table like the Almehdar repo's registers/prints.md).
+    Columns: Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof?
+    '?' where only a person knows. Returns the row, or None when no register is set or it has no such table."""
+    path = CFG.get("print_log")
+    if not path or not os.path.exists(path):
+        return None
+    lines = open(path, encoding="utf-8").read().split("\n")
+    head = next((i for i, l in enumerate(lines) if l.startswith("| Date |")), None)
+    if head is None:
+        return None
+    end = head
+    while end + 1 < len(lines) and lines[end + 1].startswith("|"):
+        end += 1
+    types = [t for t in str(meta.get("filament_type") or "").split(";")]
+    sp, prices = spools(), filament_prices(CFG.get("register"))
+    heads, cost = [], 0.0
+    for h, g in use.items():
+        i = int(h[1:])
+        mat = types[i] if i < len(types) else ""
+        heads.append(f'{(sp.get(h) or {}).get("spool") or mat or "?"} on {h}')
+        cost += g * prices.get(mat.upper(), 0) / 1000
+    file = s.get("file") or "?"
+    m = PRESET_IN_NAME.search(file)
+    outcome = OUTCOME.get(s.get("state"), s.get("state") or "?")
+    if folder:
+        outcome += f"; layer photos {os.path.basename(folder)} (timelapse.mp4 beside them once made)"
+    cell = lambda v: str(v).replace("|", "/").replace("\n", " ")
+    row = "| " + " | ".join(cell(v) for v in [time.strftime("%Y-%m-%d"), file, "?", ", ".join(heads) or "?",
+                                               (m.group(1) if m else "?"), f"{sum(use.values()):.1f} (measured)" if use else "?",
+                                               f'{s.get("printing_min") or 0:.0f} min', f"£{cost:.2f}" if cost else "?", outcome, "?"]) + " |"
+    lines.insert(end + 1, row)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines))
+    record("logged in the print register", file, who="Workshop")
+    return row
+
+
 REQUESTS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "requests.json")
+
+
+_requests_lock = _threading.Lock()
 
 
 def requests_(change=None, who="?"):
     """Print requests between two people: [{id, who, what, design, qty, colour, note, state, by, t}], newest first.
-    change: {"what"...} adds one; {"id", "state": "taken" | "done" | "dropped"} moves one along."""
+    change: {"what"...} adds one; {"id", "state": "taken" | "done" | "dropped"} moves one along. One at a time (a lock),
+    so two people adding at once neither lose one nor get the same id."""
+    with _requests_lock:
+        return _requests(change, who)
+
+
+def _requests(change, who):
     try:
         rows = json.load(open(REQUESTS, encoding="utf-8"))
     except (OSError, ValueError):
@@ -736,6 +828,19 @@ def printer_conf():
     return printer.load_conf()
 
 
+def lan_ip():
+    """This machine's address on the network (no packet is sent), so a link in a phone alert opens Workshop, not localhost."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))
+        return s.getsockname()[0]
+    except OSError:
+        return "localhost"
+    finally:
+        s.close()
+
+
 def make_timelapse(folder):
     import printer
     try:
@@ -813,8 +918,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(n) if n else None
+        if not hasattr(self, "_body"):   # read once: guard() looks at it, proxy() forwards it
+            n = int(self.headers.get("Content-Length") or 0)
+            self._body = self.rfile.read(n) if n else None
+        return self._body
 
     def proxy(self, path, timeout=30):
         hdrs = {k: v for k, v in self.headers.items() if k.lower() not in SKIP}
@@ -846,7 +953,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return True
 
     def look(self):
-        """A picture of a bench design from four sides in its colours, with its size (tools/look.py), as PNG."""
+        """A picture of a bench design from four sides in its colours, with its size (tools/look.py), as PNG.
+        At most two drawings at once: each starts OpenSCAD, and a page full of images could start dozens."""
+        if not _look_slots.acquire(blocking=False):
+            return self.send(429, {"error": "busy drawing other designs; try again in a moment"})
+        try:
+            return self._look()
+        finally:
+            _look_slots.release()
+
+    def _look(self):
         import subprocess
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         try:
@@ -896,7 +1012,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def guard(self, p):
         """Physical safety checked here, not only in the page: no filament, heater or motion G-code while a job runs
-        (the light is allowed), and nothing added to a queue that is running (it would start onto the last print)."""
+        (the light is allowed), and nothing added to a queue that is running (it would start onto the last print).
+        Moonraker also reads arguments from a request body and starts a file uploaded with print=true, so a body on a
+        start or a G-code command is refused, an upload that would start itself is refused, and no start goes ahead while
+        the last print is still on the bed (independent review, 21 Nov 2026)."""
+        if self.command == "POST" and p.startswith(("/printer/gcode/script", "/printer/print/start", "/server/job_queue/start")) \
+                and self.body():
+            return "send the command in the address, not in a body"
+        if self.command == "POST" and p.startswith("/server/files/upload"):
+            if "print=true" in p.lower() or UPLOAD_PRINT.search(self.body() or b""):
+                return "upload the file, then start it from Files or the queue, after the bed check"
+        if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")) and bed().get("state") == "part waiting":
+            return "the last print is still on the bed: mark it clear first (Took it off in Workshop, or tell Claude it is clear)"
         if self.command == "POST" and p.startswith("/printer/gcode/script"):
             script = urllib.parse.unquote_plus(p.split("script=", 1)[-1]) if "script=" in p else ""
             if "\n" in script or "\r" in script:
@@ -957,8 +1084,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.proxy(path)
                 try:
                     moonraker("POST", "/server/job_queue/pause", timeout=10).read()
-                except OSError:
-                    pass
+                except OSError as e:   # the queue would start the next job onto this one's part: say so loudly
+                    record("could not hold the queue after starting it", str(e), who="Workshop")
+                    try:
+                        import printer
+                        printer.push("Queue not held", "The next queued job would start when this one ends, onto the finished "
+                                     "part. Hold the queue in Workshop.", "bad", click=CFG.get("url"))
+                    except Exception:
+                        pass
                 return
             what = self.describe(path)
             if what:
@@ -1003,6 +1136,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except (ValueError, TypeError) as e:
                     return self.send(400, {"error": str(e)})
             return self.send(200, requests_())
+        if p == "/api/parts":   # cancel one part: GET lists them, POST {name} cancels that one only (after a person's yes)
+            try:
+                if self.command == "POST":
+                    r = json.loads(self.body() or b"{}")
+                    return self.send(*cancel_part(str(r.get("name", "")), actor(self)))
+                return self.send(200, parts())
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"could not read the parts: {e}"})
+        if p.startswith("/parts-map.png"):   # the bed from above: part outlines, ?mark=NAME filled red, layer 1 in blue
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            try:
+                return self.send(200, parts_png((q.get("mark") or [None])[0]), "image/png", {"Cache-Control": "no-store"})
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": str(e)})
         if p == "/api/bed":
             if self.command == "POST":   # "I took it off": the bed is clear again, and who did it is logged
                 b = bed()
@@ -1093,24 +1240,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, alerts())
             except (OSError, ValueError, KeyError) as e:
                 return self.send(502, {"error": str(e)})
-        if p == "/api/claude" and self.command == "GET":
-            return self.send(200, CLAUDE_JOBS[-20:][::-1])
-        if p == "/api/claude" and self.command == "POST":
-            import threading
-            try:
-                r = json.loads(self.body() or b"{}")
-                text = str(r.get("text", "")).strip()[:1500] if isinstance(r, dict) else ""
-            except ValueError:
-                text = ""
-            if not text:
-                return self.send(400, {"error": "say what you want Claude to do"})
-            if any(j["state"] == "running" for j in CLAUDE_JOBS):
-                return self.send(409, {"error": "Claude is still on the last request; wait for its reply"})
-            job = {"id": len(CLAUDE_JOBS) + 1, "who": actor(self), "text": text, "state": "running", "output": "", "t": time.time()}
-            CLAUDE_JOBS.append(job)
-            record("asked Claude", text[:200], who=job["who"])
-            threading.Thread(target=run_claude, args=(job, bool(r.get("bed_clear"))), daemon=True).start()
-            return self.send(202, job)
         if p == "/api/filaments":
             import printer
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
@@ -1187,12 +1316,13 @@ def main():
     ap.add_argument("--allow-host", action="append", default=[], help="a host name the page may be opened by (IP addresses and localhost always work)")
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--register", help="a filament register (markdown table with Material and a price per kg in pounds) for print costs")
+    ap.add_argument("--print-log", help="a print register (markdown table starting '| Date |', like registers/prints.md) to add a row to when a print ends")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else 'localhost'}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings

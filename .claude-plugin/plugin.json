@@ -1,10 +1,80 @@
 {
   "name": "print-bench",
   "version": "1.0.0",
-  "description": "Design and upgrade 3D prints with Claude Code: OpenSCAD parts one STL per colour, mesh checks, a Print Bench preview page with sizes and a measure tool, studio renders, colour-assigned 3MF projects for Bambu Studio and OrcaSlicer, plus 3D modelling skills and agents.",
-  "author": { "name": "Khalid Mohamed", "url": "https://github.com/kalmehdar" },
+  "description": "Design and upgrade 3D prints with Claude Code: OpenSCAD parts one STL per colour, mesh checks, a Print Bench preview page with sizes and a measure tool, studio renders, colour-assigned 3MF projects for Bambu Studio and OrcaSlicer, 3D modelling skills and agents, and MCP servers that let Claude design, slice and drive a printer.",
+  "author": {
+    "name": "Khalid Mohamed",
+    "url": "https://github.com/kalmehdar"
+  },
   "homepage": "https://kalmehdar.github.io/claude-3d-printing/",
   "repository": "https://github.com/kalmehdar/claude-3d-printing",
   "license": "MIT",
-  "keywords": ["3d-printing", "openscad", "gridfinity", "multicolor", "bambu", "orcaslicer", "blender", "stl", "3mf"]
+  "keywords": [
+    "3d-printing",
+    "3mf",
+    "bambu",
+    "blender",
+    "gridfinity",
+    "klipper",
+    "mcp",
+    "multicolor",
+    "openscad",
+    "orcaslicer",
+    "spoolman",
+    "stl"
+  ],
+  "mcpServers": {
+    "design": {
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/tools/design_mcp.py"
+      ],
+      "env": {
+        "DESIGN_DIR": "${user_config.design_dir}",
+        "SPOOLMAN_URL": "${user_config.spoolman_url}"
+      }
+    },
+    "printer": {
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/tools/printer_mcp.py"
+      ],
+      "env": {
+        "WORKSHOP_URL": "${user_config.workshop_url}",
+        "WORKSHOP_USER": "${user_config.your_name}"
+      }
+    }
+  },
+  "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python command",
+      "description": "How to start Python 3.8 or later: python3 on a Mac or Linux, python on Windows",
+      "default": "python3"
+    },
+    "design_dir": {
+      "type": "directory",
+      "title": "Designs folder",
+      "description": "Where Claude saves your OpenSCAD designs, STLs and sliced files (it writes only here)",
+      "default": "~/3d-designs"
+    },
+    "spoolman_url": {
+      "type": "string",
+      "title": "Spoolman address (optional)",
+      "description": "e.g. http://192.168.1.20:7912, so every slice says whether a spool has enough left. Leave empty if you don't use Spoolman",
+      "default": ""
+    },
+    "workshop_url": {
+      "type": "string",
+      "title": "Workshop address (optional)",
+      "description": "The Workshop page next to your Klipper/Moonraker printer (python tools/workshop.py), e.g. http://192.168.1.50:8090. Needed only for the printer tools",
+      "default": "http://127.0.0.1:8090"
+    },
+    "your_name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "Shown in Workshop's activity log next to what you do",
+      "default": "someone"
+    }
+  }
 }
