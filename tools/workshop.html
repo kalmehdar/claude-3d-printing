@@ -300,7 +300,9 @@ function render() {
   // slots
   const names = ["extruder", "extruder1", "extruder2", "extruder3"];
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${S.colours[i] || "#555"}"></div><b>T${i} · ${esc((tc.filament_type || [])[i] || "?")}</b><span>${esc((tc.filament_sub_type || [])[i] || "")}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span></div>`; }).join("");
+    const loaded = !tc.filament_exist || tc.filament_exist[i];
+    const canUnload = !active && loaded && tc.filament_exist && !(tc.filament_soft || [])[i];
+    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${canUnload ? `<button class="btn sm ghost" style="margin-top:6px" data-unload="${i}">Unload</button>` : ""}</div>`; }).join("");
   $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
@@ -319,6 +321,16 @@ $("#jobActions").addEventListener("click", async e => {
     if (a === "cool") { await gcode("TURN_OFF_HEATERS"); toast("Heaters off"); }
     poll();
   } catch (err) { toast(err.message, true); }
+});
+$("#slots").addEventListener("click", e => {
+  const b = e.target.closest("[data-unload]"); if (!b) return;
+  const i = +b.dataset.unload, tc = S.status.print_task_config;
+  confirmSheet(`Unload T${i}?`, `The printer heats T${i}, cuts the tip and winds the ${tc.filament_type[i]} ${tc.filament_sub_type[i]} back to its spool. It takes a minute or two.`, `Unload T${i}`, async () => {
+    toast(`Unloading T${i}...`);
+    await gcode(`AUTO_FEEDING EXTRUDER=${i} UNLOAD=1 STAGE=prepare`);
+    await gcode(`AUTO_FEEDING EXTRUDER=${i} UNLOAD=1 STAGE=doing`);
+    toast(`T${i} unloaded`);
+  });
 });
 $("#lightBtn").onclick = async () => { const on = $("#lightBtn").getAttribute("aria-pressed") !== "true"; try { await gcode(`SET_LED LED=cavity_led WHITE=${on ? 1 : 0}`); poll(); } catch (e) { toast(e.message, true); } };
 

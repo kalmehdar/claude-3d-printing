@@ -209,7 +209,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8")
         if p.startswith("/moonraker/"):
-            return self.proxy(p[len("/moonraker"):], timeout=300 if "upload" in p else 30)
+            return self.proxy(p[len("/moonraker"):], timeout=600 if ("upload" in p or "gcode/script" in p) else 30)
         if p.startswith("/cam.jpg"):
             return self.proxy(CFG["camera"], timeout=10)
         if p == "/api/designs":

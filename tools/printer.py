@@ -8,6 +8,7 @@
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
     python printer.py pause | resume | cancel
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
+    python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
     python printer.py gcode "CMD" [--force]       raw G-code; refused while a job runs unless --force
     python printer.py watch [secs] [--frames DIR] poll until the job ends, one camera frame per layer into DIR
     python printer.py history [n]
@@ -123,6 +124,33 @@ def gcode(cmd, force=False):
     return call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=300)
 
 
+def unload(which):
+    """Snapmaker U1: the firmware's own end-of-print unload (AUTO_FEEDING ... UNLOAD=1, prepare then doing), per head.
+    Soft filament (TPU) is left alone, as the firmware does; unload that from the printer's screen."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; unload after it ends")
+    t = query("print_task_config").get("print_task_config")
+    if not t or "filament_exist" not in t:
+        sys.exit("this printer does not report its heads' filament (unload is for the Snapmaker U1)")
+    n = len(t["filament_exist"])
+    heads = range(n) if which == "all" else [int(which.upper().lstrip("T"))]
+    for i in heads:
+        if not 0 <= i < n:
+            sys.exit(f"no head T{i}: this printer has T0 to T{n - 1}")
+        name = f'T{i} {t["filament_type"][i]} {t["filament_sub_type"][i]}'.strip()
+        if not t["filament_exist"][i]:
+            print(f"T{i}: nothing loaded")
+            continue
+        if t["filament_soft"][i]:
+            print(f"{name}: soft filament, unload it from the printer's screen")
+            continue
+        print(f"{name}: unloading...", flush=True)
+        for stage in ("prepare", "doing"):
+            call("/printer/gcode/script?script=" + urllib.parse.quote(f"AUTO_FEEDING EXTRUDER={i} UNLOAD=1 STAGE={stage}"), "POST", timeout=600)
+        left = query("print_task_config")["print_task_config"]["filament_exist"][i]
+        print(f"{name}: {'still reports filament, check the head' if left else 'unloaded'}")
+
+
 def watch(every, frames):
     os.makedirs(frames, exist_ok=True)
     last, seen_running = None, False
@@ -221,6 +249,10 @@ def main():
         print(call(f"/printer/print/{c}", "POST"))
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
+    elif c == "unload":
+        if not x:
+            sys.exit("unload T0..T3, or unload all")
+        unload(x[0])
     elif c == "gcode":
         print(gcode(x[0], a.force))
     elif c == "watch":
