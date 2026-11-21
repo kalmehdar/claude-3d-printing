@@ -104,14 +104,24 @@ def slice_design(req):
     parts = [(e[0], os.path.join(base, e[1]), e[2]) for e in d["parts"] if not (len(e) > 3 and e[3] == "not printed")]
     if not parts:
         return 400, {"error": "this design has nothing to print"}
+    heads, material = loaded_heads(), ""
+    head_note = None
+    if heads:   # a tool changer that reports its filament: put each colour on the head holding it
+        mapping, missing = make_3mf.match_heads([c for _, _, c in parts], [h["colour"] for h in heads])
+        if missing and not req.get("allow_substitute"):
+            return 409, {"error": "Not loaded on any head: " + ", ".join(missing) + ". Load it, or slice anyway with the nearest colour.",
+                         "missing": missing, "heads": heads}
+        material = ",".join(h["material"] for h in heads)
+        head_note = [{"part": label, "colour": c, "head": f"T{mapping[c.lower()]}", "loaded": heads[mapping[c.lower()]]["label"]}
+                     for label, _, c in parts]
     preset = req.get("preset") or "standard"
     sets = [s for s in req.get("set", []) if re.fullmatch(r"[A-Za-z0-9_-]+=[^;\s]{1,40}", s)]
     out = tempfile.mkdtemp(prefix="workshop-")
     try:
-        data, _ = make_3mf.build(parts, d["name"], CFG["bed"])
+        data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
         p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
         open(p3, "wb").write(data)
-        s = orca.slice_([p3], CFG["profile"], preset=preset, sets=sets, out=out)
+        s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out)
     except SystemExit as e:   # orca.py and make_3mf stop with a plain message
         return 422, {"error": str(e.code), "hint": "Slicing needs OrcaSlicer (ORCA_CLI) and a printer setup "
                      f"named {CFG['profile']!r} (see tools/orca.py)."}
@@ -119,7 +129,7 @@ def slice_design(req):
         return 422, {"error": s.get("error", "no G-code")}
     name = f"{safe_name(d['id'])}-{preset}.gcode"
     result = {"time": s["time"], "grams": s["grams"], "total_g": s["total_g"], "changes": s["changes"],
-              "preset": preset, "settings": s["settings"], "file": name}
+              "preset": preset, "settings": s["settings"], "file": name, "heads": head_note}
     if req.get("upload", True):
         upload_gcode(s["gcode"], name)
         result["uploaded"] = True
@@ -127,6 +137,46 @@ def slice_design(req):
             moonraker("POST", "/server/job_queue/job?filenames=" + urllib.request.quote(name))
             result["queued"] = True
     return 200, result
+
+
+def loaded_heads():
+    """[{colour, material, label}] per head when the printer reports its filament (Snapmaker U1), else None.
+    material is matched against the slicer setup's filament names (pla-snapspeed, petg-hf...)."""
+    try:
+        with moonraker("GET", "/printer/objects/query?print_task_config", timeout=5) as r:
+            t = json.load(r)["result"]["status"].get("print_task_config")
+    except (OSError, ValueError, KeyError):
+        return None
+    if not t or not t.get("filament_color_rgba"):
+        return None
+    import orca
+    try:
+        have = list(orca.materials(orca.printer_dir(CFG["profile"])))
+    except SystemExit:
+        have = []
+    heads = []
+    for ty, sub, c in zip(t.get("filament_type", []), t.get("filament_sub_type", []), t["filament_color_rgba"]):
+        words = [w.lower() for w in (sub, ty) if w]
+        pick = next((n for w in words for n in have if w.replace(" ", "-") in n), None) or next(
+            (n for n in have if ty.lower() in n), have[0] if have else ty.lower())
+        heads.append({"colour": "#" + c[:6].lower(), "material": pick, "label": f"{ty} {sub} #{c[:6]}".strip()})
+    return heads
+
+
+_last_wake = [0.0]
+
+
+def wake_camera():
+    """At most every 5 s: if the camera still is stale, ask the printer to refresh it (printer.wake_camera)."""
+    if time.time() - _last_wake[0] < 5:
+        return
+    _last_wake[0] = time.time()
+    import printer
+    printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+    try:
+        printer.wake_camera()
+    except OSError:
+        pass
 
 
 def moonraker(method, path, body=None, headers=None, timeout=30):
@@ -175,8 +225,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8")
         if p.startswith("/moonraker/"):
-            return self.proxy(p[len("/moonraker"):], timeout=300 if "upload" in p else 30)
+            return self.proxy(p[len("/moonraker"):], timeout=600 if ("upload" in p or "gcode/script" in p) else 30)
         if p.startswith("/cam.jpg"):
+            wake_camera()
             return self.proxy(CFG["camera"], timeout=10)
         if p == "/api/designs":
             return self.send(200, designs())

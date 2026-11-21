@@ -1,11 +1,11 @@
 ---
 name: print-workflow
-description: 'Takes a 3D print from idea or existing STL to a checked, multi-colour, previewed set of print files using the claude-3d-printing tools: OpenSCAD per-colour parts, export with a bed check, a Blender mesh audit, and a Print Bench page with sizes and a measure tool. Use when someone says "design me a ...", "make this print in two colours", "add a label to this STL", "upgrade this print", "remix this", "show me the prints", "build a print bench", "check this STL", or hands over an STL to improve.'
+description: 'Takes a 3D print from idea or existing STL to a checked, multi-colour, previewed set of print files using the claude-3d-printing tools: OpenSCAD per-colour parts, export with a bed check, a Blender mesh audit, a Print Bench page with sizes and a measure tool, and on a networked Klipper/Moonraker printer (Snapmaker U1 and others) sending, starting after a camera bed check, watching and logging the print. Use when someone says "print this", "send it to the printer", "is the print OK", "watch the print", or when someone says "design me a ...", "make this print in two colours", "add a label to this STL", "upgrade this print", "remix this", "show me the prints", "build a print bench", "check this STL", or hands over an STL to improve.'
 ---
 
 # Print workflow
 
-The loop: **ask, model, export, audit, preview, hand over.** Design rules (wall thickness, overhangs, tolerances, materials) come from the `3d-print-designer` skill; this skill is the pipeline around them and the house style that makes the result look finished.
+The loop: **ask, model, export, audit, preview, hand over, and print it** when Claude can reach the printer. Design rules (wall thickness, overhangs, tolerances, materials) come from the `3d-print-designer` skill; this skill is the pipeline around them and the house style that makes the result look finished.
 
 The tools ship with this skill: `tools/` sits two folders above this skill's base directory (the plugin root, or the repo root in a clone). Use that path in every command below; if the skill was copied on its own without `tools/`, clone github.com/kalmehdar/claude-3d-printing and use its `tools/`.
 
@@ -70,8 +70,25 @@ It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with eve
   result in the app for the person to check or send. A printer setup is a folder of exported presets (`orca.py printers`); add a filament
   with `orca.py add-material "<part of its name>" --printer <setup>`, and `orca.py install --printer <setup>` puts the presets in the app's menus.
   No OrcaSlicer: say so, and the slicer's numbers beat the bench's estimate (about 20% either way).
-- The person starts the print and watches the first layer. Never start a print for someone who has not said the bed is clear and they are there.
+- No networked printer (step 7): the person starts the print and watches the first layer.
+
+## 7. Print it (a Klipper/Moonraker printer on the network)
+
+When the person has a printer Claude can reach (`python tools/printer.py status` answers; the address comes from `--printer`, `PRINTER_HOST` or `~/.config/claude-3d-printing/printer.json`), Claude can run the print itself. The loop: **send, look, start, watch, log.**
+
+1. **Match the loaded filament.** `printer.py status` lists what is on each head (the Snapmaker U1 reports type and colour per slot). Map each design colour to the head that holds it, and slice for those materials. A colour that is not loaded: say so, never print it in the wrong colour.
+2. **Send.** `python tools/printer.py send <name>.gcode --queue` uploads and queues; it never starts anything.
+3. **Look before starting.** `python tools/printer.py snap bed.jpg`, then read the picture: the plate is on, nothing is on it, no purge blobs or a finished part. Start only on an empty bed (`printer.py start <name>.gcode --bed-clear`, or `queue start --bed-clear`). Unsure from the picture, or no camera: ask the person, and never pass `--bed-clear` on a guess.
+4. **Watch.** `python tools/printer.py watch 60 --frames frames/` writes one camera frame per layer and stops when the job ends. Look at the first-layer frames yourself, then every few layers. Cancel (`printer.py cancel`) and tell the person at once on: spaghetti or loose strands, a corner lifting, the part moving on the plate, the nozzle dragging through the print, or a blob building on the head. Pause (`printer.py pause`) instead when it might be fine and the person should look. Tell them where they will see it: `printer.py notify "Print paused: <file>" "<what you saw, which layer>" --level warn` (or `bad` after a cancel) posts to their Discord when a webhook is set up, and `watch` posts by itself when the job ends. A camera low at bed level only shows large failures; say so rather than calling a print fine from it.
+5. **Filament.** On a Snapmaker U1, `printer.py unload T2` (or `all`) runs the printer's own unload: it heats that head, cuts the tip and winds the filament back to its spool. Only when no job is running; soft filament (TPU) is left for the printer's screen, as the firmware does. Loading needs a person to feed the new filament; once they say what they loaded ("black Polymaker PETG in T2"), set it so they do not have to on the screen: `printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22` (`printer.py filament list` shows the names the printer knows; turn a colour name into its hex, ask when unsure). Snapmaker's chipped spools set themselves from their tag. Read `printer.py status` back to confirm.
+6. **Log.** After the job, `printer.py history 1` gives the real minutes and metres; record them with the design (and in the person's print register if they keep one).
+
+The person can follow the same printer on `python tools/workshop.py --printer <address>`: camera, queue, toolpath preview before printing, and every bench design with a slice-and-send button.
+
+**A slicer setup that matches the printer.** `orca.py new-printer` builds a setup from a slicer's bundled vendor profiles (Snapmaker Orca ships them unpacked), and `orca.py adopt-gcode good-print.gcode --printer <setup>` takes the start, end and tool-change G-code from a print that came out right. Use that when a fork's profile uses variables upstream OrcaSlicer refuses (the U1's `chamber_cooling_mode`).
+
+**Tool changers (Snapmaker U1, Prusa XL).** Each head keeps its own colour, so the `low-waste` preset's small prime tower is usually enough; check the first print for colour bleed. Group colours so the most-used one prints from the head with the freshest filament.
 
 ## Done means
 
-Exported parts within the bed, the audit at 0 to fix, the bench rebuilt and looked at, and every FIT number either measured or listed for the person to measure.
+Exported parts within the bed, the audit at 0 to fix, the bench rebuilt and looked at, and every FIT number either measured or listed for the person to measure. When Claude ran the print: the bed seen empty before the start, the first layers looked at, and the real time and metres logged.
