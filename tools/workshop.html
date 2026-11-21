@@ -192,7 +192,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
 .seg .btn[aria-pressed=true]{background:var(--hover);color:var(--text)}
-#dCards.listview{display:flex}
+#dCards.listview,#fCards.listview{display:flex}
 /* row detail panel (desktop); phones use the sheet */
 #panel{position:fixed;top:0;right:0;width:420px;max-width:100vw;height:100vh;background:var(--panel);border-left:1px solid var(--line2);z-index:15;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
 #panel .ph{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
@@ -326,7 +326,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <section id="tab-files" hidden>
       <label class="drop" id="drop">Drop a sliced .gcode here, or <u>choose a file</u> to send it to the printer
         <input type="file" id="fileIn" accept=".gcode,.gco,.g" hidden multiple></label>
-      <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button></div>
+      <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button>
+        <span class="seg" role="group" aria-label="View"><button class="btn sm" data-fview="list" aria-pressed="true">List</button><button class="btn sm" data-fview="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="fCards"></div>
     </section>
 
@@ -558,7 +559,9 @@ const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
+    const was = S.status?.print_stats?.filename;
     S.status = r.status; $("#conn").className = "dot on"; render();
+    if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
   } catch (e) {
     $("#conn").className = "dot off"; $("#statePill").textContent = "Printer offline"; $("#statePill").className = "pill error";
@@ -792,7 +795,27 @@ async function loadFiles() {
 function renderFiles() {
   const q = $("#fSearch").value.toLowerCase();
   const list = S.files.filter(f => f.path.toLowerCase().includes(q));
-  $("#fCards").innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
+  const box = $("#fCards"), asList = fView() === "list";
+  box.className = asList ? "list listview" : "cards";
+  document.querySelectorAll("[data-fview]").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.fview === fView())));
+  if (asList) {   // Linear-style rows by day; the file printing now and queued files are marked
+    const now = S.status?.print_stats?.filename, queued = new Set((S.queue || []).map(j => j.filename));
+    let last = "";
+    box.innerHTML = list.map((f, i) => { const m = S.meta[f.path] || {}, d = dayLabel(f.modified), c = cost(m.filament_weight_total, m.filament_type);
+      const head = d !== last ? ghead("", d, list.filter(x => dayLabel(x.modified) === d).length) : ""; last = d;
+      const icon = f.path === now ? "progress" : queued.has(f.path) ? "queued" : "waiting";
+      const acts = `<button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button>`;
+      return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path), detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
+        meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>`],
+        acts, panel: `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` +
+          pkv([["Slicer time", m.estimated_time ? hm(m.estimated_time) : ""], ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (c ? " · " + c : "") : ""],
+               ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
+               ["Sliced with", esc(m.slicer || "")], ["On the printer", day(f.modified)], ["Size", f.size ? (f.size / 1048576).toFixed(1) + " MB" : ""],
+               ["State", f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : ""]])}); }).join("")
+      || `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
+    return;
+  }
+  box.innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
     return `<div class="fcard"><div class="img" style="background-image:url('${thumbUrl(f.path, m)}')"></div><div class="body">
       <div class="t">${esc(f.path)}</div>
       <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
@@ -800,6 +823,8 @@ function renderFiles() {
       <div class="acts"><button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button></div>
     </div></div>`; }).join("") : `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
 }
+const fView = () => { try { return localStorage.getItem("workshop-fview") || "list"; } catch (e) { return "list"; } };
+document.querySelectorAll("[data-fview]").forEach(x => x.onclick = () => { try { localStorage.setItem("workshop-fview", x.dataset.fview); } catch (e) {} renderFiles(); });
 $("#fSearch").oninput = renderFiles; $("#fRefresh").onclick = () => { S.meta = {}; loadFiles(); };
 $("#fCards").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
