@@ -189,6 +189,10 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:3;grid-row:1}
 }
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
+.seg .btn{border:0;border-radius:0;background:none;height:28px}
+.seg .btn[aria-pressed=true]{background:var(--hover);color:var(--text)}
+#dCards.listview{display:flex}
 /* row detail panel (desktop); phones use the sheet */
 #panel{position:fixed;top:0;right:0;width:420px;max-width:100vw;height:100vh;background:var(--panel);border-left:1px solid var(--line2);z-index:15;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
 #panel .ph{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
@@ -328,7 +332,9 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 
     <section id="tab-designs" hidden>
       <p class="note" id="dIntro"></p>
-      <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" class="btn" aria-label="Which designs"></select></div>
+      <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
+        <select id="dState" aria-label="Which state"><option value="">Any state</option><option value="ready">Ready</option><option value="check">Check first</option><option value="later">Later</option></select>
+        <span class="seg" role="group" aria-label="View"><button class="btn sm" data-view="list" aria-pressed="true">List</button><button class="btn sm" data-view="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="dCards"></div>
     </section>
 
@@ -508,8 +514,10 @@ function openPanel(id) {
   document.querySelectorAll(".issue.open").forEach(r => r.classList.remove("open"));
   const row = document.querySelector(`.issue[data-pid="${CSS.escape(id)}"]`); if (row) row.classList.add("open");
   panelId = id;
-  if (!wide()) { openSheet(d.id, body).dataset.pid = id; return; }
-  $("#pIcon").innerHTML = SI[d.icon] || ""; $("#pId").textContent = d.id; $("#pBody").innerHTML = body;
+  const copyPics = el => el.querySelectorAll("[data-copy]").forEach(p => { const src = document.querySelector(`[data-mini="${CSS.escape(p.dataset.copy)}"]`);
+    if (src && src.style.backgroundImage) p.style.backgroundImage = src.style.backgroundImage; });   // reuse the row's rendered still
+  if (!wide()) { const b = openSheet(d.id, body); b.dataset.pid = id; copyPics(b); return; }
+  $("#pIcon").innerHTML = SI[d.icon] || ""; $("#pId").textContent = d.id; $("#pBody").innerHTML = body; copyPics($("#pBody"));
   $("#panel").hidden = false; document.querySelector(".app").classList.add("panel-open");
 }
 function closePanel() {
@@ -916,15 +924,37 @@ async function loadDesigns() {
 function renderDesigns() {
   const q = $("#dSearch").value.toLowerCase();
   const b = $("#dBench").value;
-  const list = DESIGNS.designs.filter(d => (b === "" || d.bench === +b) && (d.name + " " + d.for).toLowerCase().includes(q));
-  $("#dCards").innerHTML = list.map(d => { const s = d.slice || {};
+  const st = $("#dState").value;
+  const list = DESIGNS.designs.filter(d => (b === "" || d.bench === +b) && (st === "" || d.state === st) && (d.name + " " + d.for).toLowerCase().includes(q));
+  const box = $("#dCards"), asList = dView() === "list";
+  box.className = asList ? "list listview" : "cards";
+  document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.view === dView())));
+  if (asList) {   // Linear-style rows grouped by state, details in the side panel
+    const GROUPS = [["ready", "Ready", "queued"], ["check", "Check first", "progress"], ["later", "Later", "waiting"], ["", "No state", "waiting"]];
+    box.innerHTML = GROUPS.map(([k, label, icon]) => { const g = list.filter(d => (d.state || "") === k); if (!g.length) return "";
+      return ghead(icon, label, g.length) + g.map(d => { const s = d.slice || {}, key = d.bench + ":" + d.id, c = s.total_g ? cost(s.total_g, d.material) : "";
+        return issue({icon, id: "D-" + (DESIGNS.designs.indexOf(d) + 1), title: esc(d.name), detail: esc(d.status || ""),
+          meta: [s.time ? esc(s.time.replace(/ \d+s$/, "")) : "not sliced", s.total_g ? Math.round(s.total_g) + " g" : "", c,
+                 d.parts.filter(p => p.printed).map(p => `<i class="mini" style="width:10px;height:10px;border-radius:50%;background:${esc(p.colour)}"></i>`).join(" "),
+                 `<i class="mini" data-mini="${esc(key)}"></i>`],
+          acts: `<button class="btn sm" data-open="${esc(key)}">Open</button>`,
+          panel: `<div class="pimg" data-copy="${esc(key)}"></div><p style="margin:0 0 14px">${esc(d.for)}</p>` +
+            pkv([["State", {ready: "Ready", check: "Check first", later: "Later"}[d.state] || "-"], ["Status", esc(d.status || "")], ["Material", esc(d.material || "")],
+                 ["Slicer time", s.time ? esc(s.time) : "not sliced yet"], ["Filament", s.total_g ? `${s.total_g} g${c ? " · " + c : ""}` : ""], ["Colour changes", s.changes ?? ""],
+                 ["Parts", d.parts.map(p => esc(p.name) + (p.printed ? "" : " (not printed)")).join(", ")], ["Credit", esc(d.credit || "")]])}); }).join(""); }).join("")
+      || `<div class="empty">No designs match.</div>`;
+    list.forEach(d => miniRender(d)); return;
+  }
+  box.innerHTML = list.map(d => { const s = d.slice || {};
     return `<div class="fcard"><div class="img" data-mini="${d.bench}:${esc(d.id)}"><div class="sw">${d.parts.filter(p => p.printed).map(p => `<i style="background:${esc(p.colour)}"></i>`).join("")}</div></div><div class="body">
       <div class="t">${esc(d.name)} ${d.state ? `<span class="chip ${esc(d.state)}">${d.state === "ready" ? "Ready" : d.state === "check" ? "Check first" : esc(d.state)}</span>` : ""}</div>
       <div class="s">${s.time ? `${esc(s.time)} · ${s.total_g} g${cost(s.total_g, d.material) ? " · " + cost(s.total_g, d.material) : ""} · ${s.changes} colour changes` : s.error ? "Not sliced yet" : ""}</div>
       <div class="acts"><button class="btn sm primary" data-open="${d.bench}:${esc(d.id)}">Open</button></div></div></div>`; }).join("") || `<div class="empty">No designs match.</div>`;
   list.forEach(d => miniRender(d));
 }
-$("#dSearch").oninput = renderDesigns; $("#dBench").onchange = renderDesigns;
+const dView = () => { try { return localStorage.getItem("workshop-dview") || "list"; } catch (e) { return "list"; } };
+$("#dSearch").oninput = renderDesigns; $("#dBench").onchange = renderDesigns; $("#dState").onchange = renderDesigns;
+document.querySelectorAll("[data-view]").forEach(x => x.onclick = () => { try { localStorage.setItem("workshop-dview", x.dataset.view); } catch (e) {} renderDesigns(); });
 $("#dCards").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openDesign(b.dataset.open); });
 const stlCache = {};
 function loadStl(url) { return stlCache[url] ||= new Promise((ok, bad) => new THREE.STLLoader().load(url, ok, undefined, bad)); }
