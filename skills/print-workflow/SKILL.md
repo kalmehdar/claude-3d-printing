@@ -18,7 +18,7 @@ The tools ship with this skill: `tools/` sits two folders above this skill's bas
 
 ## 2. Model (OpenSCAD, one file)
 
-- Every size a named variable at the top, `$fn = 48`, comments saying what each number is.
+- Every size a named variable at the top, `$fn = 48`, comments saying what each number is. Sizes that change between prints also get named sets in `model.json` (`tools/param_sets.py`), so OpenSCAD's Customizer offers them.
 - One `part` variable selects a colour, and the first line lists them: `// parts: body label accent`. Add `part = "all"` for a preview with `color()` on each part.
 - Labels are printed in, never stuck on: a 0.6 mm pocket in the body, the same text clipped to the part as the second colour, printed face down (so mirror the text on a bottom face).
 - Same-colour shapes that touch only along an edge or a corner make non-manifold meshes: overlap them by 0.01 mm.

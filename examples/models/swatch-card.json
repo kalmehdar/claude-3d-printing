@@ -1,0 +1,61 @@
+{
+  "parameterSets": {
+    "SUNLU PETG black": {
+      "part": "all",
+      "font": "Liberation Sans:style=Bold",
+      "inlay": "0.6",
+      "swatch_name": "PETG BLACK",
+      "nozzle": "245",
+      "bed": "70",
+      "printer": "",
+      "card": "[76, 40, 2.4]",
+      "r": "4",
+      "hole_d": "5",
+      "steps": "[0.4, 0.8, 1.2, 1.6]",
+      "step_w": "12"
+    },
+    "SUNLU PETG white": {
+      "part": "all",
+      "font": "Liberation Sans:style=Bold",
+      "inlay": "0.6",
+      "swatch_name": "PETG WHITE",
+      "nozzle": "245",
+      "bed": "70",
+      "printer": "",
+      "card": "[76, 40, 2.4]",
+      "r": "4",
+      "hole_d": "5",
+      "steps": "[0.4, 0.8, 1.2, 1.6]",
+      "step_w": "12"
+    },
+    "SUNLU PETG red": {
+      "part": "all",
+      "font": "Liberation Sans:style=Bold",
+      "inlay": "0.6",
+      "swatch_name": "PETG RED",
+      "nozzle": "245",
+      "bed": "70",
+      "printer": "",
+      "card": "[76, 40, 2.4]",
+      "r": "4",
+      "hole_d": "5",
+      "steps": "[0.4, 0.8, 1.2, 1.6]",
+      "step_w": "12"
+    },
+    "SUNLU PETG blue": {
+      "part": "all",
+      "font": "Liberation Sans:style=Bold",
+      "inlay": "0.6",
+      "swatch_name": "PETG BLUE",
+      "nozzle": "245",
+      "bed": "70",
+      "printer": "",
+      "card": "[76, 40, 2.4]",
+      "r": "4",
+      "hole_d": "5",
+      "steps": "[0.4, 0.8, 1.2, 1.6]",
+      "step_w": "12"
+    }
+  },
+  "fileFormatVersion": "1"
+}

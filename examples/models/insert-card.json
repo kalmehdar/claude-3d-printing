@@ -1,0 +1,47 @@
+{
+  "parameterSets": {
+    "M3 x 5.7 insert": {
+      "part": "card",
+      "font": "Liberation Sans:style=Bold",
+      "HOLES": "[3.8, 3.9, 4.0, 4.1, 4.2, 4.3]",
+      "insert_len": "5.7",
+      "pitch": "13",
+      "boss_d": "8.6",
+      "plate": "2",
+      "boss_h": "insert_len + 1 + 1",
+      "w": "pitch * len(HOLES) + 4",
+      "h": "24",
+      "deboss": "0.6",
+      "chamfer": "0.4"
+    },
+    "M3 x 4 insert": {
+      "part": "card",
+      "font": "Liberation Sans:style=Bold",
+      "HOLES": "[3.8, 3.9, 4.0, 4.1, 4.2, 4.3]",
+      "insert_len": "4",
+      "pitch": "13",
+      "boss_d": "8.6",
+      "plate": "2",
+      "boss_h": "insert_len + 1 + 1",
+      "w": "pitch * len(HOLES) + 4",
+      "h": "24",
+      "deboss": "0.6",
+      "chamfer": "0.4"
+    },
+    "M3 x 3 insert": {
+      "part": "card",
+      "font": "Liberation Sans:style=Bold",
+      "HOLES": "[3.8, 3.9, 4.0, 4.1, 4.2, 4.3]",
+      "insert_len": "3",
+      "pitch": "13",
+      "boss_d": "8.6",
+      "plate": "2",
+      "boss_h": "insert_len + 1 + 1",
+      "w": "pitch * len(HOLES) + 4",
+      "h": "24",
+      "deboss": "0.6",
+      "chamfer": "0.4"
+    }
+  },
+  "fileFormatVersion": "1"
+}
