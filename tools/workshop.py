@@ -186,9 +186,10 @@ def loaded_heads():
         if not here:   # an empty head still reports its last colour: never send a part to it
             heads.append({"colour": None, "material": have[0] if have else "", "label": "empty"})
             continue
-        words = [w.lower() for w in (sub, ty) if w]
-        pick = next((n for w in words for n in have if w.replace(" ", "-") in n), None) or next(
-            (n for n in have if ty.lower() in n), have[0] if have else ty.lower())
+        exact = f"{ty}-{sub}".lower().replace(" ", "-") if sub and sub.lower() != "generic" else ty.lower()
+        words = [w.lower().replace(" ", "-") for w in (sub, ty) if w and w.lower() != "generic"]
+        pick = (exact if exact in have else None) or next((n for w in words for n in have if w in n.split("-")), None) or next(
+            (n for n in have if ty.lower() in n), have[0] if have else ty.lower())   # PETG generic -> petg, not petg-hf
         heads.append({"colour": "#" + c[:6].lower(), "material": pick, "label": f"{ty} {sub} #{c[:6]}".strip()})
     return heads
 
