@@ -41,10 +41,37 @@ def read_stl(path):
     return verts, tris
 
 
-def build(parts, name, bed):
-    """parts: [(label, stl path, colour hex)] -> bytes of a .3mf"""
+def rgb(h):
+    h = h.lstrip("#")[:6]
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def match_heads(colours, heads, limit=110):
+    """Each design colour -> the head (0-based) whose loaded filament is nearest in colour, and the colours with no close match.
+    limit is a plain RGB distance: black against charcoal is about 40, red against orange about 110."""
+    mapping, missing = {}, []
+    loaded = [(i, h) for i, h in enumerate(heads) if h]   # None marks an empty head
+    if not loaded:
+        return {c.lower(): 0 for c in colours}, list(colours)
+    for c in colours:
+        d, i = min((sum((x - y) ** 2 for x, y in zip(rgb(c), rgb(h))) ** 0.5, i) for i, h in loaded)
+        mapping[c.lower()] = i
+        if d > limit:
+            missing.append(c)
+    return mapping, missing
+
+
+def build(parts, name, bed, heads=None):
+    """parts: [(label, stl path, colour hex)] -> (bytes of a .3mf, slot colours).
+    heads: the colours loaded on each head of a tool changer, in head order; each part then goes to the head
+    holding its colour (see match_heads) and the slots are the heads. Without heads: one slot per distinct colour."""
     colours = list(dict.fromkeys(c.lower() for _, _, c in parts))
-    meshes = [(label, read_stl(path), colours.index(c.lower()) + 1) for label, path, c in parts]
+    if heads:
+        mapping, _ = match_heads(colours, heads)
+        meshes = [(label, read_stl(path), mapping[c.lower()] + 1) for label, path, c in parts]
+        colours = [h.lower() if h else "#808080" for h in heads]
+    else:
+        meshes = [(label, read_stl(path), colours.index(c.lower()) + 1) for label, path, c in parts]
     allv = [v for _, (vs, _), _ in meshes for v in vs]
     lo = [min(v[a] for v in allv) for a in range(3)]
     hi = [max(v[a] for v in allv) for a in range(3)]
@@ -75,7 +102,7 @@ def build(parts, name, bed):
              f'transform="1 0 0 0 1 0 0 0 1 {bed / 2:.3f} {bed / 2:.3f} 0" printable="1"/></build>\n</model>\n')
     settings = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
                 f'  <object id="{top}">\n    <metadata key="name" value="{escape(name, {chr(34): "&quot;"})}"/>\n'
-                '    <metadata key="extruder" value="1"/>\n' + "\n".join(settings_parts) + "\n  </object>\n</config>\n")
+                f'    <metadata key="extruder" value="{meshes[0][2]}"/>\n' + "\n".join(settings_parts) + "\n  </object>\n</config>\n")
     project = json.dumps({"filament_colour": [c.upper() for c in colours]}, indent=1)
     content_types = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -103,6 +130,8 @@ def main():
     ap.add_argument("--part", action="append", default=[], help="file.stl:#rrggbb (repeat, in head order)")
     ap.add_argument("--name", default=None)
     ap.add_argument("--bed", type=float, default=256.0)
+    ap.add_argument("--heads", help="tool changer: the colour loaded on each head, in order, e.g. #e2dedb,#080a0d,#e72f1d,#f4c032 "
+                                    "(printer.py status lists them); each part goes to the head holding its colour")
     a = ap.parse_args()
     if a.part:
         out = a.args[0]
@@ -120,7 +149,12 @@ def main():
         base = os.path.dirname(os.path.abspath(bench_path))
         parts = [(e[0], os.path.join(base, e[1]), e[2]) for e in m["parts"] if not (len(e) > 3 and e[3] == "not printed")]
         name = a.name or m["name"]
-    data, colours = build(parts, name, a.bed)
+    heads = [h.strip() for h in a.heads.split(",")] if a.heads else None
+    if heads:
+        _, missing = match_heads([c for _, _, c in parts], heads)
+        if missing:
+            print("warning: not loaded on any head, printing in the nearest colour: " + ", ".join(missing), file=sys.stderr)
+    data, colours = build(parts, name, a.bed, heads=heads)
     open(out, "wb").write(data)
     print(f"wrote {out}: {len(parts)} parts on {len(colours)} filament slots: " +
           ", ".join(f"{i + 1} {c}" for i, c in enumerate(colours)))
