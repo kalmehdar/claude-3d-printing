@@ -76,8 +76,10 @@ calls = [
     {"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "printer_calibration", "arguments": {"test": "temperature", "value": "240", "filament": "SUNLU PETG"}}},
 ]
 env = dict(os.environ, WORKSHOP_URL=f"http://127.0.0.1:{srv.server_address[1]}", WORKSHOP_USER="Tester")
-out = subprocess.run([sys.executable, os.path.join(HERE, "printer_mcp.py")], input="\n".join(json.dumps(c) for c in calls) + "\n",
-                     capture_output=True, text=True, env=env, timeout=60).stdout
+run = subprocess.run([sys.executable, os.path.join(HERE, "printer_mcp.py")], input="\n".join(json.dumps(c) for c in calls) + "\n",
+                     capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
+out = run.stdout
+assert out.strip(), "printer_mcp.py gave no replies: " + run.stderr[-800:]
 replies = {r["id"]: r for r in map(json.loads, out.splitlines())}
 
 assert set(replies) == {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, sorted(replies)               # notifications get no reply
@@ -137,7 +139,7 @@ assert workshop.rgb_gap("#1A1A1A", "1C1C1C") < workshop.rgb_gap("#F2F2F2", "1C1C
 # Workshop: prices per kg from a filament register; unpriced rows skipped, first priced row per material wins
 with tempfile.TemporaryDirectory() as d:
     reg = os.path.join(d, "filament.md")
-    open(reg, "w").write("# Stock\n\n| Spool | Material | Colour | Price per kg |\n| --- | --- | --- | --- |\n"
+    open(reg, "w", encoding="utf-8").write("# Stock\n\n| Spool | Material | Colour | Price per kg |\n| --- | --- | --- | --- |\n"
                          "| SnapSpeed | PLA | Blue | from the receipt |\n| SUNLU | PETG | Black | £7.86 (4 kg bundle) |\n"
                          "| SUNLU | PETG | Red | £9.00 |\n")
     assert workshop.filament_prices(reg) == {"PETG": 7.86}, workshop.filament_prices(reg)

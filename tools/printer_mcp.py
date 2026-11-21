@@ -355,6 +355,9 @@ def handle(msg):
 
 
 def main():
+    for stream in (sys.stdin, sys.stdout):   # MCP speaks UTF-8; Windows defaults to its own code page (seen on the Legion)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     for line in sys.stdin:
         line = line.strip()
         if not line:
