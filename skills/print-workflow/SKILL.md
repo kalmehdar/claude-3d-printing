@@ -67,7 +67,7 @@ It opens in Bambu Studio and OrcaSlicer (and their forks) as one object with eve
 - The 3MF project, and which slot is which colour (the tool prints the list), the orientation (label faces down on the plate), supports or none and why, and anything still marked FIT.
 - Slice it yourself when OrcaSlicer is installed, and give its time and grams, never a guess:
   `python tools/orca.py slice <name>.3mf --printer <setup> --material petg-black,petg-red --preset standard [--set infill=30 walls=4 supports=on]`.
-  Presets: draft, standard, strong (load-bearing), solid (100% infill, the strongest), fine, low-waste (multi-colour on a tool changer). `python tools/orca.py settings` lists the
+  Presets: draft, standard, strong (load-bearing), solid (100% infill, the strongest), fine, quality (best-looking at 0.2 mm: slow outer walls, Arachne, precise outer wall, seam at the back, ironed tops; about 1.5x the time on small parts), low-waste (multi-colour on a tool changer). `python tools/orca.py settings` lists the
   plain names; any other OrcaSlicer key works too and a misspelt one is refused with suggestions. `orca.py open` does the same and opens the
   result in the app for the person to check or send. A printer setup is a folder of exported presets (`orca.py printers`); add a filament
   with `orca.py add-material "<part of its name>" --printer <setup>`, and `orca.py install --printer <setup>` puts the presets in the app's menus.

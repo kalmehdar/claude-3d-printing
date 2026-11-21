@@ -68,6 +68,12 @@ PRESETS = {
               "internal_solid_infill_pattern": "concentric", "top_shell_layers": "5", "bottom_shell_layers": "5",
               "inner_wall_line_width": "0.5", **INSIDE_FLOW},
     "fine": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5"},
+    # quality: same 0.2 mm layers, but the outside is printed slowly and gently so walls, corners and text come out clean.
+    # Arachne for thin walls and lettering, precise outer wall for fit, seam hidden at the back, ironed top surfaces.
+    # ponytail: 80 mm/s and 3000 mm/s2 are common PETG starting values, not measured on the U1; tune after a seam/corner test.
+    "quality": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "inner_wall_speed": "150", "top_surface_speed": "100",
+                "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
+                "ironing_type": "top", "ironing_speed": "30", "ironing_flow": "10%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
 }
@@ -75,6 +81,7 @@ PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
+                "quality": "best-looking at normal layer height: slow gentle outer walls, 3 walls, Arachne, precise outer wall for fit, seam at the back, ironed tops",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
 
 
