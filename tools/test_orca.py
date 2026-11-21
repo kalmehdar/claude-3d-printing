@@ -72,3 +72,16 @@ with tempfile.TemporaryDirectory() as t:
     plain = os.path.join(t, "p.scad"); open(plain, "w").write("cube(1);\n")
     assert look.hoist_libraries(plain) == ("", plain)
 print("look.py checks passed")
+with tempfile.TemporaryDirectory() as t:   # rotate: a 10 x 2 x 4 box stood upright lies flat after [90, 0, 0]
+    import make_3mf, struct as _st
+    box = os.path.join(t, "box.stl")
+    v = [(x, y, z) for x in (0, 10) for y in (0, 2) for z in (0, 4)]
+    faces = [(0, 1, 3), (0, 3, 2), (4, 6, 7), (4, 7, 5), (0, 4, 5), (0, 5, 1), (2, 3, 7), (2, 7, 6), (0, 2, 6), (0, 6, 4), (1, 5, 7), (1, 7, 3)]
+    with open(box, "wb") as f:
+        f.write(b"\0" * 80 + _st.pack("<I", len(faces)))
+        for a in faces:
+            f.write(_st.pack("<3f", 0, 0, 0) + b"".join(_st.pack("<3f", *v[k]) for k in a) + b"\0\0")
+    rv, _ = make_3mf.read_stl(slice_stats.rotated(box, [90, 0, 0], t))
+    size = [round(max(p[a] for p in rv) - min(p[a] for p in rv), 3) for a in range(3)]
+    assert size == [10, 4, 2], size
+print("rotate check passed")
