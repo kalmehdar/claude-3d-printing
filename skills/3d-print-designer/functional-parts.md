@@ -46,6 +46,7 @@ Horizontal holes: a teardrop top (BOSL2 `teardrop`) prints without supports.
 - Design strain: about 1.5 to 2% for PLA, about 3% for PETG (PLA is brittle; published PLA limits of 4 to 8% are too high for repeated use). [start]
 - Print the arm flat in X and Y; an arm bending across layers takes about half the strain. [sourced] core77
 - Lead angle about 30°; a return angle equal to the lead gives equal on and off force, 90° makes it permanent. Taper the arm to spread strain. [sourced concept] core77; angles [start]
+- In OpenSCAD: `use <examples/models/snap-fit.scad>` then `snap_clip(...)` and `snap_slot(...)`: the arm length comes from the strain limit above (the arm roots inside the head when the plate is thin), and the model refuses an arm over the limit; `living_hinge(...)` refuses PLA and sizes outside 0.3 to 0.8 mm. Print `snap-fit.scad` itself as the test card. [start]
 
 ## Hinges and fits
 
