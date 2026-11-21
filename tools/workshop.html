@@ -207,6 +207,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .jspeed .seg .btn{width:28px;padding:0;font-size:15px}
 .jspeed .seg b{display:grid;place-items:center;min-width:52px;font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;border-left:1px solid var(--line2);border-right:1px solid var(--line2)}
 @media (max-width:520px){.jkv{grid-template-columns:repeat(2,minmax(0,1fr))} .jspeed{margin-left:0}}
+.hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
+@media (max-width:640px){.hstat{display:none}}
 /* activity feed: initial badge, event, time on the right */
 .feed{display:flex;flex-direction:column}
 .fday{font-size:11.5px;color:var(--faint);padding:8px 0 4px}
@@ -283,7 +285,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <div class="sidefoot">Press <kbd>?</kbd> for shortcuts</div>
   </nav>
   <main>
-    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
+    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="hstat" id="hStat"></span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
     <div class="banner" id="banner" hidden></div>
 
     <section id="tab-now">
@@ -644,6 +646,7 @@ function render() {
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
   $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
   document.title = (active ? `${p}% · ` : "") + "Workshop";
+  $("#hStat").textContent = active ? `${(ps.filename || "").replace(/\.gcode$/, "")} · ${p}%${$("#kEnd").textContent !== "-" ? " · ends " + $("#kEnd").textContent.replace("about ", "~") : ""}` : "";
   const acts = [];
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
   if (ps.state === "paused") acts.push(`<button class="btn primary" data-a="resume">Resume</button>`);
@@ -1190,9 +1193,8 @@ function renderBanner() {
   let cls = "", text = "", sub = "";
   if (s.webhooks.state !== "ready") { cls = "bad"; text = "The printer isn't ready"; sub = s.webhooks.state_message || ""; }
   else if (ps.state === "printing") {
-    cls = "good"; text = `Printing ${ps.filename}`;
+    // a normal print needs no banner: the header line says what is printing and when it ends
     if (s.heater_bed.target === 0 && (ps.info || {}).current_layer > 0) { cls = "bad"; text = "Printing with the bed heater off"; sub = "Pause it and restart: the first layers won't stick."; }
-    else sub = $("#kEnd").textContent !== "-" ? `Finishes about ${$("#kEnd").textContent}.` : "";
   } else if (ps.state === "paused") { cls = "warn"; text = `Paused: ${ps.filename}`; sub = fresh[0] ? fresh[0].advice || fresh[0].text : "Check the warning below, then resume on the screen or cancel and start again."; }
   else {
     const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
@@ -1205,6 +1207,7 @@ function renderBanner() {
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
   const takeOff = S.bed && S.bed.state === "part waiting" && ps.state !== "printing" && ps.state !== "paused";
+  if (!text && !sub) { b.hidden = true; return; }
   b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}`;
   if (takeOff) $("#tookOff").onclick = async () => { try { S.bed = await post("/api/bed"); toast("Bed marked clear"); render(); } catch (e) { toast(e.message, true); } };
 }
