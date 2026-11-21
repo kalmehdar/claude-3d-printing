@@ -16,6 +16,8 @@ Moonraker on many printers has no password. Run this only on a home network or b
 never on an open port. Standard library only; the page loads three.js from a CDN.
 """
 import argparse
+import ipaddress
+import shutil
 import http.server
 import json
 import os
@@ -24,6 +26,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +34,8 @@ REPO = os.path.dirname(TOOLS)
 sys.path.insert(0, TOOLS)
 
 CFG = {}
+SERVE = {".stl", ".scad", ".3mf", ".glb", ".json", ".png", ".jpg"}   # what /bench may hand out: design files only
+SLICE_SETS = {"infill": r"\d{1,3}", "walls": r"\d{1,2}", "supports": r"on|off", "brim": r"auto_brim|outer_only|no_brim"}
 SKIP = {"host", "connection", "transfer-encoding", "content-length", "keep-alive", "content-encoding"}
 
 
@@ -89,13 +94,18 @@ def upload_gcode(path, name):
         return json.load(r)
 
 
+def preset_bad(p):
+    import orca
+    return p is not None and p not in orca.PRESETS
+
+
 def slice_design(req):
     """Returns (http status, dict). Never raises for a slicer problem: the page shows the message."""
     import make_3mf
     import orca
     try:
         bench_path = CFG["benches"][int(req.get("bench", 0))]
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, TypeError):
         return 404, {"error": "no such bench"}
     d = next((m for m in json.load(open(bench_path, encoding="utf-8"))["models"] if m["id"] == req.get("id")), None)
     if not d:
@@ -115,8 +125,19 @@ def slice_design(req):
         head_note = [{"part": label, "colour": c, "head": f"T{mapping[c.lower()]}", "loaded": heads[mapping[c.lower()]]["label"]}
                      for label, _, c in parts]
     preset = req.get("preset") or "standard"
-    sets = [s for s in req.get("set", []) if re.fullmatch(r"[A-Za-z0-9_-]+=[^;\s]{1,40}", s)]
+    # only the plain settings the page offers: anything else could reach OrcaSlicer keys such as post_process
+    sets = [s for s in (req.get("set") or []) if isinstance(s, str) and "=" in s
+            and s.split("=", 1)[0] in SLICE_SETS and re.fullmatch(SLICE_SETS[s.split("=", 1)[0]], s.split("=", 1)[1])]
+    if preset_bad(req.get("preset")):
+        return 400, {"error": "unknown preset"}
     out = tempfile.mkdtemp(prefix="workshop-")
+    try:
+        return _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, make_3mf, orca)
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, make_3mf, orca):
     try:
         data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
         p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
@@ -134,8 +155,13 @@ def slice_design(req):
         upload_gcode(s["gcode"], name)
         result["uploaded"] = True
         if req.get("queue"):
-            moonraker("POST", "/server/job_queue/job?filenames=" + urllib.request.quote(name))
-            result["queued"] = True
+            with moonraker("GET", "/server/job_queue/status", timeout=5) as r:
+                running = json.load(r)["result"]["queue_state"] in ("ready", "loading")
+            if running:   # a running queue would start it onto the last print
+                result["queue_note"] = "Not queued: the queue is running. Hold it, then add."
+            else:
+                moonraker("POST", "/server/job_queue/job?filenames=" + urllib.request.quote(name)).read()
+                result["queued"] = True
     return 200, result
 
 
@@ -155,7 +181,11 @@ def loaded_heads():
     except SystemExit:
         have = []
     heads = []
-    for ty, sub, c in zip(t.get("filament_type", []), t.get("filament_sub_type", []), t["filament_color_rgba"]):
+    exist = t.get("filament_exist") or [True] * len(t["filament_color_rgba"])
+    for ty, sub, c, here in zip(t.get("filament_type", []), t.get("filament_sub_type", []), t["filament_color_rgba"], exist):
+        if not here:   # an empty head still reports its last colour: never send a part to it
+            heads.append({"colour": None, "material": have[0] if have else "", "label": "empty"})
+            continue
         words = [w.lower() for w in (sub, ty) if w]
         pick = next((n for w in words for n in have if w.replace(" ", "-") in n), None) or next(
             (n for n in have if ty.lower() in n), have[0] if have else ty.lower())
@@ -220,12 +250,69 @@ class Handler(http.server.BaseHTTPRequestHandler):
         data = r.read()
         self.send(r.status, data, r.headers.get("Content-Type", "application/octet-stream"))
 
+    def allowed(self):
+        """Refuse requests another web page could make: the Host must be an IP address, localhost or an --allow-host name
+        (stops DNS rebinding), and anything but GET must carry the page's X-Workshop header and a same-origin Origin
+        (a custom header forces a CORS preflight, which this server never grants)."""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        try:
+            ipaddress.ip_address(host)
+            host_ok = True
+        except ValueError:
+            host_ok = host in ("localhost", *CFG["allow_hosts"])
+        if not host_ok:
+            return False
+        if self.command != "GET":
+            origin = self.headers.get("Origin")
+            if self.headers.get("X-Workshop") != "1" or (origin and origin != "http://" + self.headers.get("Host", "")):
+                return False
+        return True
+
+    def printer_busy(self):
+        try:
+            with moonraker("GET", "/printer/objects/query?print_stats=state", timeout=5) as r:
+                return json.load(r)["result"]["status"]["print_stats"]["state"] in ("printing", "paused")
+        except (OSError, ValueError, KeyError):
+            return True   # unknown counts as busy: refuse rather than guess
+
+    def guard(self, p):
+        """Physical safety checked here, not only in the page: no filament, heater or motion G-code while a job runs
+        (the light is allowed), and nothing added to a queue that is running (it would start onto the last print)."""
+        if self.command == "POST" and p.startswith("/printer/gcode/script"):
+            script = urllib.parse.unquote_plus(p.split("script=", 1)[-1]) if "script=" in p else ""
+            if "\n" in script or "\r" in script:
+                return "one G-code command at a time"
+            if not script.upper().startswith("SET_LED ") and self.printer_busy():
+                return "a job is running; that command waits until it ends"
+        if self.command == "POST" and p.startswith(("/server/job_queue/job", "/printer/print/start")):
+            try:
+                with moonraker("GET", "/server/job_queue/status", timeout=5) as r:
+                    if json.load(r)["result"]["queue_state"] in ("ready", "loading"):
+                        return "the queue is running; hold it first, then add"
+            except (OSError, ValueError, KeyError):
+                return "could not read the queue"
+        return None
+
     def route(self):
         p = self.path
+        if not self.allowed():
+            return self.send(403, {"error": "refused: open Workshop by its address, not from another site"})
         if p in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8")
         if p.startswith("/moonraker/"):
-            return self.proxy(p[len("/moonraker"):], timeout=600 if ("upload" in p or "gcode/script" in p) else 30)
+            path = p[len("/moonraker"):]
+            why = self.guard(path)
+            if why:
+                return self.send(409, {"error": why})
+            if self.command == "POST" and path.startswith("/server/job_queue/start"):
+                # start one job: hold the queue straight after, so every later job needs its own bed check
+                self.proxy(path)
+                try:
+                    moonraker("POST", "/server/job_queue/pause", timeout=10).read()
+                except OSError:
+                    pass
+                return
+            return self.proxy(path, timeout=600 if ("upload" in path or "gcode/script" in path) else 30)
         if p.startswith("/cam.jpg"):
             wake_camera()
             return self.proxy(CFG["camera"], timeout=10)
@@ -247,15 +334,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                    "presets": getattr(orca, "PRESET_WORDS", {})})
         if p == "/api/slice" and self.command == "POST":
             try:
-                code, res = slice_design(json.loads(self.body() or b"{}"))
-            except (OSError, ValueError) as e:
+                req = json.loads(self.body() or b"{}")
+                code, res = slice_design(req) if isinstance(req, dict) else (400, {"error": "send a JSON object"})
+            except (OSError, ValueError, TypeError, AttributeError) as e:
                 code, res = 500, {"error": str(e)}
             return self.send(code, res)
         m = re.match(r"/bench/(\d+)/(.+)", p)
         if m and self.command == "GET" and int(m.group(1)) < len(CFG["benches"]):
             root = os.path.realpath(root_of(CFG["benches"][int(m.group(1))]))
             full = os.path.realpath(os.path.join(root, urllib.request.unquote(m.group(2).split("?")[0])))
-            if not full.startswith(root + os.sep) or "/." in full[len(root):] or not os.path.isfile(full):
+            rel_parts = os.path.relpath(full, root).split(os.sep)
+            if (not full.startswith(root + os.sep) or any(x.startswith(".") for x in rel_parts) or not os.path.isfile(full)
+                    or os.path.splitext(full)[1].lower() not in SERVE):
                 return self.send(404, {"error": "not found"})
             ctype = {".stl": "model/stl", ".scad": "text/plain; charset=utf-8", ".glb": "model/gltf-binary",
                      ".json": "application/json"}.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
@@ -273,6 +363,7 @@ def main():
     ap.add_argument("--bench", action="append", help="a bench.json (repeat for more); default examples/bench.json")
     ap.add_argument("--profile", default="u1", help="tools/orca.py printer setup for slicing")
     ap.add_argument("--bind", default="0.0.0.0")
+    ap.add_argument("--allow-host", action="append", default=[], help="a host name the page may be opened by (IP addresses and localhost always work)")
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
@@ -280,7 +371,7 @@ def main():
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
     CFG.update(printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
-               profile=a.profile, verbose=a.verbose, bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
+               profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     srv = http.server.ThreadingHTTPServer((a.bind, a.port), Handler)
     print(f"Workshop on http://{a.bind}:{a.port} for printer {a.printer} (Ctrl+C stops)")
     try:

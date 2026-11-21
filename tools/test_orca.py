@@ -31,10 +31,13 @@ with tempfile.TemporaryDirectory() as t:   # adopt-gcode: custom G-code from a k
     json.dump({"machine_start_gcode": "{if fork_only_var==0}X{endif}", "machine_end_gcode": "END", "printable_area": "0x0"},
               open(os.path.join(t, "machine.json"), "w", encoding="utf-8"))
     g = os.path.join(t, "good.gcode")
-    open(g, "w").write("G1 X1\n; machine_start_gcode = PRINT_START\\nG28\n; machine_end_gcode = END\n; printable_area = 9x9\n")
-    assert orca.adopt_gcode(g, t) == ["machine_start_gcode"]
+    open(g, "w").write("G1 X1\n; machine_start_gcode = PRINT_START\\nG28\n; machine_end_gcode = END\n; printable_area = 9x9\n"
+                       "; change_filament_gcode = M117 a\\\\nb\n")   # an escaped backslash before n is not a newline
+    json.dump({**json.load(open(os.path.join(t, "machine.json"))), "change_filament_gcode": ""}, open(os.path.join(t, "machine.json"), "w"))
+    assert orca.adopt_gcode(g, t) == ["machine_start_gcode", "change_filament_gcode"]
     m = json.load(open(os.path.join(t, "machine.json")))
     assert m["machine_start_gcode"] == "PRINT_START\nG28" and m["printable_area"] == "0x0"   # only *_gcode keys move
+    assert m["change_filament_gcode"] == "M117 a\\nb", repr(m["change_filament_gcode"])
 
 import make_3mf  # noqa: E402   (tool changers: each colour goes to the head holding it)
 m, missing = make_3mf.match_heads(["#1f1f22", "#ecebe6", "#002fa7"], ["#e2dedb", "#080a0d", "#e72f1d", "#f4c032"])

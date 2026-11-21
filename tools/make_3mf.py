@@ -50,8 +50,11 @@ def match_heads(colours, heads, limit=110):
     """Each design colour -> the head (0-based) whose loaded filament is nearest in colour, and the colours with no close match.
     limit is a plain RGB distance: black against charcoal is about 40, red against orange about 110."""
     mapping, missing = {}, []
+    loaded = [(i, h) for i, h in enumerate(heads) if h]   # None marks an empty head
+    if not loaded:
+        return {c.lower(): 0 for c in colours}, list(colours)
     for c in colours:
-        d, i = min((sum((x - y) ** 2 for x, y in zip(rgb(c), rgb(h))) ** 0.5, i) for i, h in enumerate(heads))
+        d, i = min((sum((x - y) ** 2 for x, y in zip(rgb(c), rgb(h))) ** 0.5, i) for i, h in loaded)
         mapping[c.lower()] = i
         if d > limit:
             missing.append(c)
@@ -66,7 +69,7 @@ def build(parts, name, bed, heads=None):
     if heads:
         mapping, _ = match_heads(colours, heads)
         meshes = [(label, read_stl(path), mapping[c.lower()] + 1) for label, path, c in parts]
-        colours = [h.lower() for h in heads]
+        colours = [h.lower() if h else "#808080" for h in heads]
     else:
         meshes = [(label, read_stl(path), colours.index(c.lower()) + 1) for label, path, c in parts]
     allv = [v for _, (vs, _), _ in meshes for v in vs]

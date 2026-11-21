@@ -17,21 +17,23 @@ import sys
 import tempfile
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-# (label, rotation that turns that face up toward a camera looking straight down), as OpenSCAD rotate([x, y, z])
-VIEWS = [("angled", (-55, 0, -35)), ("top", (0, 0, 0)), ("front", (-90, 0, 0)), ("side", (0, -90, 0))]
+# (label, rotations applied in order, each an OpenSCAD rotate([x, y, z])): turn that face up toward a camera looking
+# straight down, keeping the model's +Z pointing up the picture in the front, side and angled views
+VIEWS = [("angled", [(0, 0, -35), (-55, 0, 0)]), ("top", [(0, 0, 0)]), ("front", [(-90, 0, 0)]), ("side", [(0, 0, -90), (-90, 0, 0)])]
 
 
-def footprint(size, rot):
-    """Width and depth seen from above after OpenSCAD's rotate(rot) (x first, then y, then z) of a box centred on 0."""
-    ax, ay, az = (math.radians(r) for r in rot)
+def footprint(size, rots):
+    """Width and depth seen from above after each OpenSCAD rotate([x, y, z]) in rots, in order, of a box centred on 0."""
     pts = []
     for sx in (-1, 1):
         for sy in (-1, 1):
             for sz in (-1, 1):
                 x, y, z = sx * size[0] / 2, sy * size[1] / 2, sz * size[2] / 2
-                y, z = y * math.cos(ax) - z * math.sin(ax), y * math.sin(ax) + z * math.cos(ax)
-                x, z = x * math.cos(ay) + z * math.sin(ay), -x * math.sin(ay) + z * math.cos(ay)
-                x, y = x * math.cos(az) - y * math.sin(az), x * math.sin(az) + y * math.cos(az)
+                for rot in rots:   # OpenSCAD's rotate([x, y, z]) turns about x, then y, then z
+                    ax, ay, az = (math.radians(r) for r in rot)
+                    y, z = y * math.cos(ax) - z * math.sin(ax), y * math.sin(ax) + z * math.cos(ax)
+                    x, z = x * math.cos(ay) + z * math.sin(ay), -x * math.sin(ay) + z * math.cos(ay)
+                    x, y = x * math.cos(az) - y * math.sin(az), x * math.sin(az) + y * math.cos(az)
                 pts.append((x, y))
     return max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts)
 
@@ -83,7 +85,7 @@ def main():
         size = [hi[i] - lo[i] for i in range(3)]
         centre = [(hi[i] + lo[i]) / 2 for i in range(3)]
         # a 2 x 2 grid, each column as wide and each row as tall as the views in it, with a gap of 12% of the model
-        fp = [footprint(size, rot) for _, rot in VIEWS]
+        fp = [footprint(size, rots) for _, rots in VIEWS]
         cells = [(0, 1), (1, 1), (0, 0), (1, 0)]
         gap = max(size) * 0.12
         colw = [max(fp[i][0] for i, (c, _) in enumerate(cells) if c == k) for k in (0, 1)]
@@ -92,10 +94,11 @@ def main():
         y_of = [gap / 2 + rowh[0] / 2, gap / 2 + rowh[0] + gap + rowh[1] / 2]
         # the model included inside a module, so it can be placed four times, each face-up for a top-down camera
         sheet = os.path.join(tmp, "sheet.scad")
-        body = "".join(
-            f"translate([{x_of[c]:.3f}, {y_of[r]:.3f}, 0]) rotate([{rot[0]}, {rot[1]}, {rot[2]}]) "
-            f"translate([{-centre[0]:.3f}, {-centre[1]:.3f}, {-centre[2]:.3f}]) model();\n"
-            for (label, rot), (c, r) in zip(VIEWS, cells))
+        body = "".join(   # OpenSCAD applies the innermost rotate first, so the list goes outside-in reversed
+            f"translate([{x_of[c]:.3f}, {y_of[r]:.3f}, 0]) "
+            + "".join(f"rotate([{x}, {y}, {z}]) " for x, y, z in reversed(rots))
+            + f"translate([{-centre[0]:.3f}, {-centre[1]:.3f}, {-centre[2]:.3f}]) model();\n"
+            for (label, rots), (c, r) in zip(VIEWS, cells))
         # in OpenSCAD the last assignment in a scope wins, so the overrides go after the include
         overrides = "".join(f"{d.split('=', 1)[0]} = {d.split('=', 1)[1]}; " for d in [f'part="{a.part}"'] + a.D)
         open(sheet, "w", encoding="utf-8").write(f"module model() {{ include <{scad}> {overrides}}}\n{body}")

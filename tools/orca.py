@@ -373,7 +373,8 @@ def adopt_gcode(gcode_path, printer):
     for line in open(gcode_path, encoding="utf-8", errors="replace"):
         m = re.match(r"^; ([a-z0-9_]+) = (.*)$", line.rstrip("\n"))
         if m:
-            cfg[m.group(1)] = m.group(2).replace("\\n", "\n")
+            # OrcaSlicer writes \n for a newline and \\ for a backslash: undo both in one pass
+            cfg[m.group(1)] = re.sub(r"\\(.)", lambda e: {"n": "\n", "r": "\r"}.get(e.group(1), e.group(1)), m.group(2))
     if not cfg:
         sys.exit("no settings block in that G-code (slice it with OrcaSlicer or a fork)")
     path = os.path.join(printer_dir(printer), "machine.json")

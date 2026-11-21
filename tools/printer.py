@@ -107,6 +107,7 @@ def status():
 def ws_rpc(host, port, method, params, timeout=15):
     """One JSON-RPC call over Moonraker's websocket (some endpoints, like the U1's camera, are websocket-only)."""
     s = socket.create_connection((host, port), timeout=timeout)
+    deadline = time.time() + timeout   # status pushes keep a socket busy, so time the whole call, not each read
     try:
         key = base64.b64encode(os.urandom(16)).decode()
         s.sendall(f"GET /websocket HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
@@ -126,6 +127,8 @@ def ws_rpc(host, port, method, params, timeout=15):
         mask = os.urandom(4)
         s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(msg)))
         while True:   # read frames until our reply (Moonraker also pushes status notifications)
+            if time.time() > deadline:
+                raise OSError("no reply from the printer in time")
             while len(buf) < 2:
                 chunk = s.recv(65536)
                 if not chunk:
@@ -187,6 +190,10 @@ def snap(out):
     return out
 
 
+def queue_running():
+    return call("/server/job_queue/status")["queue_state"] in ("ready", "loading")
+
+
 def send(path, queue=False):
     name = os.path.basename(path)
     if not name.lower().endswith((".gcode", ".gco", ".g")):
@@ -199,6 +206,8 @@ def send(path, queue=False):
     with urllib.request.urlopen(req, timeout=600) as r:
         r.read()
     if queue:
+        if queue_running():   # it would start onto the last print with no bed check
+            sys.exit(f"{name} is on the printer but not queued: the queue is running; `queue hold` first")
         call("/server/job_queue/job?filenames=" + urllib.parse.quote(name), "POST")
     return name
 
@@ -263,8 +272,9 @@ def set_filament(head, ftype, vendor, sub, colour, force=False):
         sys.exit("colour as six hex digits, e.g. 1f1f22")
     cmd = (f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={i} VENDOR={v} FILAMENT_TYPE={t} FILAMENT_SUBTYPE={sb} "
            f"FILAMENT_COLOR_RGBA={hexc}FF" + (" FORCE=1" if force else ""))
-    if " " in v + t + sb:
-        sys.exit("names with spaces need the printer's screen")   # Klipper parameters cannot hold spaces
+    import re
+    if not all(re.fullmatch(r"[A-Za-z0-9_.+-]+", w) for w in (v, t, sb)):
+        sys.exit("names with spaces or symbols need the printer's screen")   # one G-code line, plain words only
     try:
         call("/printer/gcode/script?script=" + urllib.parse.quote(cmd), "POST", timeout=60)
     except urllib.error.HTTPError as e:
@@ -364,12 +374,16 @@ def main():
             for j in q["queued_jobs"]:
                 print(j["job_id"], j["filename"])
         elif sub == "add":
+            if queue_running():
+                sys.exit("refused: the queue is running and would start this onto the last print; `queue hold` first")
             print(call("/server/job_queue/job?filenames=" + urllib.parse.quote(x[1]), "POST"))
         elif sub == "remove":
             print(call("/server/job_queue/job?job_ids=" + urllib.parse.quote(x[1]), "DELETE"))
         elif sub == "start":
             need_clear()
             print(call("/server/job_queue/start", "POST"))
+            call("/server/job_queue/pause", "POST")   # one job per bed check: hold the queue behind it
+            print("started the next job; the queue is held again behind it")
         elif sub == "hold":
             print(call("/server/job_queue/pause", "POST"))
         else:
