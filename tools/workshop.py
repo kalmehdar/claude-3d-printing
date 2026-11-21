@@ -82,7 +82,7 @@ def bench_designs(n, bench, base, root, stats):
         parts = [{"name": e[0], "stl": link(e[1]), "colour": e[2],
                   "printed": not (len(e) > 3 and e[3] == "not printed")} for e in m["parts"]]
         out.append({"bench": n, "id": m["id"], "name": m["name"], "for": m.get("for", ""), "material": m.get("material", ""),
-                    "status": m.get("status", ""), "state": m.get("state", ""),
+                    "status": m.get("status", ""), "state": m.get("state", ""), "group": m.get("group", ""),
                     "source": link(m["source"]) if m.get("source") else None, "parts": parts,
                     "slice": stats.get("designs", {}).get(m["id"])})
     return out

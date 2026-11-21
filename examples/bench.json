@@ -6,6 +6,7 @@
   "models": [
     {
       "id": "ledbar",
+      "group": "Homelab rack",
       "name": "Rack status LED bar",
       "for": "A whole hardware project: 16 addressable LEDs and an ESP32-C3 on a board designed, routed and checked with Claude in KiCad, behind a printed 1U faceplate with a white diffuser window. Runs WLED. Shown as it prints, face down, with the board on its four standoffs above it.",
       "status": "Fit first: board not yet ordered; read hardware/led-bar/REVIEW.md",
@@ -38,6 +39,7 @@
     },
     {
       "id": "testcard",
+      "group": "Test prints",
       "name": "Four-colour test card",
       "for": "The first print on a new multi-head printer. Every colour borders every other colour once; if the edges stay crisp, purge and retraction are right.",
       "status": "Ready: about 25 minutes, 8 g",
@@ -70,6 +72,7 @@
     },
     {
       "id": "fitcard",
+      "group": "Test prints",
       "name": "Fit card",
       "for": "Your printer's real clearances in one short print. Six holes, each 8 mm plus the clearance printed under it, and an 8 mm peg. The smallest hole the peg turns in is your slide fit; the smallest it presses into is your press fit. Tell Claude both and every design after uses them.",
       "status": "Check first: not yet printed",
@@ -92,6 +95,7 @@
     },
     {
       "id": "insertcard",
+      "group": "Test prints",
       "name": "Insert card",
       "for": "The right hole for M3 heat-set inserts on your printer, in one short print. Six bosses with pockets from 3.8 to 4.3 mm. Melt an insert into each, then screw a bolt in and out: the best hole is the smallest where the insert sits flush and doesn't turn. Tell Claude the number and every design after uses it.",
       "status": "Check first: not yet printed",
@@ -109,6 +113,7 @@
     },
     {
       "id": "hingecard",
+      "group": "Test prints",
       "name": "Hinge card",
       "for": "Three print-in-place hinges, printed flat and already assembled, at gaps of 0.2, 0.3 and 0.4 mm. Flex each one gently: the right gap is the smallest that frees with a little force and then swings without rubbing. Tell Claude the number and later hinged designs use it.",
       "status": "Check first: not yet printed",
@@ -132,6 +137,7 @@
       "state": "check",
       "material": "PETG, one head (PLA works for the clip; the model leaves the living hinge out in PLA)",
       "credit": "Designed with Claude in OpenSCAD (models/snap-fit.scad): snap_clip, snap_slot and living_hinge modules",
+      "group": "Test prints",
       "parts": [
         [
           "Card",
@@ -142,6 +148,7 @@
     },
     {
       "id": "bins",
+      "group": "Storage",
       "name": "Colour-coded Gridfinity bins",
       "for": "Eleven bins that fill a 5 x 5 Gridfinity tray, 42 mm tall, each name printed into a band in its category colour: red power, blue network, white storage, plain black for the rest.",
       "status": "Ready: prints as two plates, because the set plus a four-colour prime tower overflows a 270 mm bed",
@@ -184,6 +191,7 @@
     },
     {
       "id": "tags",
+      "group": "Cables",
       "name": "Clip-on cable tags",
       "for": "One tag per lead end, the colour saying what the lead carries and the ID printed in. Each clip is sized to its own cable, from mains down to slim Cat6: measure yours and set LEADS.",
       "status": "Fit first: print one tag per cable type and check it snaps on",
@@ -226,6 +234,7 @@
     },
     {
       "id": "swatch",
+      "group": "Printer and filament",
       "name": "Filament swatch card",
       "for": "One card per spool: its name and the temperatures it printed well at, printed in, plus a 0.4 to 1.6 mm step strip that shows how see-through the colour is. A hole takes a keyring.",
       "status": "Ready: set swatch_name, nozzle and bed for each spool",
@@ -248,6 +257,7 @@
     },
     {
       "id": "clip",
+      "group": "Cables",
       "name": "Desk cable clip",
       "for": "Snaps over a cable and sticks to the desk edge with a 20 x 20 mm adhesive pad. Prints flat, no supports.",
       "status": "Fit first: set cable_d to your cable's diameter",
@@ -265,6 +275,7 @@
     },
     {
       "id": "before",
+      "group": "Storage",
       "name": "Upgrade, before: a plain bin",
       "for": "Stands in for any STL you downloaded: one colour, no label, no magnets, and no source file to edit.",
       "status": "The starting point",
@@ -281,6 +292,7 @@
     },
     {
       "id": "after",
+      "group": "Storage",
       "name": "Upgrade, after: label, accent rim, magnets",
       "for": "The same STL upgraded by Claude without its source: M3 SCREWS printed into the front, the top 3 mm of the rim cut off and printed red, and 6 x 2 mm magnet pockets in the base. Turn it over to see the pockets.",
       "status": "Ready",
