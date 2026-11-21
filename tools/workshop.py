@@ -194,6 +194,110 @@ def loaded_heads():
     return heads
 
 
+ADVICE = [   # printer messages seen on the U1, and what the person should do about them
+    (r"filament runout", "A head ran out of filament, or its new spool is only parked at the feeder. Load it from the printer's screen, then cancel and restart the print."),
+    (r"state mismatch|unload_fail|load_fail", "A feeder is in an unexpected state. Check that head on the printer's screen."),
+    (r"Probe samples exceed tolerance", "The bed probe got uneven readings, often from something on the plate. Check the bed is clear."),
+    (r"auto feeding batch has not yet begun", "A feed step was sent outside a batch; harmless."),
+    (r"heater .* not heating|thermal runaway|Heater .* not heating", "A heater fault: switch the printer off and check it before printing again."),
+]
+
+
+def actor(handler):
+    who = re.sub(r"[^\w .'-]", "", handler.headers.get("X-Workshop-User") or "")[:24].strip()
+    return who or "someone"
+
+
+def record(what, detail="", who="someone", via="Workshop"):
+    import printer
+    printer.record(what, detail, who=who, via=via)
+
+
+ALERT_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "alerts.jsonl")
+_alerts = []        # every warning seen, oldest first; the printer's own console only keeps a few minutes
+
+
+def scan_alerts():
+    """Copy new warnings and errors from the printer's console into the alert history (kept on disk)."""
+    with moonraker("GET", "/server/gcode_store?count=1000", timeout=10) as r:
+        store = json.load(r)["result"]["gcode_store"]
+    seen = {(int(a["t"] // 60), a["text"]) for a in _alerts}   # the same message within a minute counts once
+    for g in store:
+        m = g["message"]
+        if g["type"] != "response" or not (m.startswith("!!") or "// !!" in m or m.lower().startswith("error")):
+            continue
+        if re.search(r"(park|pick) extruder\d* !!!", m):   # the U1's tool-change chatter, not a warning
+            continue
+        text = re.sub(r"^(// )?!! ?", "", m).replace("raw msg:", " ").strip()[:200]
+        if (int(g["time"] // 60), text) in seen:
+            continue
+        a = {"t": g["time"], "text": text, "advice": next((adv for pat, adv in ADVICE if re.search(pat, m, re.I)), "")}
+        _alerts.append(a)
+        seen.add((int(a["t"] // 60), text))
+        try:
+            with open(ALERT_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps(a) + "\n")
+        except OSError:
+            pass
+
+
+def alerts(limit=12):
+    try:
+        scan_alerts()
+    except (OSError, ValueError, KeyError):
+        pass
+    return _alerts[::-1][:limit]
+
+
+def watch_alerts():
+    try:
+        _alerts.extend(json.loads(x) for x in open(ALERT_LOG, encoding="utf-8").read().splitlines()[-200:] if x.strip())
+    except OSError:
+        pass
+    while True:
+        try:
+            scan_alerts()
+        except (OSError, ValueError, KeyError):
+            pass
+        time.sleep(20)
+
+
+CLAUDE_JOBS = []   # [{id, who, text, state, output, t}], newest last; kept in memory while Workshop runs
+CLAUDE_TOOLS = ["Bash(python3 tools/printer.py *)", "Bash(python3 tools/orca.py *)", "Bash(python3 tools/make_3mf.py *)",
+                "Bash(python3 tools/look.py *)", "Read"]
+
+
+def claude_prompt(who, text, bed_clear):
+    return f"""You are driving a Snapmaker U1 3D printer for {who}, from the Workshop page. Their request:
+
+{text}
+
+{"They ticked: the bed is empty." if bed_clear else "They did NOT say the bed is empty."}
+
+Rules (from skills/print-workflow step 7 and docs/snapmaker-u1.md in this folder; read them if unsure):
+- Use only python3 tools/printer.py, tools/orca.py, tools/make_3mf.py and tools/look.py from this folder. Designs are in the benches Workshop serves.
+- Start a print only when they ticked that the bed is empty AND a fresh `python3 tools/printer.py snap bed.jpg` (read the image) shows an empty plate. Otherwise prepare everything, say so, and do not start.
+- Never use `gcode --force`, and never send motion, heating or feeding commands except through printer.py's own start, pause, resume, cancel, unload and filament commands for what they asked.
+- If anything is unclear or unsafe, do not act: say what you need from them.
+Reply in two to five short plain sentences: what you did, what the printer is doing now, and anything they must do."""
+
+
+def run_claude(job, bed_clear):
+    import subprocess
+    exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+    env = dict(os.environ, PRINTER_ACTOR=f"Claude for {job['who']}", PRINTER_HOST=CFG["printer"])
+    try:
+        r = subprocess.run([exe, "-p", claude_prompt(job["who"], job["text"], bed_clear), "--output-format", "json",
+                            "--max-turns", "30", "--allowedTools", *CLAUDE_TOOLS],
+                           cwd=REPO, env=env, capture_output=True, text=True, timeout=1500)
+        d = json.loads(r.stdout or "{}")
+        job["output"] = d.get("result") or (r.stderr or "no reply")[-600:]
+        job["state"] = "error" if d.get("is_error") or r.returncode else "done"
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        job["output"], job["state"] = f"Claude could not run: {e}", "error"
+    record("Claude replied", job["output"][:200], who=f"Claude for {job['who']}")
+
+
 _unloading = []
 
 
@@ -298,6 +402,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (OSError, ValueError, KeyError):
             return True   # unknown counts as busy: refuse rather than guess
 
+    def describe(self, path):
+        """(what, detail) for the activity log when a request changes something on the printer, else None."""
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+        one = lambda k: (q.get(k) or [""])[0]
+        if self.command == "POST":
+            for key, what in (("/printer/print/start", "started"), ("/printer/print/pause", "paused"), ("/printer/print/resume", "resumed"),
+                              ("/printer/print/cancel", "cancelled"), ("/server/job_queue/job", "queued"), ("/server/job_queue/pause", "held the queue"),
+                              ("/server/files/upload", "uploaded a file")):
+                if path.startswith(key):
+                    return what, one("filename") or one("filenames")
+            if path.startswith("/printer/gcode/script"):
+                return "sent", one("script")
+        if self.command == "DELETE" and path.startswith("/server/files/gcodes/"):
+            return "deleted", urllib.parse.unquote(path.split("/server/files/gcodes/", 1)[1])
+        if self.command == "DELETE" and path.startswith("/server/job_queue/job"):
+            return "removed from queue", one("job_ids")
+        return None
+
     def guard(self, p):
         """Physical safety checked here, not only in the page: no filament, heater or motion G-code while a job runs
         (the light is allowed), and nothing added to a queue that is running (it would start onto the last print)."""
@@ -338,6 +460,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if why:
                 return self.send(409, {"error": why})
             if self.command == "POST" and path.startswith("/server/job_queue/start"):
+                record("started the queue", "", who=actor(self))
                 # start one job: hold the queue straight after, so every later job needs its own bed check
                 self.proxy(path)
                 try:
@@ -345,6 +468,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except OSError:
                     pass
                 return
+            what = self.describe(path)
+            if what:
+                record(what[0], what[1], who=actor(self))
             return self.proxy(path, timeout=600 if ("upload" in path or "gcode/script" in path) else 30)
         if p.startswith("/cam.jpg"):
             wake_camera()
@@ -365,6 +491,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 live = None
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live,
                                    "presets": getattr(orca, "PRESET_WORDS", {})})
+        if p.startswith("/api/activity"):
+            import printer
+            try:
+                lines = open(printer.ACTIVITY, encoding="utf-8").read().splitlines()[-80:]
+            except OSError:
+                lines = []
+            return self.send(200, [json.loads(x) for x in lines[::-1] if x.strip()])
+        if p == "/api/alerts":
+            try:
+                return self.send(200, alerts())
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": str(e)})
+        if p == "/api/claude" and self.command == "GET":
+            return self.send(200, CLAUDE_JOBS[-20:][::-1])
+        if p == "/api/claude" and self.command == "POST":
+            import threading
+            try:
+                r = json.loads(self.body() or b"{}")
+                text = str(r.get("text", "")).strip()[:1500] if isinstance(r, dict) else ""
+            except ValueError:
+                text = ""
+            if not text:
+                return self.send(400, {"error": "say what you want Claude to do"})
+            if any(j["state"] == "running" for j in CLAUDE_JOBS):
+                return self.send(409, {"error": "Claude is still on the last request; wait for its reply"})
+            job = {"id": len(CLAUDE_JOBS) + 1, "who": actor(self), "text": text, "state": "running", "output": "", "t": time.time()}
+            CLAUDE_JOBS.append(job)
+            record("asked Claude", text[:200], who=job["who"])
+            threading.Thread(target=run_claude, args=(job, bool(r.get("bed_clear"))), daemon=True).start()
+            return self.send(202, job)
         if p == "/api/filaments":
             import printer
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
@@ -386,7 +542,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not re.fullmatch(r"T?[0-3]", head, re.I):
                 return self.send(400, {"error": "head is T0 to T3"})
             try:   # set_filament refuses during a job and checks every name against the printer's own table
-                return self.send(200, {"result": printer.set_filament("T" + head.upper().lstrip("T"), ftype, vendor, sub, colour)})
+                res = printer.set_filament("T" + head.upper().lstrip("T"), ftype, vendor, sub, colour)
+                record("set filament", res, who=actor(self))
+                return self.send(200, {"result": res})
             except SystemExit as e:
                 return self.send(409, {"error": str(e.code)})
         if p == "/api/unload" and self.command == "POST":
@@ -400,11 +558,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.printer_busy():
                 return self.send(409, {"error": "a job is running; unload after it ends"})
             start_unload(head)
+            record("unload", head, who=actor(self))
             return self.send(202, {"started": head})
         if p == "/api/slice" and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")
                 code, res = slice_design(req) if isinstance(req, dict) else (400, {"error": "send a JSON object"})
+                if code == 200:
+                    record("sliced" + (" and queued" if res.get("queued") else ""), f'{res["file"]}: {res["time"]}, {res["total_g"]} g', who=actor(self))
             except (OSError, ValueError, TypeError, AttributeError) as e:
                 code, res = 500, {"error": str(e)}
             return self.send(code, res)
@@ -441,6 +602,8 @@ def main():
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
     CFG.update(printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
+    import threading
+    threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
     srv = http.server.ThreadingHTTPServer((a.bind, a.port), Handler)
     print(f"Workshop on http://{a.bind}:{a.port} for printer {a.printer} (Ctrl+C stops)")
     try:

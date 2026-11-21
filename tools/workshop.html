@@ -118,6 +118,20 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .result{background:var(--panel2);border-radius:var(--r2);padding:12px;margin-top:12px;font-size:14px}
 #toast{position:fixed;left:50%;bottom:calc(var(--tab) + 18px);transform:translateX(-50%);background:#222329;border:1px solid var(--line2);padding:10px 16px;border-radius:10px;font-size:14px;max-width:92vw;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1} #toast.bad{border-color:var(--bad)}
+.banner{border:1px solid var(--line2);background:var(--panel2);border-radius:var(--r);padding:12px 14px;margin:-6px 0 16px;font-weight:550;display:flex;gap:10px;align-items:flex-start}
+.banner::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--info)}
+.banner.warn{border-color:#5a4a1e}.banner.warn::before{background:var(--warn)}
+.banner.bad{border-color:#5a2424}.banner.bad::before{background:var(--bad)}
+.banner.good::before{background:var(--ok)}
+.banner small{display:block;font-weight:400;color:var(--dim);margin-top:2px}
+.alert{border-left:3px solid var(--warn);padding:6px 10px;background:var(--panel2);border-radius:6px}
+.alert b{display:block;font-size:13.5px}.alert span{font-size:12.5px;color:var(--dim)}
+.act{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
+.act time{color:var(--faint);font-variant-numeric:tabular-nums}
+.slot .state{font-size:11.5px;font-weight:600;margin-top:2px}
+.slot .state.in{color:var(--ok)}.slot .state.parked{color:var(--warn)}.slot .state.empty{color:var(--faint)}
+textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:10px 12px;resize:vertical;min-height:72px}
+.job.running{border-color:var(--info)}.job .q{font-weight:600}.job .a{white-space:pre-wrap;margin-top:6px}
 @media (max-width:900px){
   .app{grid-template-columns:1fr}
   nav.side{position:fixed;bottom:0;left:0;right:0;top:auto;height:calc(var(--tab) + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);flex-direction:row;border-right:0;border-top:1px solid var(--line);background:rgba(11,12,14,.94);backdrop-filter:blur(12px);z-index:20;gap:0}
@@ -147,10 +161,12 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <button class="tabbtn" data-tab="queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="count" id="qCount" hidden></span></button>
     <button class="tabbtn" data-tab="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg>Files</button>
     <button class="tabbtn" data-tab="designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Designs</button>
+    <button class="tabbtn" data-tab="claude"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 10h8M8 13h5"/></svg>Claude</button>
     <button class="tabbtn" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 8v4l3 2"/></svg>History</button>
   </nav>
   <main>
-    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="spacer"></span><span class="note" id="updated"></span></div>
+    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
+    <div class="banner" id="banner" hidden></div>
 
     <section id="tab-now">
       <div class="grid now">
@@ -177,7 +193,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <div class="grid" style="align-content:start">
           <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
-          <div class="card"><h2>Message</h2><div id="msg" class="note">No messages.</div></div>
+          <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
+          <div class="card"><h2>Recent activity</h2><div id="activity" class="note">Nothing yet.</div></div>
         </div>
       </div>
     </section>
@@ -200,6 +217,17 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       <p class="note" id="dIntro"></p>
       <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" class="btn" aria-label="Which designs"></select></div>
       <div class="cards" id="dCards"></div>
+    </section>
+
+    <section id="tab-claude" hidden>
+      <div class="card">
+        <h2>Ask Claude to do something with the printer</h2>
+        <textarea id="cText" rows="3" placeholder="e.g. Slice the gridfinity bin in red and queue it. Or: unload T2. Or: start the switch panel." aria-label="What should Claude do"></textarea>
+        <label class="check"><input type="checkbox" id="cBed"> The bed is empty (Claude still checks the camera before starting anything)</label>
+        <div class="actions"><button class="btn primary" id="cSend">Send to Claude</button><span class="note" id="cNote"></span></div>
+        <p class="note">Claude runs on the computer that hosts Workshop, with only the printer tools allowed, and logs what it does below and in Recent activity.</p>
+      </div>
+      <div class="list" id="cJobs" style="margin-top:14px"></div>
     </section>
 
     <section id="tab-history" hidden>
@@ -229,7 +257,7 @@ let S = {status: null, colours: DEFAULT_COLOURS, queue: [], files: [], meta: {},
 
 function toast(t, bad) { const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
 async function api(path, opts = {}) {
-  if (opts.method && opts.method !== "GET") opts.headers = Object.assign({"X-Workshop": "1"}, opts.headers || {});   // the server refuses changes without it
+  if (opts.method && opts.method !== "GET") opts.headers = Object.assign({"X-Workshop": "1", "X-Workshop-User": who() || "someone"}, opts.headers || {});   // the server refuses changes without it
   const r = await fetch(path, opts);
   let j = null; try { j = await r.json(); } catch (e) {}
   if (!r.ok) throw new Error((j && (j.error?.message || j.error)) || `HTTP ${r.status}`);
@@ -239,13 +267,13 @@ const post = (p, body) => api(p, {method: "POST", headers: body ? {"Content-Type
 const gcode = s => post(M("/printer/gcode/script?script=" + enc(s)));
 
 /* ---------- tabs ---------- */
-const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", history: "History"};
+const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", claude: "Claude", history: "History"};
 let tab = "now";
 function go(t) {
   tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
   document.querySelectorAll("main>section").forEach(s => s.hidden = s.id !== "tab-" + t);
   $("#title").textContent = TITLES[t]; history.replaceState(null, "", "#" + t);
-  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, history: loadHistory}[t] || (() => {}))();
+  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, history: loadHistory, claude: loadClaude}[t] || (() => {}))();
 }
 document.querySelectorAll(".tabbtn").forEach(b => b.onclick = () => go(b.dataset.tab));
 
@@ -259,7 +287,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks"];
+const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -301,13 +329,13 @@ function render() {
   // slots
   const names = ["extruder", "extruder1", "extruder2", "extruder3"];
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
-    const loaded = !tc.filament_exist || tc.filament_exist[i];
-    const canUnload = !active && loaded && tc.filament_exist && !(tc.filament_soft || [])[i];
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span><div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
+    const fs = feedState(i), loaded = fs ? fs.cls !== "empty" : (!tc.filament_exist || tc.filament_exist[i]);
+    const canUnload = !active && (fs ? fs.cls === "in" : loaded && tc.filament_exist) && !(tc.filament_soft || [])[i];
+    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${fs ? `<span class="state ${fs.cls}">${fs.word}</span>` : ""}<div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
   $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
-  $("#msg").textContent = ps.message || s.webhooks.state_message || "No messages.";
+  renderBanner();
   // queue badge + next up
   const next = S.queue[0];
   $("#nextUp").innerHTML = next ? `<b>${esc(next.filename)}</b>${S.queue.length > 1 ? ` and ${S.queue.length - 1} more` : ""} <button class="btn sm" style="margin-left:8px" onclick="go('queue')">Open queue</button>` : "Nothing queued.";
@@ -659,6 +687,75 @@ async function loadHistory() {
 }
 $("#hList").addEventListener("click", e => { const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
 
+
+/* ---------- who, head states, banner, alerts, activity ---------- */
+function who() { try { return localStorage.getItem("workshop-user") || ""; } catch (e) { return ""; } }
+function askWho(force) {
+  if (who() && !force) { $("#whoBtn").textContent = "You: " + who(); return; }
+  const b = openSheet("Who's using Workshop?", `<p class="note">So the activity log says who did what. Saved on this device only.</p>
+    <div class="actions"><button class="btn" data-w="Khalid">Khalid</button><button class="btn" data-w="Mohamed">Mohamed</button></div>
+    <div class="field" style="margin-top:12px"><label for="wOther">Someone else</label><input id="wOther" maxlength="24"></div>
+    <div class="actions"><button class="btn primary" id="wSave">Save</button></div>`);
+  const save = n => { n = (n || "").trim().slice(0, 24); if (!n) return; try { localStorage.setItem("workshop-user", n); } catch (e) {} $("#whoBtn").textContent = "You: " + n; closeSheet(); };
+  b.querySelectorAll("[data-w]").forEach(x => x.onclick = () => save(x.dataset.w));
+  b.querySelector("#wSave").onclick = () => save(b.querySelector("#wOther").value);
+}
+$("#whoBtn").onclick = () => askWho(true);
+const FEED = {load_finish: ["in", "In the head"], preload_finish: ["parked", "Parked at feeder"], unload_finish: ["empty", "Empty"],
+  load_flushing: ["parked", "Loading..."], unload_fail: ["parked", "Unload failed"], load_fail: ["parked", "Load failed"]};
+function feedState(i) {
+  const s = S.status || {}, ch = (s["filament_feed left"] || {})["extruder" + i] || (s["filament_feed right"] || {})["extruder" + i];
+  if (!ch) return null;
+  const [cls, word] = FEED[ch.channel_state] || (ch.filament_detected ? ["parked", ch.channel_state.replace(/_/g, " ")] : ["empty", "Empty"]);
+  return {cls, word, raw: ch.channel_state};
+}
+let ALERTS = [];
+function renderBanner() {
+  const s = S.status, ps = s.print_stats, b = $("#banner"), tc = s.print_task_config || {};
+  const fresh = ALERTS.filter(a => Date.now() / 1000 - a.t < 1800);
+  let cls = "", text = "", sub = "";
+  if (s.webhooks.state !== "ready") { cls = "bad"; text = "The printer isn't ready"; sub = s.webhooks.state_message || ""; }
+  else if (ps.state === "printing") {
+    cls = "good"; text = `Printing ${ps.filename}`;
+    if (s.heater_bed.target === 0 && (ps.info || {}).current_layer > 0) { cls = "bad"; text = "Printing with the bed heater off"; sub = "Pause it and restart: the first layers won't stick."; }
+    else sub = $("#kEnd").textContent !== "-" ? `Finishes about ${$("#kEnd").textContent}.` : "";
+  } else if (ps.state === "paused") { cls = "warn"; text = `Paused: ${ps.filename}`; sub = fresh[0] ? fresh[0].advice || fresh[0].text : "Check the warning below, then resume on the screen or cancel and start again."; }
+  else {
+    const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
+    if (ps.state === "complete") { cls = "warn"; text = `Finished ${ps.filename}`; sub = "Take it off the bed before the next print."; }
+    else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
+    else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
+    if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
+  }
+  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+}
+async function loadAlerts() {
+  try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
+  const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only
+  $("#alertsCard").hidden = !recent.length;
+  $("#alerts").innerHTML = recent.map(a => `<div class="alert"><b>${esc(a.text)}</b><span>${clock(new Date(a.t * 1000))}${a.advice ? " · " + esc(a.advice) : ""}</span></div>`).join("");
+}
+async function loadActivity() {
+  let rows; try { rows = await api("/api/activity"); } catch (e) { return; }
+  $("#activity").innerHTML = rows.length ? `<div class="act">${rows.slice(0, 10).map(r => `<time>${clock(new Date(r.t * 1000))}</time><div><b>${esc(r.who)}</b> ${esc(r.what)}${r.detail ? ": " + esc(r.detail) : ""} <span class="note">(${esc(r.via)})</span></div>`).join("")}</div>` : "Nothing yet.";
+}
+
+/* ---------- Claude ---------- */
+async function loadClaude() {
+  let jobs; try { jobs = await api("/api/claude"); } catch (e) { return; }
+  $("#cJobs").innerHTML = jobs.length ? jobs.map(j => `<div class="card job ${esc(j.state)}"><div class="q">${esc(j.who)}: ${esc(j.text)}</div>
+    <div class="note">${clock(new Date(j.t * 1000))} · ${j.state === "running" ? "Claude is working on it..." : j.state === "error" ? "Claude couldn't finish" : "done"}</div>
+    ${j.output ? `<div class="a">${esc(j.output)}</div>` : ""}</div>`).join("") : `<div class="empty">No requests yet.</div>`;
+  if (jobs.some(j => j.state === "running")) { clearTimeout(loadClaude.t); loadClaude.t = setTimeout(loadClaude, 4000); }
+}
+$("#cSend").onclick = async () => {
+  const text = $("#cText").value.trim(); if (!text) return toast("Say what Claude should do", true);
+  $("#cSend").disabled = true;
+  try { await post("/api/claude", {text, bed_clear: $("#cBed").checked}); $("#cText").value = ""; $("#cBed").checked = false; toast("Sent to Claude"); loadClaude(); }
+  catch (e) { toast(e.message, true); }
+  $("#cSend").disabled = false;
+};
+
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;
   if (i.live_camera) {   // real video (WebRTC) instead of stills
@@ -669,6 +766,8 @@ api("/api/info").then(i => { S.info = i;
   } }).catch(() => {});
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
+loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAlerts(); loadActivity(); } }, 10000);
+askWho(false);
 camLoop();
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");
 addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t in TITLES && t !== tab) go(t); });

@@ -38,6 +38,7 @@ import urllib.request
 import uuid
 
 CONF = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "printer.json")
+ACTIVITY = os.path.join(os.path.dirname(CONF), "activity.jsonl")   # who did what, shared with Workshop
 RUNNING = ("printing", "paused")
 BASE = CAMERA = None
 CFG = {}
@@ -103,6 +104,18 @@ def status():
     if ps.get("message"):
         out["message"] = ps["message"]
     return out
+
+
+def record(what, detail="", who=None, via="printer.py"):
+    """Append one line to the shared activity log: who did what to the printer, from where."""
+    import getpass
+    who = who or os.environ.get("PRINTER_ACTOR") or CFG.get("actor") or getpass.getuser()
+    try:
+        os.makedirs(os.path.dirname(ACTIVITY), exist_ok=True)
+        with open(ACTIVITY, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.time(), "who": who[:40], "what": what, "detail": str(detail)[:300], "via": via}) + "\n")
+    except OSError:
+        pass
 
 
 def ws_rpc(host, port, method, params, timeout=15):
@@ -390,6 +403,7 @@ def watch(every, frames):
         if s["state"] == "printing" and s["bed"].endswith("/0") and (s["layer"] or "0/0").split("/")[0] not in ("0", "None"):
             # seen 21 Nov 2026: resuming a U1 job after a runout left the bed heater off; a cold first layer comes loose
             call("/printer/print/pause", "POST")
+            record("paused (bed heater off)", s["file"] or "", who="watch")
             print("PAUSED: printing with the bed heater off (" + s["bed"] + " C); check before resuming", flush=True)
             notify(f'Print paused: {s["file"]}', f'The bed heater was off ({s["bed"]} C) while printing. Check the bed, then restart.', "warn")
         print(time.strftime("%H:%M"), s["state"], s["layer"] or "", f'{s["progress_pct"]}%',
@@ -468,10 +482,12 @@ def main():
             print(time.strftime("%Y-%m-%d %H:%M", time.localtime(f["modified"])), f'{f["size"] / 1e6:6.1f} MB', f["path"])
     elif c == "send":
         print("on the printer:", send(x[0], a.queue), "(queued)" if a.queue else "")
+        record("sent" + (" and queued" if a.queue else ""), os.path.basename(x[0]))
     elif c == "start":
         need_clear()
         need_loaded(x[0])
         print(call("/printer/print/start?filename=" + urllib.parse.quote(x[0]), "POST"))
+        record("started", x[0])
     elif c == "queue":
         sub = x[0] if x else "list"
         if sub == "list":
@@ -496,18 +512,22 @@ def main():
             sys.exit("queue: list, add FILE, remove ID, start --bed-clear, hold")
     elif c in ("pause", "resume", "cancel"):
         print(call(f"/printer/print/{c}", "POST"))
+        record({"pause": "paused", "resume": "resumed", "cancel": "cancelled"}[c], status().get("file") or "")
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
     elif c == "unload":
         if not x:
             sys.exit("unload T0..T3, or unload all")
+        record("unload requested", x[0])
         unload(x[0])
     elif c == "filament":
         if x and x[0] == "list":
             for t, vendors in known_filaments().items():
                 print(f"{t}: " + "; ".join(f"{v} ({', '.join(subs)})" for v, subs in vendors.items()))
         elif len(x) >= 2:
-            print(set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force))
+            r = set_filament(x[0], x[1], a.vendor, a.sub, a.colour, a.force)
+            print(r)
+            record("set filament", r)
         else:
             sys.exit("filament T0..T3 TYPE --colour RRGGBB [--vendor NAME] [--sub NAME], or filament list")
     elif c == "gcode":
