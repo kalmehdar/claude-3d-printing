@@ -195,6 +195,8 @@ The load-bearing FDM invariants, referenced throughout.
 
 ## Mechanical Parts
 
+For heat-set inserts, screw holes, nut traps, printed threads, snap fits, hinges, magnet pockets and Gridfinity, read [functional-parts.md](functional-parts.md): each number there is marked as sourced or a starting point to test, and the printer's measured fits (`tools/fit.py`) come first.
+
 For gears, snap-fits, living hinges and joints, see [mechanical.md](mechanical.md). Material-critical notes:
 
 - **Snap-fits:** PETG excels (5-8% strain), ABS is good (3-5%), PLA is fragile (1-1.5% max).
@@ -270,6 +272,7 @@ Hand off the `.scad`, the STLs (and 3MF) saved in Workflow step 7, and any rende
 | [design-review.md](design-review.md) | Never yourself: it's the review sub-agent's brief |
 | [bambu-3mf-export.md](bambu-3mf-export.md) | When making a Bambu 3MF |
 | [fdm-design-principles.md](fdm-design-principles.md) | Only for hard support-free or structural cases |
+| [functional-parts.md](functional-parts.md) | Inserts, screw holes, nut traps, threads, snap fits, hinges, magnets, Gridfinity |
 | [printing-guidelines.md](printing-guidelines.md) | Only for tolerance or overhang data the material file lacks |
 | [mechanical.md](mechanical.md) | Only for gears, snap-fits, hinges, joints (threads: [pattern-fasteners.md](pattern-fasteners.md)) |
 | [printing-workflow.md](printing-workflow.md) | Only for a new user's export-to-print walkthrough |
