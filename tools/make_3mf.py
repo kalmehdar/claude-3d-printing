@@ -102,7 +102,7 @@ def build(parts, name, bed, heads=None):
              f'transform="1 0 0 0 1 0 0 0 1 {bed / 2:.3f} {bed / 2:.3f} 0" printable="1"/></build>\n</model>\n')
     settings = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
                 f'  <object id="{top}">\n    <metadata key="name" value="{escape(name, {chr(34): "&quot;"})}"/>\n'
-                '    <metadata key="extruder" value="1"/>\n' + "\n".join(settings_parts) + "\n  </object>\n</config>\n")
+                f'    <metadata key="extruder" value="{meshes[0][2]}"/>\n' + "\n".join(settings_parts) + "\n  </object>\n</config>\n")
     project = json.dumps({"filament_colour": [c.upper() for c in colours]}, indent=1)
     content_types = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'

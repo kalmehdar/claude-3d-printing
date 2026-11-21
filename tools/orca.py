@@ -88,7 +88,8 @@ def orca_cli():
 def vendor_dirs():
     """Every system profile folder of every OrcaSlicer build under ~/tools or in /Applications on a Mac (Bambu, Snapmaker, Prusa...)."""
     return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True)
-                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/"))
+                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/")
+                  + glob.glob(os.path.join(HOME, "Applications", "*.app", "Contents", "Resources", "profiles", "*", "")))
 
 
 def flatten(folder, name, kind):
