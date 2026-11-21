@@ -335,6 +335,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
       <p class="note" id="dIntro"></p>
       <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
         <select id="dState" aria-label="Which state"><option value="">Any state</option><option value="ready">Ready</option><option value="check">Check first</option><option value="later">Later</option></select>
+        <select id="dGroup" aria-label="Group by"><option value="use">Group by use</option><option value="state">Group by state</option></select>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-view="list" aria-pressed="true">List</button><button class="btn sm" data-view="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="dCards"></div>
     </section>
@@ -955,9 +956,15 @@ function renderDesigns() {
   box.className = asList ? "list listview" : "cards";
   document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.view === dView())));
   if (asList) {   // Linear-style rows grouped by state, details in the side panel
-    const GROUPS = [["ready", "Ready", "queued"], ["check", "Check first", "progress"], ["later", "Later", "waiting"], ["", "No state", "waiting"]];
-    box.innerHTML = GROUPS.map(([k, label, icon]) => { const g = list.filter(d => (d.state || "") === k); if (!g.length) return "";
-      return ghead(icon, label, g.length) + g.map(d => { const s = d.slice || {}, key = d.bench + ":" + d.id, c = s.total_g ? cost(s.total_g, d.material) : "";
+    const STATES = [["ready", "Ready", "queued"], ["check", "Check first", "progress"], ["later", "Later", "waiting"], ["", "No state", "waiting"]];
+    const iconOf = d => (STATES.find(x => x[0] === (d.state || "")) || STATES[3])[2], rank = d => STATES.findIndex(x => x[0] === (d.state || ""));
+    const USE = ["Homelab rack", "Cables", "Storage", "Printer and filament", "Test prints", "Home"];
+    const byUse = $("#dGroup").value !== "state";
+    const groups = byUse
+      ? [...USE, ...new Set(list.map(d => d.group || "Other").filter(g => !USE.includes(g)))].map(g => [g, g, "", list.filter(d => (d.group || "Other") === g).sort((a, b) => rank(a) - rank(b))])
+      : STATES.map(([k, label, icon]) => [k, label, icon, list.filter(d => (d.state || "") === k)]);
+    box.innerHTML = groups.map(([k, label, hicon, g]) => { if (!g.length) return "";
+      return ghead(hicon, label, g.length) + g.map(d => { const icon = iconOf(d), s = d.slice || {}, key = d.bench + ":" + d.id, c = s.total_g ? cost(s.total_g, d.material) : "";
         return issue({icon, id: "D-" + (DESIGNS.designs.indexOf(d) + 1), title: esc(d.name), detail: esc(d.status || ""),
           meta: [s.time ? esc(s.time.replace(/ \d+s$/, "")) : "not sliced", s.total_g ? Math.round(s.total_g) + " g" : "", c,
                  d.parts.filter(p => p.printed).map(p => `<i class="mini" style="width:10px;height:10px;border-radius:50%;background:${esc(p.colour)}"></i>`).join(" "),
@@ -978,7 +985,7 @@ function renderDesigns() {
   list.forEach(d => miniRender(d));
 }
 const dView = () => { try { return localStorage.getItem("workshop-dview") || "list"; } catch (e) { return "list"; } };
-$("#dSearch").oninput = renderDesigns; $("#dBench").onchange = renderDesigns; $("#dState").onchange = renderDesigns;
+$("#dSearch").oninput = renderDesigns; $("#dBench").onchange = renderDesigns; $("#dState").onchange = renderDesigns; $("#dGroup").onchange = renderDesigns;
 document.querySelectorAll("[data-view]").forEach(x => x.onclick = () => { try { localStorage.setItem("workshop-dview", x.dataset.view); } catch (e) {} renderDesigns(); });
 $("#dCards").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openDesign(b.dataset.open); });
 const stlCache = {};
