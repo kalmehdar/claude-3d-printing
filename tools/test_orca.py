@@ -36,6 +36,10 @@ with tempfile.TemporaryDirectory() as t:   # adopt-gcode: custom G-code from a k
     m = json.load(open(os.path.join(t, "machine.json")))
     assert m["machine_start_gcode"] == "PRINT_START\nG28" and m["printable_area"] == "0x0"   # only *_gcode keys move
 
+import make_3mf  # noqa: E402   (tool changers: each colour goes to the head holding it)
+m, missing = make_3mf.match_heads(["#1f1f22", "#ecebe6", "#002fa7"], ["#e2dedb", "#080a0d", "#e72f1d", "#f4c032"])
+assert m == {"#1f1f22": 1, "#ecebe6": 0, "#002fa7": 1} and missing == ["#002fa7"], (m, missing)
+
 assert all(isinstance(v, str) for p in orca.PRESETS.values() for v in p.values())
 assert set(orca.PRESETS) == set(orca.PRESET_WORDS)
 print("orca.py checks passed")
