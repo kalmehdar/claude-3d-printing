@@ -24,8 +24,11 @@ Discord: a channel webhook URL in PRINTER_DISCORD_WEBHOOK or "discord_webhook" i
 Moonraker often has no password: use it on a home network or over a VPN only. Standard library only.
 """
 import argparse
+import base64
 import json
 import os
+import socket
+import struct
 import sys
 import time
 import urllib.error
@@ -101,7 +104,85 @@ def status():
     return out
 
 
+def ws_rpc(host, port, method, params, timeout=15):
+    """One JSON-RPC call over Moonraker's websocket (some endpoints, like the U1's camera, are websocket-only)."""
+    s = socket.create_connection((host, port), timeout=timeout)
+    try:
+        key = base64.b64encode(os.urandom(16)).decode()
+        s.sendall(f"GET /websocket HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                  f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                raise OSError("websocket closed during handshake")
+            buf += chunk
+        if b" 101 " not in buf.split(b"\r\n", 1)[0]:
+            raise OSError("no websocket upgrade")
+        buf = buf.split(b"\r\n\r\n", 1)[1]
+        msg = json.dumps({"jsonrpc": "2.0", "method": method, "params": params, "id": 4242}).encode()
+        n = len(msg)
+        hdr = bytes([0x81]) + (bytes([0x80 | n]) if n < 126 else bytes([0xFE]) + struct.pack(">H", n))
+        mask = os.urandom(4)
+        s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(msg)))
+        while True:   # read frames until our reply (Moonraker also pushes status notifications)
+            while len(buf) < 2:
+                chunk = s.recv(65536)
+                if not chunk:
+                    raise OSError("websocket closed")
+                buf += chunk
+            ln, off = buf[1] & 0x7F, 2
+            if ln == 126:
+                ln, off = struct.unpack(">H", buf[2:4])[0], 4
+            elif ln == 127:
+                ln, off = struct.unpack(">Q", buf[2:10])[0], 10
+            while len(buf) < off + ln:
+                chunk = s.recv(65536)
+                if not chunk:
+                    raise OSError("websocket closed")
+                buf += chunk
+            payload, buf = buf[off:off + ln], buf[off + ln:]
+            try:
+                d = json.loads(payload)
+            except ValueError:
+                continue
+            if d.get("id") == 4242:
+                if "error" in d:
+                    raise OSError(d["error"].get("message", "camera error"))
+                return d.get("result")
+    finally:
+        s.close()
+
+
+def camera_age():
+    """Seconds since the camera still was written, or None when the printer does not list a camera folder."""
+    try:
+        files = call("/server/files/list?root=camera", timeout=5)
+    except OSError:
+        return None
+    hit = next((f for f in files if CAMERA.endswith("/" + f["path"])), None)
+    return time.time() - hit["modified"] if hit else None
+
+
+def wake_camera():
+    """Snapmaker U1: the still only refreshes while something 'watches' (its app sends camera.start_monitor).
+    Ask for it when the still is stale, then wait for a fresh frame. Harmless on printers without it."""
+    age = camera_age()
+    if age is None or age < 10:
+        return
+    host, port = BASE[len("http://"):].rsplit(":", 1)
+    try:
+        ws_rpc(host, int(port), "camera.start_monitor", {"req_id": 1, "domain": "lan", "interval": 1})
+    except OSError:
+        return
+    for _ in range(10):
+        time.sleep(0.6)
+        if (camera_age() or 99) < 3:
+            return
+
+
 def snap(out):
+    wake_camera()
     open(out, "wb").write(call(CAMERA, raw=True, timeout=15))
     return out
 

@@ -163,6 +163,22 @@ def loaded_heads():
     return heads
 
 
+_last_wake = [0.0]
+
+
+def wake_camera():
+    """At most every 5 s: if the camera still is stale, ask the printer to refresh it (printer.wake_camera)."""
+    if time.time() - _last_wake[0] < 5:
+        return
+    _last_wake[0] = time.time()
+    import printer
+    printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+    try:
+        printer.wake_camera()
+    except OSError:
+        pass
+
+
 def moonraker(method, path, body=None, headers=None, timeout=30):
     req = urllib.request.Request(CFG["moonraker"] + path, data=body, method=method, headers=headers or {})
     return urllib.request.urlopen(req, timeout=timeout)
@@ -211,6 +227,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p.startswith("/moonraker/"):
             return self.proxy(p[len("/moonraker"):], timeout=600 if ("upload" in p or "gcode/script" in p) else 30)
         if p.startswith("/cam.jpg"):
+            wake_camera()
             return self.proxy(CFG["camera"], timeout=10)
         if p == "/api/designs":
             return self.send(200, designs())
