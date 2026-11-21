@@ -57,7 +57,9 @@ def designs():
         bench = json.load(open(bench_path, encoding="utf-8"))
         base, root = os.path.dirname(bench_path), root_of(bench_path)
         stats_path = os.path.join(base, "slice-stats.json")
-        stats = json.load(open(stats_path, encoding="utf-8")).get(CFG["profile"], {}) if os.path.exists(stats_path) else {}
+        every = json.load(open(stats_path, encoding="utf-8")) if os.path.exists(stats_path) else {}
+        # keyed by printer name; a --profile given as a folder path falls back to the file's only printer
+        stats = every.get(CFG["profile"]) or (next(iter(every.values())) if len(every) == 1 else {})
         label = stats.get("label", label)
         out += bench_designs(n, bench, base, root, stats)
     return {"benches": [bench_title(b) for b in CFG["benches"]],
