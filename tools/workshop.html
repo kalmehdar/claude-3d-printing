@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Workshop</title>
+<style>
+:root{
+  --bg:#0b0c0e;--panel:#141518;--panel2:#1b1c20;--line:#26272c;--line2:#33343a;
+  --text:#ececee;--dim:#9a9ba3;--faint:#6b6c74;
+  --accent:#cfa962;--accent-ink:#17130a;--ok:#4cc38a;--warn:#e5b143;--bad:#ef5f5f;--info:#6ea8fe;
+  --r:12px;--r2:8px;--tab:64px;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+nav.side{border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 18px;font-weight:650;letter-spacing:-.01em}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--faint)}
+.brand .dot.on{background:var(--ok)} .brand .dot.off{background:var(--bad)}
+.tabbtn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:var(--r2);background:none;color:var(--dim);text-align:left;font-weight:500;min-height:42px}
+.tabbtn svg{width:18px;height:18px;flex:none}
+.tabbtn[aria-current=page]{background:var(--panel2);color:var(--text)}
+.tabbtn .count{margin-left:auto;font-size:12px;background:var(--line);color:var(--text);border-radius:999px;padding:1px 8px}
+main{padding:22px 26px 40px;max-width:1280px;width:100%}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.top h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:650}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--panel2);border:1px solid var(--line2);color:var(--dim)}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.printing{color:var(--ok)} .pill.paused{color:var(--warn)} .pill.error{color:var(--bad)} .pill.complete{color:var(--info)}
+.spacer{flex:1}
+section[hidden]{display:none!important}
+.grid{display:grid;gap:16px}
+.now{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card h2{font-size:13px;font-weight:600;color:var(--dim);margin:0 0 12px;text-transform:none;letter-spacing:0}
+.cam{position:relative;padding:0;overflow:hidden;background:#000;aspect-ratio:16/9}
+.cam img{width:100%;height:100%;object-fit:cover;display:block}
+.cam .stamp{position:absolute;left:10px;bottom:8px;font-size:12px;color:#fff;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:6px}
+.cam .camtools{position:absolute;right:8px;top:8px;display:flex;gap:6px}
+.job{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+.ring{--p:0;width:120px;height:120px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--accent) calc(var(--p)*1%),var(--line) 0)}
+.ring>div{width:96px;height:96px;border-radius:50%;background:var(--panel);display:grid;place-items:center;text-align:center}
+.ring b{font-size:24px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ring small{display:block;color:var(--dim);font-size:11.5px;margin-top:-2px}
+.fname{font-weight:600;word-break:break-all;margin-bottom:6px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px 14px}
+.kv div{min-width:0} .kv span{display:block;color:var(--dim);font-size:12px} .kv b{font-weight:600;font-variant-numeric:tabular-nums}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 14px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);font-weight:550;white-space:nowrap}
+.btn:hover{border-color:#45464d}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad)}
+.btn.ghost{background:none}
+.btn.sm{min-height:32px;padding:0 10px;font-size:13px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn svg{width:16px;height:16px}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.slot{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r2);padding:10px;text-align:center;min-width:0}
+.slot.active{border-color:var(--accent)}
+.swatch{width:34px;height:34px;border-radius:50%;margin:0 auto 6px;border:1px solid rgba(255,255,255,.15)}
+.slot b{display:block;font-size:13px} .slot span{display:block;font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.temps{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:12px}
+.temp{background:var(--panel2);border-radius:var(--r2);padding:8px 10px}
+.temp span{display:block;color:var(--dim);font-size:12px} .temp b{font-variant-numeric:tabular-nums}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.thumb{width:56px;height:56px;border-radius:8px;background:var(--panel2) center/contain no-repeat;border:1px solid var(--line)}
+.row .t{font-weight:600;word-break:break-all} .row .s{color:var(--dim);font-size:13px}
+.row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.fcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+.fcard .img{aspect-ratio:4/3;background:center/contain no-repeat,radial-gradient(circle at 50% 40%,#3a3c43,#1b1c20 75%);border-bottom:1px solid var(--line);position:relative}
+.fcard .img .sw{position:absolute;left:10px;bottom:10px;display:flex;gap:4px}
+.fcard .img .sw i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(255,255,255,.25)}
+.fcard .body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.fcard .t{font-weight:600;word-break:break-word} .fcard .s{color:var(--dim);font-size:13px}
+.fcard .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.chip{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--panel2);color:var(--dim);border:1px solid var(--line2)}
+.chip.completed,.chip.ready{color:var(--ok)} .chip.cancelled,.chip.check{color:var(--warn)} .chip.error,.chip.klippy_shutdown{color:var(--bad)} .chip.in_progress{color:var(--info)}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.toolbar input[type=search]{flex:1;min-width:160px;min-height:40px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel);padding:0 12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stat span{color:var(--dim);font-size:12.5px;display:block} .stat b{font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.empty{color:var(--dim);padding:28px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
+.drop{display:block;cursor:pointer;border:1.5px dashed var(--line2);border-radius:var(--r);padding:14px;text-align:center;color:var(--dim);margin-bottom:14px}
+.drop.over{border-color:var(--accent);color:var(--text)}
+/* sheets */
+dialog{border:1px solid var(--line2);background:var(--panel);color:var(--text);border-radius:16px;padding:0;max-width:min(980px,96vw);width:100%;max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.sheet-h h3{margin:0;font-size:16px;flex:1;word-break:break-all}
+.sheet-b{padding:16px;overflow:auto;max-height:calc(92vh - 60px)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 30%,#1d1f24,#0d0e10);border-radius:var(--r);height:min(56vh,520px);overflow:hidden;touch-action:none}
+.viewer canvas{display:block;width:100%;height:100%}
+.viewer .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);padding:20px;text-align:center}
+.layerbar{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:12px}
+.layerbar input{width:100%;accent-color:var(--accent)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--dim);margin-top:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.two{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:13px;color:var(--dim)}
+.field select,.field input{min-height:40px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:0 10px}
+.check{display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line2);border-radius:var(--r2);margin:12px 0;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.note{font-size:13px;color:var(--dim)}
+.result{background:var(--panel2);border-radius:var(--r2);padding:12px;margin-top:12px;font-size:14px}
+#toast{position:fixed;left:50%;bottom:calc(var(--tab) + 18px);transform:translateX(-50%);background:#222329;border:1px solid var(--line2);padding:10px 16px;border-radius:10px;font-size:14px;max-width:92vw;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1} #toast.bad{border-color:var(--bad)}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  nav.side{position:fixed;bottom:0;left:0;right:0;top:auto;height:calc(var(--tab) + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);flex-direction:row;border-right:0;border-top:1px solid var(--line);background:rgba(11,12,14,.94);backdrop-filter:blur(12px);z-index:20;gap:0}
+  .brand{display:none}
+  .tabbtn{flex-direction:column;gap:3px;font-size:11px;padding:6px 2px;justify-content:center;min-height:52px}
+  .tabbtn .count{position:absolute;margin:0;transform:translate(14px,-10px);font-size:10px;padding:0 6px}
+  .tabbtn{position:relative}
+  main{padding:16px 16px calc(var(--tab) + 30px)}
+  .now,.two{grid-template-columns:1fr}
+  #toast{bottom:calc(var(--tab) + 18px + env(safe-area-inset-bottom))}
+}
+@media (max-width:520px){
+  .job{grid-template-columns:1fr;justify-items:center;text-align:center}
+  .row{grid-template-columns:48px 1fr}
+  .row .acts{grid-column:1/-1;justify-content:flex-start}
+  .thumb{width:48px;height:48px}
+  .slots{grid-template-columns:repeat(2,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side" aria-label="Sections">
+    <div class="brand"><span class="dot" id="conn"></span><span id="brandName">Workshop</span></div>
+    <button class="tabbtn" data-tab="now" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Now</button>
+    <button class="tabbtn" data-tab="queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="count" id="qCount" hidden></span></button>
+    <button class="tabbtn" data-tab="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg>Files</button>
+    <button class="tabbtn" data-tab="designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Designs</button>
+    <button class="tabbtn" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 8v4l3 2"/></svg>History</button>
+  </nav>
+  <main>
+    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="spacer"></span><span class="note" id="updated"></span></div>
+
+    <section id="tab-now">
+      <div class="grid now">
+        <div class="grid">
+          <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button></div></div>
+          <div class="card" id="jobCard">
+            <div class="job">
+              <div class="ring" id="ring"><div><div><b id="pct">0%</b><small id="ringSub">idle</small></div></div></div>
+              <div style="min-width:0;width:100%">
+                <div class="fname" id="jobFile">Nothing printing</div>
+                <div class="kv">
+                  <div><span>Layer</span><b id="kLayer">-</b></div>
+                  <div><span>Time left</span><b id="kLeft">-</b></div>
+                  <div><span>Finishes</span><b id="kEnd">-</b></div>
+                  <div><span>Printing for</span><b id="kDur">-</b></div>
+                  <div><span>Filament</span><b id="kFil">-</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="actions" id="jobActions"></div>
+          </div>
+        </div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
+          <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
+          <div class="card"><h2>Message</h2><div id="msg" class="note">No messages.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-queue" hidden>
+      <div class="toolbar"><span class="note" id="qState"></span><span class="spacer"></span>
+        <button class="btn" id="qPause">Hold queue</button><button class="btn primary" id="qStart">Start queue</button></div>
+      <div class="list" id="qList"></div>
+      <p class="note">The queue starts the next job when the printer is free. Starting always asks for an empty bed first.</p>
+    </section>
+
+    <section id="tab-files" hidden>
+      <label class="drop" id="drop">Drop a sliced .gcode here, or <u>choose a file</u> to send it to the printer
+        <input type="file" id="fileIn" accept=".gcode,.gco,.g" hidden multiple></label>
+      <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button></div>
+      <div class="cards" id="fCards"></div>
+    </section>
+
+    <section id="tab-designs" hidden>
+      <p class="note" id="dIntro"></p>
+      <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"></div>
+      <div class="cards" id="dCards"></div>
+    </section>
+
+    <section id="tab-history" hidden>
+      <div class="stats" id="hStats"></div>
+      <div class="list" id="hList"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="sheet"><div class="sheet-h"><h3 id="sheetTitle"></h3><button class="btn ghost sm" id="sheetClose" aria-label="Close">Close</button></div><div class="sheet-b" id="sheetBody"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const M = p => "/moonraker" + p;
+const enc = encodeURIComponent;
+const hm = s => { s = Math.max(0, Math.round(s || 0)); const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${Math.max(m, s ? 1 : 0)} min`; };
+const clock = d => d.toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"});
+const day = t => new Date(t * 1000).toLocaleString("en-GB", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+const DEFAULT_COLOURS = ["#e2dedb", "#3a3d44", "#e72f1d", "#f4c032"];
+let S = {status: null, colours: DEFAULT_COLOURS, queue: [], files: [], meta: {}, info: {}};
+
+function toast(t, bad) { const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  let j = null; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((j && (j.error?.message || j.error)) || `HTTP ${r.status}`);
+  return j && j.result !== undefined ? j.result : j;
+}
+const post = (p, body) => api(p, {method: "POST", headers: body ? {"Content-Type": "application/json"} : {}, body: body ? JSON.stringify(body) : undefined});
+const gcode = s => post(M("/printer/gcode/script?script=" + enc(s)));
+
+/* ---------- tabs ---------- */
+const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", history: "History"};
+let tab = "now";
+function go(t) {
+  tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
+  document.querySelectorAll("main>section").forEach(s => s.hidden = s.id !== "tab-" + t);
+  $("#title").textContent = TITLES[t]; history.replaceState(null, "", "#" + t);
+  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, history: loadHistory}[t] || (() => {}))();
+}
+document.querySelectorAll(".tabbtn").forEach(b => b.onclick = () => go(b.dataset.tab));
+
+/* ---------- sheet ---------- */
+const sheet = $("#sheet");
+let onSheetClose = null;
+function openSheet(title, html) { $("#sheetTitle").textContent = title; $("#sheetBody").innerHTML = html; if (!sheet.open) sheet.showModal(); return $("#sheetBody"); }
+function closeSheet() { if (sheet.open) sheet.close(); }
+sheet.addEventListener("close", () => { if (onSheetClose) { onSheetClose(); onSheetClose = null; } });
+$("#sheetClose").onclick = closeSheet;
+sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
+
+/* ---------- live status ---------- */
+const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks"];
+async function poll() {
+  try {
+    const r = await api(M("/printer/objects/query?" + Q.join("&")));
+    S.status = r.status; $("#conn").className = "dot on"; render();
+    $("#updated").textContent = "Live · " + clock(new Date());
+  } catch (e) {
+    $("#conn").className = "dot off"; $("#statePill").textContent = "Printer offline"; $("#statePill").className = "pill error";
+    $("#updated").textContent = e.message;
+  }
+}
+const STATE_WORD = {printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error", standby: "Ready"};
+function render() {
+  const s = S.status, ps = s.print_stats, ds = s.display_status || {}, info = ps.info || {};
+  const st = s.webhooks.state !== "ready" ? "error" : ps.state;
+  const pill = $("#statePill"); pill.textContent = s.webhooks.state !== "ready" ? (s.webhooks.state_message || "Not ready") : STATE_WORD[ps.state] || ps.state; pill.className = "pill " + st;
+  const tc = s.print_task_config || {};
+  if (tc.filament_color_rgba) S.colours = tc.filament_color_rgba.map(c => "#" + c.slice(0, 6));
+  const p = Math.round(100 * (ds.progress || 0));
+  const active = ps.state === "printing" || ps.state === "paused";
+  $("#ring").style.setProperty("--p", active || ps.state === "complete" ? p : 0);
+  $("#pct").textContent = active || ps.state === "complete" ? p + "%" : "-";
+  $("#ringSub").textContent = STATE_WORD[ps.state]?.toLowerCase() || ps.state;
+  $("#jobFile").textContent = ps.filename || "Nothing printing";
+  $("#kLayer").textContent = info.total_layer ? `${info.current_layer} of ${info.total_layer}` : "-";
+  let left = null;
+  if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
+  $("#kLeft").textContent = left != null ? hm(left) : "-";
+  $("#kEnd").textContent = left != null ? clock(new Date(Date.now() + left * 1000)) : "-";
+  $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
+  $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" : "-";
+  document.title = (active ? `${p}% · ` : "") + "Workshop";
+  const acts = [];
+  if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
+  if (ps.state === "paused") acts.push(`<button class="btn primary" data-a="resume">Resume</button>`);
+  if (active) acts.push(`<button class="btn danger" data-a="cancel">Cancel print</button>`);
+  if (!active && ps.filename) acts.push(`<button class="btn" data-a="again">Print again</button>`);
+  if (!active) acts.push(`<button class="btn ghost" data-a="cool">Heaters off</button>`);
+  $("#jobActions").innerHTML = acts.join("");
+  // slots
+  const names = ["extruder", "extruder1", "extruder2", "extruder3"];
+  $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
+    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${S.colours[i] || "#555"}"></div><b>T${i} · ${esc((tc.filament_type || [])[i] || "?")}</b><span>${esc((tc.filament_sub_type || [])[i] || "")}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span></div>`; }).join("");
+  $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
+  const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
+  $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
+  $("#msg").textContent = ps.message || s.webhooks.state_message || "No messages.";
+  // queue badge + next up
+  const next = S.queue[0];
+  $("#nextUp").innerHTML = next ? `<b>${esc(next.filename)}</b>${S.queue.length > 1 ? ` and ${S.queue.length - 1} more` : ""} <button class="btn sm" style="margin-left:8px" onclick="go('queue')">Open queue</button>` : "Nothing queued.";
+}
+$("#jobActions").addEventListener("click", async e => {
+  const a = e.target.closest("button")?.dataset.a; if (!a) return;
+  try {
+    if (a === "pause") { await post(M("/printer/print/pause")); toast("Pausing"); }
+    if (a === "resume") { await post(M("/printer/print/resume")); toast("Resuming"); }
+    if (a === "cancel") return confirmSheet("Cancel this print?", "The print stops and cannot be resumed.", "Cancel print", async () => { await post(M("/printer/print/cancel")); toast("Cancelling"); });
+    if (a === "again") return bedCheck(S.status.print_stats.filename);
+    if (a === "cool") { await gcode("TURN_OFF_HEATERS"); toast("Heaters off"); }
+    poll();
+  } catch (err) { toast(err.message, true); }
+});
+$("#lightBtn").onclick = async () => { const on = $("#lightBtn").getAttribute("aria-pressed") !== "true"; try { await gcode(`SET_LED LED=cavity_led WHITE=${on ? 1 : 0}`); poll(); } catch (e) { toast(e.message, true); } };
+
+/* camera */
+let camTimer = null;
+function camTick() { const img = new Image(); img.onload = () => { $("#camImg").src = img.src; $("#camStamp").textContent = "Camera · " + clock(new Date()); }; img.src = "/cam.jpg?t=" + Date.now(); }
+function camLoop() { clearInterval(camTimer); if (document.hidden) return; camTick(); camTimer = setInterval(camTick, 2000); }
+document.addEventListener("visibilitychange", camLoop);
+$("#camFull").onclick = () => { const b = openSheet("Camera", `<img id="bigCam" style="width:100%;border-radius:12px" alt="Live camera">`); const t = setInterval(() => { const el = $("#bigCam"); if (el) el.src = "/cam.jpg?t=" + Date.now(); }, 1500); b.querySelector("img").src = "/cam.jpg?t=" + Date.now(); onSheetClose = () => clearInterval(t); };
+
+/* ---------- confirm + bed check ---------- */
+function confirmSheet(title, text, label, fn) {
+  const b = openSheet(title, `<p>${esc(text)}</p><div class="actions"><button class="btn danger" id="cYes">${esc(label)}</button><button class="btn" id="cNo">Keep going</button></div>`);
+  b.querySelector("#cNo").onclick = closeSheet;
+  b.querySelector("#cYes").onclick = async () => { try { await fn(); closeSheet(); poll(); } catch (e) { toast(e.message, true); } };
+}
+function bedCheck(filename, viaQueue) {
+  const b = openSheet(viaQueue ? "Start the queue" : "Print " + filename,
+    `<img src="/cam.jpg?t=${Date.now()}" alt="The bed right now" style="width:100%;border-radius:12px;max-height:46vh;object-fit:cover">
+     <label class="check"><input type="checkbox" id="bedOk"> The bed is empty and the plate is on</label>
+     <div class="actions"><button class="btn primary" id="goPrint" disabled>${viaQueue ? "Start queue" : "Start print"}</button><button class="btn" id="noPrint">Not yet</button></div>
+     <p class="note">Starting on top of a finished part can crash the nozzle into it.</p>`);
+  const ok = b.querySelector("#bedOk"), btn = b.querySelector("#goPrint");
+  ok.onchange = () => btn.disabled = !ok.checked;
+  b.querySelector("#noPrint").onclick = closeSheet;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      if (viaQueue) await post(M("/server/job_queue/start")); else await post(M("/printer/print/start?filename=" + enc(filename)));
+      toast(viaQueue ? "Queue started" : "Print started"); closeSheet(); go("now"); poll();
+    } catch (e) { toast(e.message, true); btn.disabled = false; }
+  };
+}
+
+/* ---------- queue ---------- */
+async function loadQueue() {
+  try {
+    const q = await api(M("/server/job_queue/status")); S.queue = q.queued_jobs || [];
+    const qc = $("#qCount"); qc.textContent = S.queue.length; qc.hidden = !S.queue.length;
+    $("#qState").textContent = `Queue is ${q.queue_state === "ready" ? "running" : q.queue_state === "paused" ? "on hold" : q.queue_state} · ${S.queue.length} job${S.queue.length === 1 ? "" : "s"}`;
+    $("#qStart").hidden = q.queue_state === "ready" || !S.queue.length; $("#qPause").hidden = q.queue_state !== "ready";
+    if (tab !== "queue") return;
+    await ensureMeta(S.queue.map(j => j.filename));
+    $("#qList").innerHTML = S.queue.length ? S.queue.map((j, i) => { const m = S.meta[j.filename] || {};
+      return `<div class="row"><div class="thumb" style="background-image:url('${thumbUrl(j.filename, m)}')"></div>
+        <div><div class="t">${i + 1}. ${esc(j.filename)}</div><div class="s">${m.estimated_time ? hm(m.estimated_time) : "time unknown"}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""} · added ${day(j.time_added)}</div></div>
+        <div class="acts"><button class="btn sm" data-prev="${esc(j.filename)}">Preview</button><button class="btn sm danger" data-rm="${esc(j.job_id)}">Remove</button></div></div>`; }).join("")
+      : `<div class="empty">The queue is empty. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
+  } catch (e) { toast(e.message, true); }
+}
+$("#qList").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.prev) return previewGcode(b.dataset.prev);
+  if (b.dataset.rm) { try { await api(M("/server/job_queue/job?job_ids=" + enc(b.dataset.rm)), {method: "DELETE"}); toast("Removed from queue"); loadQueue(); } catch (err) { toast(err.message, true); } }
+});
+$("#qStart").onclick = () => bedCheck(null, true);
+$("#qPause").onclick = async () => { try { await post(M("/server/job_queue/pause")); toast("Queue on hold"); loadQueue(); } catch (e) { toast(e.message, true); } };
+async function addToQueue(name) { try { await post(M("/server/job_queue/job?filenames=" + enc(name))); toast("Added to queue: " + name); loadQueue(); } catch (e) { toast(e.message, true); } }
+
+/* ---------- files ---------- */
+function thumbUrl(name, m) {
+  const t = (m.thumbnails || []).slice().sort((a, b) => b.width - a.width)[0];
+  if (!t) return "";
+  const dir = name.includes("/") ? name.slice(0, name.lastIndexOf("/") + 1) : "";
+  return M("/server/files/gcodes/" + (dir + t.relative_path).split("/").map(enc).join("/"));
+}
+async function ensureMeta(names) {
+  await Promise.all(names.filter(n => !S.meta[n]).map(async n => { try { S.meta[n] = await api(M("/server/files/metadata?filename=" + enc(n))); } catch (e) { S.meta[n] = {}; } }));
+}
+async function loadFiles() {
+  try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); }
+  catch (e) { return toast(e.message, true); }
+  renderFiles(); await ensureMeta(S.files.slice(0, 60).map(f => f.path)); renderFiles();
+}
+function renderFiles() {
+  const q = $("#fSearch").value.toLowerCase();
+  const list = S.files.filter(f => f.path.toLowerCase().includes(q));
+  $("#fCards").innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
+    return `<div class="fcard"><div class="img" style="background-image:url('${thumbUrl(f.path, m)}')"></div><div class="body">
+      <div class="t">${esc(f.path)}</div>
+      <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
+      <div class="s">${day(f.modified)}${m.slicer ? " · " + esc(m.slicer) : ""}</div>
+      <div class="acts"><button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button></div>
+    </div></div>`; }).join("") : `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
+}
+$("#fSearch").oninput = renderFiles; $("#fRefresh").onclick = () => { S.meta = {}; loadFiles(); };
+$("#fCards").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.prev) previewGcode(b.dataset.prev);
+  if (b.dataset.q) addToQueue(b.dataset.q);
+  if (b.dataset.print) { const st = S.status?.print_stats.state; if (st === "printing" || st === "paused") return toast("A print is running. Queue it instead.", true); bedCheck(b.dataset.print); }
+  if (b.dataset.del) confirmSheet("Delete " + b.dataset.del + "?", "It is removed from the printer's storage.", "Delete", async () => { await api(M("/server/files/gcodes/" + b.dataset.del.split("/").map(enc).join("/")), {method: "DELETE"}); toast("Deleted"); loadFiles(); });
+});
+async function uploadFiles(files) {
+  for (const f of files) {
+    const fd = new FormData(); fd.append("file", f, f.name);
+    toast("Sending " + f.name + "...");
+    try { await api(M("/server/files/upload"), {method: "POST", body: fd}); toast("On the printer: " + f.name); } catch (e) { toast(e.message, true); }
+  }
+  loadFiles();
+}
+$("#fileIn").onchange = e => uploadFiles(e.target.files);
+const drop = $("#drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => uploadFiles(e.dataTransfer.files));
+
+/* ---------- 3D: shared viewer ---------- */
+function makeViewer(host) {
+  if (!window.THREE || !THREE.OrbitControls) { host.innerHTML = '<div class="msg">The 3D viewer could not load. Check the connection.</div>'; return null; }
+  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true}); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  host.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000); camera.up.set(0, 0, 1);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.85); sun.position.set(300, -400, 600); scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xdfe6ff, 0.35); rim.position.set(-300, 500, 300); scene.add(rim);
+  let alive = true;
+  function size() { const w = host.clientWidth, h = host.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  new ResizeObserver(size).observe(host); size();
+  (function loop() { if (!alive) return; controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+  return {scene, camera, controls, renderer, dispose() { alive = false; renderer.dispose(); },
+    frame(box) { const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), r = Math.max(s.x, s.y, s.z, 20);
+      controls.target.copy(c); camera.position.set(c.x + r * 0.55, c.y - r * 1.0, c.z + r * 0.8); camera.near = r / 100; camera.far = r * 50; camera.updateProjectionMatrix(); },
+    bed(mm, cx = 0, cy = 0) { const g = new THREE.Group(); const plate = new THREE.Mesh(new THREE.PlaneGeometry(mm, mm), new THREE.MeshBasicMaterial({color: 0x23252b, transparent: true, opacity: 0.85}));
+      g.add(plate); const grid = new THREE.GridHelper(mm, mm / 10, 0x34363d, 0x2a2c32); grid.rotation.x = Math.PI / 2; grid.position.z = 0.05; g.add(grid); g.position.set(cx, cy, -0.1); scene.add(g); }};
+}
+
+/* ---------- G-code preview ---------- */
+async function previewGcode(name) {
+  const body = openSheet("Preview: " + name, `<div class="viewer" id="gv"><div class="msg" id="gvMsg">Loading the toolpath...</div></div>
+    <div class="layerbar"><span class="note">Layer</span><input type="range" id="gvLayer" min="1" max="1" value="1" aria-label="Layer"><b id="gvLayerN">-</b></div>
+    <label class="check" style="margin:8px 0 0"><input type="checkbox" id="gvOnly"> Show only this layer</label>
+    <div class="legend" id="gvLegend"></div><div class="result" id="gvInfo"></div>
+    <div class="actions"><button class="btn" id="gvQueue">Add to queue</button><button class="btn primary" id="gvPrint">Print</button></div>`);
+  body.querySelector("#gvQueue").onclick = () => addToQueue(name);
+  body.querySelector("#gvPrint").onclick = () => { const st = S.status?.print_stats.state; if (st === "printing" || st === "paused") return toast("A print is running. Queue it instead.", true); bedCheck(name); };
+  const v = makeViewer(body.querySelector("#gv")); if (!v) return;
+  onSheetClose = () => v.dispose();
+  ensureMeta([name]).then(() => { const m = S.meta[name] || {};
+    body.querySelector("#gvInfo").innerHTML = [m.estimated_time && `About <b>${hm(m.estimated_time)}</b>`, m.filament_weight_total && `<b>${Math.round(m.filament_weight_total)} g</b> of filament`, m.layer_height && `${m.layer_height} mm layers`, m.object_height && `${m.object_height} mm tall`, m.slicer && `sliced in ${esc(m.slicer)}`].filter(Boolean).join(" · ") || "No slicer details in this file."; });
+  let text;
+  try { const r = await fetch(M("/server/files/gcodes/" + name.split("/").map(enc).join("/"))); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text(); }
+  catch (e) { body.querySelector("#gvMsg").textContent = "Could not load the file: " + e.message; return; }
+  const g = parseGcode(text); text = null;
+  if (!g.count) { body.querySelector("#gvMsg").textContent = "No extrusion moves found in this file."; return; }
+  body.querySelector("#gvMsg").remove();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(g.pos, 3)); geo.setAttribute("color", new THREE.BufferAttribute(g.col, 3));
+  const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({vertexColors: true}));
+  v.scene.add(lines); v.bed(270, 135, 135);
+  geo.computeBoundingBox(); v.frame(geo.boundingBox);
+  const sl = body.querySelector("#gvLayer"), only = body.querySelector("#gvOnly"), n = g.layers.length;
+  sl.max = n; sl.value = n;
+  const show = () => { const L = +sl.value, start = only.checked ? g.layers[L - 1].start : 0, end = L < n ? g.layers[L].start : g.count;
+    geo.setDrawRange(start * 2, (end - start) * 2); body.querySelector("#gvLayerN").textContent = `${L} / ${n} · ${g.layers[L - 1].z.toFixed(2)} mm`; };
+  sl.oninput = show; only.onchange = show; show();
+  body.querySelector("#gvLegend").innerHTML = [...g.tools].sort().map(t => `<span><i style="background:${S.colours[t] || DEFAULT_COLOURS[t % 4]}"></i>T${t}</span>`).join("");
+}
+function parseGcode(text) {
+  // Extrusion moves only, in file order; a new layer starts when extrusion happens at a new height.
+  const cols = S.colours.map(h => new THREE.Color(h || "#888"));
+  let cap = 1 << 18, pos = new Float32Array(cap * 6), col = new Float32Array(cap * 6), count = 0;
+  let x = 0, y = 0, z = 0, e = 0, absE = true, absXYZ = true, tool = 0, layerZ = -1;
+  const layers = [], tools = new Set();
+  const grow = () => { cap *= 2; const p = new Float32Array(cap * 6); p.set(pos); pos = p; const c = new Float32Array(cap * 6); c.set(col); col = c; };
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i]; const sc = l.indexOf(";"); if (sc >= 0) l = l.slice(0, sc); l = l.trim(); if (!l) continue;
+    const c0 = l.charCodeAt(0);
+    if (c0 === 84 /* T */) { const t = parseInt(l.slice(1), 10); if (t >= 0 && t < 16) tool = t; continue; }
+    if (c0 !== 71 && c0 !== 77) continue;
+    const w = l.split(/\s+/), cmd = w[0];
+    if (cmd === "M82") { absE = true; continue; } if (cmd === "M83") { absE = false; continue; }
+    if (cmd === "G90") { absXYZ = true; absE = true; continue; } if (cmd === "G91") { absXYZ = false; continue; }
+    if (cmd === "G92") { for (const a of w) if (a[0] === "E") e = parseFloat(a.slice(1)); continue; }
+    if (cmd !== "G1" && cmd !== "G0" && cmd !== "G2" && cmd !== "G3") continue;
+    let nx = x, ny = y, nz = z, de = 0;
+    for (let k = 1; k < w.length; k++) { const a = w[k][0], val = parseFloat(w[k].slice(1)); if (isNaN(val)) continue;
+      if (a === "X") nx = absXYZ ? val : x + val; else if (a === "Y") ny = absXYZ ? val : y + val; else if (a === "Z") nz = absXYZ ? val : z + val;
+      else if (a === "E") { if (absE) { de = val - e; e = val; } else de = val; } }
+    if (de > 0 && (nx !== x || ny !== y)) {
+      if (Math.abs(nz - layerZ) > 0.005) { layers.push({z: nz, start: count}); layerZ = nz; }
+      if (count >= cap) grow();
+      const o = count * 6, cc = cols[tool] || cols[0]; tools.add(tool);
+      pos[o] = x; pos[o + 1] = y; pos[o + 2] = z; pos[o + 3] = nx; pos[o + 4] = ny; pos[o + 5] = nz;
+      for (let q = 0; q < 2; q++) { col[o + q * 3] = cc.r; col[o + q * 3 + 1] = cc.g; col[o + q * 3 + 2] = cc.b; }
+      count++;
+    }
+    x = nx; y = ny; z = nz;
+  }
+  return {pos: pos.subarray(0, count * 6), col: col.subarray(0, count * 6), count, layers, tools};
+}
+
+/* ---------- designs ---------- */
+let DESIGNS = null;
+async function loadDesigns() {
+  if (!DESIGNS) { try { DESIGNS = await api("/api/designs"); S.info = await api("/api/info"); } catch (e) { return toast(e.message, true); } }
+  $("#dIntro").textContent = `${DESIGNS.designs.length} designs from the claude-3d-printing repo. Times and grams are real slicer numbers for the ${DESIGNS.printer_label} where the design has been sliced.`;
+  renderDesigns();
+}
+function renderDesigns() {
+  const q = $("#dSearch").value.toLowerCase();
+  const list = DESIGNS.designs.filter(d => (d.name + " " + d.for).toLowerCase().includes(q));
+  $("#dCards").innerHTML = list.map(d => { const s = d.slice || {};
+    return `<div class="fcard"><div class="img" data-mini="${esc(d.id)}"><div class="sw">${d.parts.filter(p => p.printed).map(p => `<i style="background:${esc(p.colour)}"></i>`).join("")}</div></div><div class="body">
+      <div class="t">${esc(d.name)} ${d.state ? `<span class="chip ${esc(d.state)}">${d.state === "ready" ? "Ready" : d.state === "check" ? "Check first" : esc(d.state)}</span>` : ""}</div>
+      <div class="s">${s.time ? `${esc(s.time)} · ${s.total_g} g · ${s.changes} colour changes` : s.error ? "Not sliced yet" : ""}</div>
+      <div class="acts"><button class="btn sm primary" data-open="${esc(d.id)}">Open</button></div></div></div>`; }).join("") || `<div class="empty">No designs match.</div>`;
+  list.forEach(d => miniRender(d));
+}
+$("#dSearch").oninput = renderDesigns;
+$("#dCards").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openDesign(b.dataset.open); });
+const stlCache = {};
+function loadStl(url) { return stlCache[url] ||= new Promise((ok, bad) => new THREE.STLLoader().load(url, ok, undefined, bad)); }
+async function partsGroup(d) {
+  const g = new THREE.Group();
+  for (const p of d.parts) { if (!p.stl) continue;
+    const geo = await loadStl(p.stl); geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({color: p.colour, roughness: 0.55, metalness: 0.05, transparent: !p.printed, opacity: p.printed ? 1 : 0.6});
+    g.add(new THREE.Mesh(geo, mat)); }
+  return g;
+}
+let miniRenderer = null;
+async function miniRender(d) {   // a still picture per card from one shared offscreen renderer
+  if (!window.THREE || !THREE.STLLoader) return;
+  const host = document.querySelector(`[data-mini="${CSS.escape(d.id)}"]`); if (!host) return;
+  try {
+    miniRenderer ||= new THREE.WebGLRenderer({antialias: true, alpha: true, preserveDrawingBuffer: true});
+    miniRenderer.setSize(480, 360, false);
+    const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 0.8)); const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(300, -400, 600); scene.add(sun);
+    const g = await partsGroup(d); scene.add(g);
+    const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), r = Math.max(s.x, s.y, s.z, 10);
+    const cam = new THREE.PerspectiveCamera(30, 4 / 3, r / 100, r * 50); cam.up.set(0, 0, 1); cam.position.set(c.x + r * 1.1, c.y - r * 1.8, c.z + r * 1.3); cam.lookAt(c);
+    miniRenderer.render(scene, cam);
+    host.style.backgroundImage = `url(${miniRenderer.domElement.toDataURL("image/png")}), radial-gradient(circle at 50% 40%, #4a4c54, #1b1c20 75%)`;
+  } catch (e) { /* card keeps its swatches */ }
+}
+async function openDesign(id) {
+  const d = DESIGNS.designs.find(x => x.id === id), s = d.slice || {};
+  const presets = Object.entries(S.info.presets || {standard: "the printer's own profile"});
+  const body = openSheet(d.name, `<div class="two"><div><div class="viewer" id="dv"><div class="msg" id="dvMsg">Loading the model...</div></div>
+      <div class="legend">${d.parts.map(p => `<span><i style="background:${esc(p.colour)}"></i>${esc(p.name)}${p.printed ? "" : " (not printed)"}</span>`).join("")}</div></div>
+    <div><p>${esc(d.for)}</p>
+      ${d.material ? `<p class="note"><b>Material:</b> ${esc(d.material)}</p>` : ""}${d.status ? `<p class="note"><b>Status:</b> ${esc(d.status)}</p>` : ""}
+      ${s.time ? `<div class="result">Last slice for the ${esc(DESIGNS.printer_label)}: <b>${esc(s.time)}</b>, <b>${s.total_g} g</b>, ${s.changes} colour changes</div>` : ""}
+      <h4 style="margin:18px 0 10px">Slice and send to the printer</h4>
+      <div class="field"><label for="sPreset">Preset</label><select id="sPreset">${presets.map(([k, t]) => `<option value="${esc(k)}" ${k === "standard" ? "selected" : ""}>${esc(k)}: ${esc(t)}</option>`).join("")}</select></div>
+      <div class="field"><label for="sInfill">Infill %, blank for the preset's</label><input id="sInfill" inputmode="numeric" placeholder="e.g. 20"></div>
+      <label class="check"><input type="checkbox" id="sSupports"> Supports</label>
+      <label class="check"><input type="checkbox" id="sQueue" checked> Add to the queue when it is on the printer</label>
+      <div class="actions"><button class="btn primary" id="sGo" ${S.info.slicer ? "" : "disabled"}>Slice and send</button>${d.source ? `<a class="btn" href="${esc(d.source)}" target="_blank" rel="noopener">Source</a>` : ""}</div>
+      ${S.info.slicer ? "" : `<p class="note">Slicing is off on this machine: OrcaSlicer or the printer setup '${esc(S.info.profile)}' is missing (see tools/orca.py). Ask Claude to slice it, or slice in the app and drop the .gcode in Files.</p>`}
+      <div id="sOut"></div></div></div>`);
+  const v = makeViewer(body.querySelector("#dv"));
+  if (v) { onSheetClose = () => v.dispose();
+    try { const g = await partsGroup(d); v.scene.add(g); const box = new THREE.Box3().setFromObject(g); v.bed(DESIGNS.bed, (box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2); v.frame(box); body.querySelector("#dvMsg")?.remove(); }
+    catch (e) { const m = body.querySelector("#dvMsg"); if (m) m.textContent = "Could not load the model files."; } }
+  body.querySelector("#sGo").onclick = async () => {
+    const btn = body.querySelector("#sGo"), out = body.querySelector("#sOut"); btn.disabled = true;
+    out.innerHTML = `<div class="result">Slicing in OrcaSlicer. This takes a minute or two...</div>`;
+    const set = []; const inf = body.querySelector("#sInfill").value.trim(); if (/^\d{1,3}$/.test(inf)) set.push("infill=" + inf);
+    if (body.querySelector("#sSupports").checked) set.push("supports=on");
+    try {
+      const r = await post("/api/slice", {id, preset: body.querySelector("#sPreset").value, set, upload: true, queue: body.querySelector("#sQueue").checked});
+      out.innerHTML = `<div class="result"><b>${esc(r.file)}</b> is on the printer${r.queued ? " and in the queue" : ""}: ${esc(r.time)}, ${r.total_g} g, ${r.changes} colour changes.
+        <div class="actions"><button class="btn sm" id="sPrev">Preview toolpath</button></div></div>`;
+      out.querySelector("#sPrev").onclick = () => previewGcode(r.file);
+      S.meta = {}; loadQueue();
+    } catch (e) { out.innerHTML = `<div class="result" style="color:var(--bad)">${esc(e.message)}</div>`; }
+    btn.disabled = false;
+  };
+}
+
+/* ---------- history ---------- */
+async function loadHistory() {
+  try {
+    const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
+    const t = tot?.job_totals || {};
+    const month = h.jobs.filter(j => new Date(j.start_time * 1000).getMonth() === new Date().getMonth() && j.status === "completed").length;
+    $("#hStats").innerHTML = [["Prints finished", t.total_jobs ?? "-"], ["This month", month], ["Hours printing", t.total_print_time ? (t.total_print_time / 3600).toFixed(1) : "-"], ["Filament used", t.total_filament_used ? (t.total_filament_used / 1000).toFixed(0) + " m" : "-"]]
+      .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
+    $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => `<div class="row"><div class="thumb" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></div>
+      <div><div class="t">${esc(j.filename)}</div><div class="s">${day(j.start_time)} · ${hm(j.print_duration)} · ${(j.filament_used / 1000).toFixed(1)} m</div></div>
+      <div class="acts"><span class="chip ${esc(j.status)}">${esc(j.status.replace("_", " "))}</span>${j.exists !== false ? `<button class="btn sm" data-again="${esc(j.filename)}">Again</button>` : ""}</div></div>`).join("") : `<div class="empty">No prints yet.</div>`;
+  } catch (e) { toast(e.message, true); }
+}
+$("#hList").addEventListener("click", e => { const b = e.target.closest("[data-again]"); if (b) addToQueue(b.dataset.again); });
+
+/* ---------- start ---------- */
+api("/api/info").then(i => { S.info = i; }).catch(() => {});
+poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
+loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
+camLoop();
+go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");
+addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t in TITLES && t !== tab) go(t); });
+</script>
+</body>
+</html>
