@@ -27,6 +27,22 @@ with tempfile.TemporaryDirectory() as t:
     assert pick == ["filament-petg-red.json", "filament-pla-white.json", "filament-pla-white.json"], pick
     assert [os.path.basename(p) for p in orca.pick_materials(t, "", 1)] == ["filament-petg-black.json"]
 
+with tempfile.TemporaryDirectory() as t:   # adopt-gcode: custom G-code from a known-good print replaces the profile's
+    json.dump({"machine_start_gcode": "{if fork_only_var==0}X{endif}", "machine_end_gcode": "END", "printable_area": "0x0"},
+              open(os.path.join(t, "machine.json"), "w", encoding="utf-8"))
+    g = os.path.join(t, "good.gcode")
+    open(g, "w").write("G1 X1\n; machine_start_gcode = PRINT_START\\nG28\n; machine_end_gcode = END\n; printable_area = 9x9\n"
+                       "; change_filament_gcode = M117 a\\\\nb\n")   # an escaped backslash before n is not a newline
+    json.dump({**json.load(open(os.path.join(t, "machine.json"))), "change_filament_gcode": ""}, open(os.path.join(t, "machine.json"), "w"))
+    assert orca.adopt_gcode(g, t) == ["machine_start_gcode", "change_filament_gcode"]
+    m = json.load(open(os.path.join(t, "machine.json")))
+    assert m["machine_start_gcode"] == "PRINT_START\nG28" and m["printable_area"] == "0x0"   # only *_gcode keys move
+    assert m["change_filament_gcode"] == "M117 a\\nb", repr(m["change_filament_gcode"])
+
+import make_3mf  # noqa: E402   (tool changers: each colour goes to the head holding it)
+m, missing = make_3mf.match_heads(["#1f1f22", "#ecebe6", "#002fa7"], ["#e2dedb", "#080a0d", "#e72f1d", "#f4c032"])
+assert m == {"#1f1f22": 1, "#ecebe6": 0, "#002fa7": 1} and missing == ["#002fa7"], (m, missing)
+
 p = {"wall_loops": "2"}
 orca.apply(p, {"alternate_extra_wall": "1"}, add=True)
 assert p == {"wall_loops": "2", "alternate_extra_wall": "1"}   # a preset can set an Orca default the profile leaves out
@@ -42,6 +58,20 @@ assert slice_stats.seconds("5h 47m 45s") == 20865 and slice_stats.seconds("1d 2h
 assert slice_stats.clock(20865) == "5h 48m" and slice_stats.clock(2578) == "43m"   # plates added up, to the minute
 print("slice_stats checks passed")
 
+# look.py: a model's top-level include/use lines are lifted out of the module (BOSL2 failed inside it, 21 Nov 2026)
+import look   # noqa: E402
+with tempfile.TemporaryDirectory() as t:
+    open(os.path.join(t, "lib.scad"), "w").write("module thing() {}\n")
+    m = os.path.join(t, "m.scad")
+    open(m, "w").write("include <lib.scad>\nuse <BOSL2/std.scad>\npart = \"all\";\nthing();\n")
+    hoisted, rest = look.hoist_libraries(m)
+    assert hoisted == f"include <{os.path.join(t, 'lib.scad')}>\nuse <BOSL2/std.scad>\n", hoisted   # local made absolute
+    body = open(rest).read()
+    assert "include" not in body and "use <" not in body and "thing();" in body
+    os.remove(rest)
+    plain = os.path.join(t, "p.scad"); open(plain, "w").write("cube(1);\n")
+    assert look.hoist_libraries(plain) == ("", plain)
+print("look.py checks passed")
 with tempfile.TemporaryDirectory() as t:   # rotate: a 10 x 2 x 4 box stood upright lies flat after [90, 0, 0]
     import make_3mf, struct as _st
     box = os.path.join(t, "box.stl")

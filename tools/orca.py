@@ -7,6 +7,9 @@
     python orca.py open  part.stl --printer u1 ...           the same, then opens the sliced project in OrcaSlicer
     python orca.py add-material "Snapmaker PLA Basic @U1" --printer u1 [--as pla-white]
     python orca.py install --printer u1                      puts the printer, its filaments and the presets in OrcaSlicer's own menus
+    python orca.py new-printer u1 --vendor Snapmaker --machine "Snapmaker U1 (0.4 nozzle)" --process "0.20mm Standard @Snapmaker U1 (0.4 nozzle)" \
+        --filament "Snapmaker PLA SnapSpeed @U1:pla-snapspeed"   a setup from a slicer's bundled vendor profiles
+    python orca.py adopt-gcode good-print.gcode --printer u1  take the start/end/tool-change G-code a known-good print was sliced with
 
 A printer setup is a folder holding machine.json, process.json and filament-<name>.json, as exported from OrcaSlicer
 (File > Export > Export preset). --printer takes a folder path, or a name under ~/.config/claude-3d-printing/printers
@@ -65,6 +68,15 @@ PRESETS = {
               "internal_solid_infill_pattern": "concentric", "top_shell_layers": "5", "bottom_shell_layers": "5",
               "inner_wall_line_width": "0.5", **INSIDE_FLOW},
     "fine": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5"},
+    # quality: same 0.2 mm layers, the outside printed gently so walls, corners and text come out clean, for 3-12% more time (fit card +12%, all settings together).
+    # Measured 21 Nov on the U1 profile (fit card, gridfinity bin): slower outer walls, Arachne, precise outer wall, seam at the
+    # back and a third wall each cost 0-6%; ironing alone cost 12-37%, so it lives in "polished".
+    # ponytail: 80 mm/s and 3000 mm/s2 are common PETG starting values, not measured on the U1; tune after a seam/corner test.
+    "quality": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+                "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back"},
+    "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+                 "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
+                 "ironing_type": "top", "ironing_speed": "30", "ironing_flow": "10%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
 }
@@ -72,6 +84,8 @@ PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
+                "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
+                "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
 
 
@@ -85,13 +99,20 @@ def find(env, patterns):
     sys.exit(f"set {env}: nothing found for {patterns}")
 
 
+MAC_ORCA = "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer"
+
+
 def orca_cli():
+    if not os.environ.get("ORCA_CLI") and os.path.exists(MAC_ORCA):
+        return MAC_ORCA
     return find("ORCA_CLI", ["orcaslicer-*/orca-slicer.exe", "OrcaSlicer*/orca-slicer.exe"])
 
 
 def vendor_dirs():
-    """Every system profile folder of every OrcaSlicer build under ~/tools (Bambu, Snapmaker, Prusa...)."""
-    return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True))
+    """Every system profile folder of every OrcaSlicer build under ~/tools or in /Applications on a Mac (Bambu, Snapmaker, Prusa...)."""
+    return sorted(glob.glob(os.path.join(HOME, "tools", "**", "resources", "profiles", "*", ""), recursive=True)
+                  + glob.glob("/Applications/*.app/Contents/Resources/profiles/*/")
+                  + glob.glob(os.path.join(HOME, "Applications", "*.app", "Contents", "Resources", "profiles", "*", "")))
 
 
 def flatten(folder, name, kind):
@@ -99,14 +120,14 @@ def flatten(folder, name, kind):
     index = {}
     for f in glob.glob(os.path.join(folder, kind, "*.json")):
         try:
-            index[json.load(open(f, encoding="utf-8")).get("name")] = f
+            index[json.load(open(f, encoding="utf-8-sig")).get("name")] = f   # some vendor files start with a BOM
         except (ValueError, OSError):
             pass
     chain, n = [], name
     while n:
         if n not in index:
             sys.exit(f"no {kind} profile named {n!r} in {folder}")
-        d = json.load(open(index[n], encoding="utf-8"))
+        d = json.load(open(index[n], encoding="utf-8-sig"))
         chain.append(d)
         n = d.get("inherits")
     out = {}
@@ -205,7 +226,7 @@ def apply(profile, overrides, add=False):
 
 def scad_to_stl(path, tmp):
     exe = os.environ.get("OPENSCAD") or shutil.which("openscad") or next(
-        (c for c in (r"C:\Program Files\OpenSCAD\openscad.com",) + tuple(glob.glob(os.path.join(HOME, "tools", "openscad-*", "**", "openscad.com"), recursive=True)) if os.path.exists(c)), None)
+        (c for c in (r"C:\Program Files\OpenSCAD\openscad.com",) + tuple(glob.glob("/Applications/OpenSCAD*.app/Contents/MacOS/OpenSCAD")) + tuple(glob.glob(os.path.join(HOME, "tools", "openscad-*", "**", "openscad.com"), recursive=True)) if os.path.exists(c)), None)
     if not exe:
         sys.exit("OpenSCAD not found: set OPENSCAD")
     out = os.path.join(tmp, os.path.splitext(os.path.basename(path))[0] + ".stl")
@@ -265,7 +286,15 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         except subprocess.TimeoutExpired:
             sys.exit(f"OrcaSlicer ran past {timeout // 60} minutes")
     gcode = glob.glob(os.path.join(out, "*.gcode"))
-    s = stats(open(gcode[0], encoding="utf-8", errors="replace").read()) if gcode else {
+    text = open(gcode[0], encoding="utf-8", errors="replace").read() if gcode else ""
+    bed = re.search(r"^M190 S(\d+)", text, re.M) or re.search(r"^M140 S([1-9]\d*)", text, re.M)
+    if gcode and (not bed or bed.group(1) == "0"):
+        # seen 21 Nov 2026: a plate type the filament profile has no temperature for slices with the bed at 0
+        plate = re.search(r"^; curr_bed_type = (.+)$", text, re.M)
+        os.remove(gcode[0])
+        sys.exit(f"the bed temperature came out at 0 for {plate.group(1) if plate else 'this plate'}: "
+                 "set curr_bed_type to the printer's real plate (e.g. --set curr_bed_type=\"Textured PEI Plate\")")
+    s = stats(text) if gcode else {
         "error": "OrcaSlicer wrote nothing: " + " ".join((r.stdout + r.stderr).split())[-600:] + " (open the model in the app to see why)"}
     s.update({"printer": machine.get("name", printer), "preset": preset, "materials": [d.get("name") for d in fil_data],
               "settings": overrides, "project": os.path.join(out, f"{name}-sliced.3mf"), "gcode": gcode[0] if gcode else None})
@@ -356,6 +385,43 @@ def install(printer, user_dir=None):
     print(f"{len(wrote)} presets in {user_dir}; restart OrcaSlicer and pick printer {mname!r}, then the 'Claude ...' presets")
 
 
+def new_printer(name, vendor, machine, process, filaments):
+    """A printer setup from a slicer's bundled vendor profiles, e.g. Snapmaker Orca's Snapmaker folder."""
+    base = next((d for d in vendor_dirs() if os.path.basename(d.rstrip("\\/")) == vendor and glob.glob(os.path.join(d, "machine", "*.json"))), None)
+    if not base:
+        sys.exit(f"no unpacked {vendor!r} profiles in an installed slicer (OrcaSlicer 2.5 packs them; Snapmaker Orca does not)")
+    out = os.path.join(PRINTERS, name)
+    os.makedirs(out, exist_ok=True)
+    files = {"machine": flatten(base, machine, "machine"), "process": flatten(base, process, "process")}
+    for f in filaments:
+        system, _, short = f.partition(":")
+        files["filament-" + (short or re.sub(r"[^a-z0-9]+", "-", system.lower()).strip("-"))] = flatten(base, system, "filament")
+    for k, d in files.items():
+        d["from"] = "system"
+        json.dump(d, open(os.path.join(out, k + ".json"), "w", encoding="utf-8"), indent=1)
+    return out, sorted(files)
+
+
+def adopt_gcode(gcode_path, printer):
+    """Copy the custom G-code blocks (start, end, tool change...) a known-good print was sliced with into a setup's machine.json.
+    Every OrcaSlicer G-code ends with its full settings; a fork's profile can use variables upstream OrcaSlicer refuses."""
+    cfg = {}
+    for line in open(gcode_path, encoding="utf-8", errors="replace"):
+        m = re.match(r"^; ([a-z0-9_]+) = (.*)$", line.rstrip("\n"))
+        if m:
+            # OrcaSlicer writes \n for a newline and \\ for a backslash: undo both in one pass
+            cfg[m.group(1)] = re.sub(r"\\(.)", lambda e: {"n": "\n", "r": "\r"}.get(e.group(1), e.group(1)), m.group(2))
+    if not cfg:
+        sys.exit("no settings block in that G-code (slice it with OrcaSlicer or a fork)")
+    path = os.path.join(printer_dir(printer), "machine.json")
+    machine = json.load(open(path, encoding="utf-8-sig"))
+    changed = [k for k in machine if k.endswith("_gcode") and k in cfg and isinstance(machine[k], str) and machine[k] != cfg[k]]
+    for k in changed:
+        machine[k] = cfg[k]
+    json.dump(machine, open(path, "w", encoding="utf-8"), indent=1)
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -378,11 +444,28 @@ def main():
     am.add_argument("system_name")
     am.add_argument("--printer", required=True)
     am.add_argument("--as", dest="as_name")
+    np = sub.add_parser("new-printer")
+    np.add_argument("name")
+    np.add_argument("--vendor", required=True, help="vendor folder name, e.g. Snapmaker")
+    np.add_argument("--machine", required=True)
+    np.add_argument("--process", required=True)
+    np.add_argument("--filament", action="append", default=[], help='"System name[:short-name]", repeat')
+    ag = sub.add_parser("adopt-gcode")
+    ag.add_argument("gcode")
+    ag.add_argument("--printer", required=True)
     ins = sub.add_parser("install")
     ins.add_argument("--printer", required=True)
     ins.add_argument("--user-dir", help="OrcaSlicer user preset folder (default: %%APPDATA%%/OrcaSlicer/user/default)")
     a = ap.parse_args()
 
+    if a.cmd == "new-printer":
+        out, files = new_printer(a.name, a.vendor, a.machine, a.process, a.filament)
+        print(f"{out}: {', '.join(files)}")
+        return
+    if a.cmd == "adopt-gcode":
+        changed = adopt_gcode(a.gcode, a.printer)
+        print("took from the G-code:", ", ".join(changed) or "nothing (already the same)")
+        return
     if a.cmd == "printers":
         names = sorted(os.listdir(PRINTERS)) if os.path.isdir(PRINTERS) else []
         for n in names + ["bambu-p1s"]:
