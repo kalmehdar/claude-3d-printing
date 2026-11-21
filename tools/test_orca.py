@@ -43,6 +43,12 @@ import make_3mf  # noqa: E402   (tool changers: each colour goes to the head hol
 m, missing = make_3mf.match_heads(["#1f1f22", "#ecebe6", "#002fa7"], ["#e2dedb", "#080a0d", "#e72f1d", "#f4c032"])
 assert m == {"#1f1f22": 1, "#ecebe6": 0, "#002fa7": 1} and missing == ["#002fa7"], (m, missing)
 
+p = {"wall_loops": "2"}
+orca.apply(p, {"alternate_extra_wall": "1"}, add=True)
+assert p == {"wall_loops": "2", "alternate_extra_wall": "1"}   # a preset can set an Orca default the profile leaves out
+assert orca.parse_sets(["inner_wall_flow_ratio=1.1"], keys | orca.PRESET_KEYS) == {"inner_wall_flow_ratio": "1.1"}
+assert orca.PRESETS["strong"]["alternate_extra_wall"] == "1" and orca.PRESETS["solid"]["sparse_infill_density"] == "100%"
+
 assert all(isinstance(v, str) for p in orca.PRESETS.values() for v in p.values())
 assert set(orca.PRESETS) == set(orca.PRESET_WORDS)
 print("orca.py checks passed")
