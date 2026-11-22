@@ -1328,6 +1328,7 @@ def main():
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--register", help="a filament register (markdown table with Material and a price per kg in pounds) for print costs")
     ap.add_argument("--print-log", help="a print register (markdown table starting '| Date |', like registers/prints.md) to add a row to when a print ends")
+    ap.add_argument("--preview", action="store_true", help="the page and API only: no watcher (photos, photo watch, print log, spools), so a second copy can be looked at safely")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     if not a.printer:
@@ -1336,7 +1337,8 @@ def main():
     CFG.update(print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
-    threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
+    if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only
+        threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
     srv = http.server.ThreadingHTTPServer((a.bind, a.port), Handler)
     print(f"Workshop on http://{a.bind}:{a.port} for printer {a.printer} (Ctrl+C stops)")
     try:
