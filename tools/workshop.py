@@ -1447,6 +1447,9 @@ def proxy_allowed(method, path):
     return True
 
 
+BODY_MAX = 300 * 1024 * 1024   # the largest request body Workshop reads (uploads are refused above 100 MB anyway)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -1487,9 +1490,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
                 # Caddy sometimes forwards an https request body in chunks with no Content-Length (22 Nov 2026); unread,
                 # it stayed in the connection and was taken for the next request ("Unsupported method '{...}POST'")
-                parts = []
+                parts, total = [], 0
                 while True:
                     size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
+                    total += size
+                    if total > BODY_MAX:   # no endless chunked body filling the memory (22 Nov 2026 review)
+                        self.close_connection = True
+                        parts = []
+                        break
                     if size == 0:
                         while self.rfile.readline() not in (b"\r\n", b"\n", b""):   # trailers, then the blank line
                             pass
@@ -1498,7 +1506,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._body = b"".join(parts) or None
             else:
                 n = int(self.headers.get("Content-Length") or 0)
-                self._body = self.rfile.read(n) if n else None
+                if n > BODY_MAX:   # never read it: the connection closes instead (see send)
+                    self._body = None
+                    self.close_connection = True
+                else:
+                    self._body = self.rfile.read(n) if n else None
         return self._body
 
     def proxy(self, path, timeout=30):
@@ -1523,6 +1535,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 shutil.copyfileobj(r, self.wfile, 256 * 1024)
             except (BrokenPipeError, ConnectionResetError):   # the viewer seeked or closed the video
                 pass
+            finally:
+                r.close()   # free the printer's connection too (22 Nov 2026 review)
             return
         self.send(r.status, r.read(), ctype, keep)
 
