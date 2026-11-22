@@ -1367,8 +1367,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body = json.dumps(body).encode()
         elif isinstance(body, str):
             body = body.encode()
+        gz = len(body) > 2048 and ctype.split(";")[0] in ("text/html", "application/json", "text/plain", "application/javascript", "image/svg+xml") \
+            and "gzip" in (self.headers.get("Accept-Encoding") or "")
+        if gz:   # the page is ~140 KB; a phone on the tailnet loads a quarter of that
+            import gzip
+            body = gzip.compress(body, 6)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         for k, v in (extra or {}).items():
