@@ -405,6 +405,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
       <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
         <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
           value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
+        <div id="calWizard" style="margin:12px 0 14px"></div>
         <div class="toolbar" style="flex-wrap:wrap;gap:8px">
           <select id="calTest" aria-label="Which test"></select>
           <input id="calFil" placeholder="Filament, e.g. SUNLU PETG white" aria-label="Filament" style="min-width:180px">
@@ -1212,8 +1213,32 @@ async function loadAccuracy() {
     against the slicer (prints with colour changes use more). Finish times on the Now page are corrected by these.`;
 }
 function accFor(j) { return ACC && ACC.jobs.find(a => a.file === j.filename && Math.abs((a.t || 0) - (j.end_time || j.start_time || 0)) < 5); }
+// the calibration wizard: the four tests in order (print-calibration skill), the test file on the printer, done or not for this filament
+const CAL_STEPS = [["temperature", "cal-temp", "the block with clean overhangs and the least stringing"],
+  ["max-flow", "cal-maxflow", "the highest speed before the surface turns rough"],
+  ["pressure-advance", "cal-pa", "the line or corner that is sharpest, with no bulge or gap"],
+  ["flow-ratio", "cal-flow", "the smoothest top, with no gaps and no ridges"]];
+function renderWizard(r) {
+  const fil = ($("#calFil").value || "").trim().toLowerCase();
+  const files = (S.files || []).map(f => f.path);
+  const done = t => r.results.find(x => x.test === t && (!fil || (x.filament || "").toLowerCase() === fil));
+  const next = CAL_STEPS.findIndex(([t]) => !done(t));
+  $("#calWizard").innerHTML = `<div class="list">${CAL_STEPS.map(([t, prefix, pick], i) => { const d = done(t), f = files.find(p => p.startsWith(prefix));
+    return issueHtml({icon: d ? "done" : i === next ? "progress" : "queued", id: `${i + 1}`, title: esc(CAL_WORDS[t] || t),
+      detail: d ? `picked ${esc(d.value)}${d.key ? " for " + esc(d.key) : ""}` : i === next ? `print it, then pick ${pick}` : "",
+      meta: [f ? esc(f) : "no test file on the printer yet", r.tests[t] ? `sets ${esc(r.tests[t])}` : ""],
+      acts: (f && !d ? `<button class="btn sm" data-calq="${esc(f)}">Queue it</button>` : "") + (!d ? `<button class="btn sm ghost" data-calrec="${esc(t)}">Record</button>` : "")}); }).join("")}</div>
+    <p class="note" style="margin:8px 0 0">${next < 0 ? "All four done for this filament: the values go into its slicing profile next (Claude opens that as a pull request)." :
+      "One test at a time, in this order. A test file missing? Claude makes it in Snapmaker Orca's Calibration menu at the temperature you picked."}</p>`;
+}
+$("#calWizard").addEventListener("click", e => {
+  const q = e.target.closest("[data-calq]"), rec = e.target.closest("[data-calrec]");
+  if (q) addToQueue(q.dataset.calq);
+  if (rec) { $("#calTest").value = rec.dataset.calrec; $("#calVal").focus(); }
+});
 async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
+  if (!S.files || !S.files.length) { try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); } catch (e) {} }
   const sel = $("#calTest"); if (!sel.options.length) sel.innerHTML = Object.keys(r.tests).map(t => `<option value="${t}">${CAL_WORDS[t] || t}</option>`).join("");
   if (!$("#calFil").value && S.status) { const tc = S.status.print_task_config || {}; if (tc.filament_type) $("#calFil").value = [(tc.filament_vendor || [])[0], tc.filament_type[0]].filter(v => v && v !== "NONE").join(" "); }
   $("#calList").innerHTML = r.results.length ? r.results.map((x, i) => issue({icon: "done", id: "C-" + (r.results.length - i),
@@ -1222,6 +1247,7 @@ async function loadCalibration() {
       title: `${esc(CAL_WORDS[x.test] || x.test)}: ${esc(x.value)}`, detail: [x.key, x.note].filter(Boolean).map(esc).join(" · "),
       meta: [esc(x.filament || ""), esc(x.who), short(x.t), x.photo ? `<i class="mini" style="background-image:url('${esc(x.photo)}')"></i>` : ""]})).join("")
     : `<div class="empty">No calibration results yet.</div>`;
+  renderWizard(r); $("#calFil").oninput = () => renderWizard(r);
 }
 $("#calSave").onclick = async () => {
   try { await post("/api/calibration", {test: $("#calTest").value, value: $("#calVal").value, filament: $("#calFil").value, note: $("#calNote").value});
