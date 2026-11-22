@@ -1423,6 +1423,7 @@ def lift_after_print(file, wait=120):
         time.sleep(3)
     else:
         return None
+    remember_z(200)   # where PRINT_END parked it: the watcher's last reading is from the last layer, before the drop
     z = view_height(float(h))
     for cmd in ("SET_KINEMATIC_POSITION Z=200", "G90", f"G1 Z{z} F600", "M400", "M84"):
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
