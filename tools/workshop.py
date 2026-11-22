@@ -1955,7 +1955,13 @@ def main():
     import threading
     if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only
         threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
-    srv = http.server.ThreadingHTTPServer((a.bind, a.port), Handler)
+    class Server(http.server.ThreadingHTTPServer):
+        def handle_error(self, request, client_address):
+            # a phone that closes a page or a video mid-download is normal: keep the log for real errors
+            if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, TimeoutError)):
+                return
+            super().handle_error(request, client_address)
+    srv = Server((a.bind, a.port), Handler)
     print(f"Workshop on http://{a.bind}:{a.port} for printer {a.printer} (Ctrl+C stops)")
     try:
         srv.serve_forever()
