@@ -84,7 +84,9 @@ PRESETS = {
              "sparse_infill_pattern": "lightning", "sparse_infill_density": "10%"},
     "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                  "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
-                 "ironing_type": "top", "ironing_speed": "30", "ironing_flow": "10%"},
+                 # ironing 40% flow at 40 mm/s: a widely upvoted tip (dozens of filaments, "almost like glass"), up from Orca's
+                 # cautious 10% / 30. ponytail: not yet proved on the U1; check the ironing test (10% against 40%) before trusting it.
+                 "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "40%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
 }
