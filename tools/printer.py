@@ -124,7 +124,7 @@ def fetch(path, tail=None, timeout=30):
 
 
 # ---------- config backup and log check (Extended Firmware or stock; read-only, through Moonraker's file API) ----------
-BACKUP_FILES = ("printer.cfg", "printer_v2.cfg", "moonraker.conf", "fluidd.cfg", "gui_config.json")
+BACKUP_FILES = ("printer.cfg", "printer_v2.cfg", "moonraker.conf", "gui_config.json")   # not fluidd.cfg: stock macros with an author's email
 BACKUP_DIRS = ("extended/", "snapmaker/", "persistent/")
 # left out: the stock factory copies and dated backups (vendor files), the serial number and the cloud agent's identity
 BACKUP_SKIP = re.compile(r"(^|/)(agent\.json|product_info\.json|[^/]*secret[^/]*)$|^factory|^printer-\d|^\.")
