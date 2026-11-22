@@ -98,6 +98,10 @@ def t_status(_):
             lines.append(f'Bed: cleared by {b["who"]} at {time.strftime("%H:%M", time.localtime(b["t"]))}')
     except (RuntimeError, KeyError, ValueError):
         pass
+    try:   # which build plate is on: slicing follows it, and PETG on the smooth plate needs glue first
+        lines.append(f'Plate: {http("GET", "/api/plate")["plate"]} PEI')
+    except (RuntimeError, KeyError, ValueError):
+        pass
     try:   # grams left on each head's spool (Workshop counts what each print really used)
         heads = http("GET", "/api/spools").get("heads", {})
         left = [f'{h} {v["spool"]}: about {max(0, v["start_g"] - v["used_g"]):.0f} g left' for h, v in sorted(heads.items())]
@@ -279,6 +283,12 @@ def t_queue(a):
     raise RuntimeError("action is list, add, remove, hold or start")
 
 
+def t_plate(a):
+    if a.get("plate"):
+        http("POST", "/api/plate", {"plate": a["plate"]})
+    return f'The {http("GET", "/api/plate")["plate"]} plate is on. Slicing follows it; PETG on the smooth plate needs a glue-stick layer first.'
+
+
 def t_unload(a):
     http("POST", "/api/unload", {"head": a["head"]})
     return f'Unloading {a["head"]}: about a minute per head. Check printer_status afterwards.'
@@ -341,7 +351,8 @@ def t_upload_model(a):
     if not path.lower().endswith((".stl", ".3mf")) or not os.path.isfile(path):
         raise ValueError("give the path of an .stl or .3mf file on this computer")
     params = urllib.parse.urlencode({"name": os.path.basename(path), "colour": (a.get("colour") or "888888").lstrip("#"),
-                                     "preset": a.get("preset") or "lean", "queue": "1" if a.get("queue") else "0"})
+                                     "preset": a.get("preset") or "lean", "queue": "1" if a.get("queue") else "0",
+                                     "glue": "1" if a.get("glue") else "0"})
     req = urllib.request.Request(URL + "/api/upload-model?" + params, data=open(path, "rb").read(), method="POST",
                                  headers={"X-Workshop": "1", "X-Workshop-User": USER, "Content-Type": "application/octet-stream"})
     try:
@@ -571,9 +582,12 @@ TOOLS = [
     ("printer_spools", "The spools in Spoolman, head by head: grams left, used, and which need reordering (under 200 g).", {}, t_spools),
     ("printer_costs", "Filament and cost per month and per person who started the prints, from the printer's own measure.", {}, t_costs),
     ("printer_plan", "The queue as a plan: when each job would start and finish after the current print, and any that would start in the quiet hours (03:00 to 08:00, when no new print starts).", {}, t_plan),
+    ("printer_plate", "Which build plate is on the printer (textured or smooth PEI), or record that the person swapped it. Slicing uses it.",
+     {"plate": {"type": "string", "enum": ["textured", "smooth"], "description": "set only when the person says they changed the plate"}}, t_plate, []),
     ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. Never starts a print.",
      {"path": {"type": "string", "description": "the .stl or .3mf file on this computer"}, "colour": {"type": "string", "description": "hex colour of the loaded filament to use, e.g. 1c1c1c (STL only)"},
-      "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"}}, t_upload_model, ["path"]),
+      "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"},
+      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed a glue-stick layer is on"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
     ("printer_doctor", "The print doctor's latest reports: after a pause, a failure or a flawed finish, Claude reads the layer photos and slicer settings and suggests setting changes. Read them before re-slicing a print that went wrong.", {}, t_doctor),

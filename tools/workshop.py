@@ -182,6 +182,13 @@ def slice_parts(d, parts, req):
         sets.append("prime-volume=45")
     if preset_bad(req.get("preset")):
         return 400, {"error": "unknown preset"}
+    on = plate()["plate"]
+    sets.append("curr_bed_type=" + PLATES[on])   # slice for the plate that is really on
+    used = {h["material"] for h in heads or [] if h.get("material")} if not head_note else \
+           {heads[int(n["head"][1:])]["material"] for n in head_note}
+    if on == "smooth" and any("petg" in m.lower() for m in used) and not req.get("glue"):
+        return 409, {"error": "PETG on the smooth plate: put a thin layer of glue stick (Pritt Stick) where the part sits, "
+                              "then slice again with glue=yes. Without it PETG can tear the plate's coating.", "plate": on}
     out = tempfile.mkdtemp(prefix="workshop-")
     try:
         return _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, make_3mf, orca)
@@ -1047,6 +1054,24 @@ def bed(state=None, who="", file=""):
         return json.load(open(BED, encoding="utf-8"))
     except (OSError, ValueError):
         return {"state": "unknown"}
+
+
+PLATE = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "plate.json")
+PLATES = {"textured": "Textured PEI Plate", "smooth": "High Temp Plate"}   # OrcaSlicer's names; smooth PEI is "High Temp"
+
+
+def plate(name=None, who=""):
+    """Which build plate is on the U1: {"plate": "textured" | "smooth", "who", "t"}; textured until someone says otherwise.
+    Slicing uses it, and PETG on the smooth plate needs a glue layer first (Khalid, 22 Nov 2026: PETG can tear smooth PEI)."""
+    if name:
+        os.makedirs(os.path.dirname(PLATE), exist_ok=True)
+        json.dump({"plate": name, "who": who, "t": time.time()}, open(PLATE + ".part", "w"))
+        os.replace(PLATE + ".part", PLATE)
+    try:
+        p = json.load(open(PLATE, encoding="utf-8"))
+        return p if p.get("plate") in PLATES else {"plate": "textured"}
+    except (OSError, ValueError):
+        return {"plate": "textured"}
 
 
 SPOOLS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "spools.json")
@@ -1940,6 +1965,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 bed("clear", who=actor(self), file=b.get("file", ""))
                 record("took the part off the bed", b.get("file", ""), who=actor(self))
             return self.send(200, bed())
+        if p == "/api/plate":
+            if self.command == "POST":   # {"plate": "smooth" | "textured"}: who swapped it is logged
+                try:
+                    name = str(json.loads(self.body() or b"{}").get("plate", ""))
+                except (ValueError, AttributeError):
+                    name = ""
+                if name not in PLATES:
+                    return self.send(400, {"error": "plate is textured or smooth"})
+                plate(name, who=actor(self))
+                record(f"put the {name} plate on", "", who=actor(self))
+            return self.send(200, plate())
         if p == "/api/spools":
             if self.command == "POST":   # a new spool on a head: {head, spool, grams}
                 try:
@@ -2138,7 +2174,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(400, {"error": "the file is bigger than 100 MB"})
             data = self.body() or b""
             req = {"preset": q.get("preset") or "lean", "colour": q.get("colour"), "queue": q.get("queue") == "1",
-                   "upload": True, "allow_substitute": q.get("allow_substitute") == "1"}
+                   "upload": True, "allow_substitute": q.get("allow_substitute") == "1", "glue": q.get("glue") == "1"}
             return self.send(*slice_upload(q.get("name", ""), data, req))
         if p == "/api/slice" and self.command == "POST":
             try:

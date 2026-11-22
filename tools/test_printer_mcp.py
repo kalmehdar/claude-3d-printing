@@ -140,6 +140,9 @@ printer.call = lambda path, *a, **k: {"jobs": [{"job_id": "000009", "filename": 
 assert printer.run_folder(".Benchy (2) é.gcode") == "Benchy__2___-000009", printer.run_folder(".Benchy (2) é.gcode")
 # Workshop: one profile per colour -> the nearest colour wins
 import workshop
+import tempfile as _tf  # noqa: E402
+_state = _tf.mkdtemp()
+workshop.LAST_Z, workshop.PLATE = os.path.join(_state, "last-z.json"), os.path.join(_state, "plate.json")   # never the real files
 assert workshop.rgb_gap("#1A1A1A", "1C1C1C") < workshop.rgb_gap("#F2F2F2", "1C1C1C") < workshop.rgb_gap(None, "1C1C1C")
 # Workshop: prices per kg from a filament register; unpriced rows skipped, first priced row per material wins
 with tempfile.TemporaryDirectory() as d:
