@@ -267,6 +267,21 @@ with tempfile.TemporaryDirectory() as d:
     assert r["diagnosis"] == "strings" and len(sent[0]) == 4 and "retraction_speed = 30" in text and "post_process" not in text, text
     assert os.listdir(workshop.DOCTOR) and "layer 120: ok" in text
     (workshop.api_key, workshop.record, printer.push, workshop.last_layer_photo, workshop.ask_claude, printer.fetch, workshop.DOCTOR, workshop.PHOTO_LOG) = saved
+# who may press buttons: same-origin only, http on the LAN or https behind Caddy; another site, a wrong host or no header refused
+class _H:
+    allowed = workshop.Handler.allowed
+    def __init__(self, command, host, origin=None, xw="1"):
+        self.command = command
+        self.headers = {k: v for k, v in (("Host", host), ("Origin", origin), ("X-Workshop", xw)) if v is not None}
+_saved_hosts = workshop.CFG.get("allow_hosts")
+workshop.CFG["allow_hosts"] = ["workshop.almehdar.co.uk"]
+assert _H("POST", "workshop.almehdar.co.uk", "https://workshop.almehdar.co.uk").allowed()
+assert _H("POST", "192.168.1.225:8090", "http://192.168.1.225:8090").allowed()
+assert _H("GET", "workshop.almehdar.co.uk").allowed()
+for bad in (_H("POST", "workshop.almehdar.co.uk", "https://evil.example"), _H("POST", "evil.example", "https://evil.example"),
+            _H("POST", "workshop.almehdar.co.uk", "https://workshop.almehdar.co.uk", xw=None), _H("GET", "rebind.example")):
+    assert not bad.allowed(), bad.headers
+workshop.CFG["allow_hosts"] = _saved_hosts
 # API keys: env first, then the files in order; a file others can read is skipped
 with tempfile.TemporaryDirectory() as d:
     workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")

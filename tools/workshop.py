@@ -1318,7 +1318,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return False
         if self.command != "GET":
             origin = self.headers.get("Origin")
-            if self.headers.get("X-Workshop") != "1" or (origin and origin != "http://" + self.headers.get("Host", "")):
+            host_hdr = self.headers.get("Host", "")   # behind Caddy (workshop.almehdar.co.uk) the page is https
+            if self.headers.get("X-Workshop") != "1" or (origin and origin not in ("http://" + host_hdr, "https://" + host_hdr)):
                 return False
         return True
 
