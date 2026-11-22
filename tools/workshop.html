@@ -1556,6 +1556,14 @@ $("#viewBed").onclick = () => { const st = S.status?.print_stats?.state; if (st 
   confirmSheet("Bring the bed into view?", "The printer homes if its motors are off (the bed goes down first, away from the head), then raises the bed so the head stays 20 mm above the last print's height. If something taller is on the plate, take it off first.", "Raise the bed", async () => {
     const v = await post("/api/view-bed", {}); toast(`Bed at Z ${v.z} mm` + (v.homed ? " (homed first)" : "")); camTick(); }); };
 $("#camMode").onclick = () => camSet(camPref() === "video" ? "stills" : "video");
+// The printer's camera serves only a few live viewers ("max clients reached"), and every open tab held one even when
+// nobody was looking (22 Nov: a phone could not get live video). Hidden page: close the stream; back: reconnect.
+document.addEventListener("visibilitychange", () => {
+  if (camPref() !== "video" || !(S.info || {}).live_camera) return;
+  const f = $("#camVideo");
+  if (document.hidden) { if (f) f.src = "about:blank"; }
+  else if (f) f.src = S.info.live_camera;
+});
 
 /* ---------- last print: real time against the estimate, grams, cost, timelapse ---------- */
 async function loadLast() {
