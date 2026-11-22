@@ -91,6 +91,11 @@ PRESETS = {
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
     # grip: fuzzy skin on the outside, for handles and anything held (the default is too coarse to look good; 10 Ways to Hide
     # Layer Lines, Nov 2026). ponytail: 0.2 mm thickness and 0.4 mm point distance are a common gentle start, not tested on the U1.
+    # fine-text: raised lettering and small detail (How to Get Razor Sharp Text, Nov 2026): thin lines, fine layers, more
+    # walls and shells, about half speed. ponytail: the video's numbers on a Bambu; check the first lettered print on the U1.
+    "fine-text": {"layer_height": "0.12", "line_width": "0.25", "outer_wall_line_width": "0.25", "inner_wall_line_width": "0.25",
+                  "top_surface_line_width": "0.25", "wall_loops": "4", "top_shell_layers": "6", "bottom_shell_layers": "6",
+                  "outer_wall_speed": "60", "inner_wall_speed": "90", "top_surface_speed": "60", "detect_thin_wall": "1"},
     "grip": {"fuzzy_skin": "external", "fuzzy_skin_thickness": "0.2", "fuzzy_skin_point_distance": "0.4", "wall_loops": "3"},
 }
 PRESET_KEYS = {k for p in PRESETS.values() for k in p}
@@ -101,7 +106,8 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)",
-                "grip": "a gentle fuzzy skin outside, for handles and things you hold; hides layer lines (not for faces that must fit)"}
+                "grip": "a gentle fuzzy skin outside, for handles and things you hold; hides layer lines (not for faces that must fit)",
+                "fine-text": "sharp lettering and fine detail: 0.12 mm layers, 0.25 mm lines, 4 walls, about half speed (slow; make the text bold and print it face up)"}
 
 
 def find(env, patterns):

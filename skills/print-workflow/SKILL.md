@@ -108,6 +108,15 @@ The person can follow the same printer on `python tools/workshop.py --printer <a
 - **To hide layer lines:** orientation, a filled filament (PETG-CF hides them best), `grip` for held parts, and for a show
   finish sand, prime and paint. A smaller nozzle helps but costs a lot of time.
 
+**On the U1 specifically** (U1 videos, Nov 2026):
+- **Supports in a different material** peel off cleanly: PLA supports under a PETG part (or the reverse) do not bond, so the
+  support gap (`support_top_z_distance`) can go to about 0. Same material: keep about 0.2 mm.
+- **Check a downloaded model's filaments before slicing.** Snapmaker Orca's filament sync maps the designer's filaments onto
+  yours by colour; a support designed in PETG quietly becomes your PLA and welds on. Read the source filament list first.
+- **Lettering:** `fine-text`, bold font, text face up (a textured plate blurs face-down text).
+- **Nozzle sizes:** 0.2 to 0.8 mm hot ends exist, but one print uses one size on all four heads. The high-flow hot end is
+  not for carbon or glass fibre; abrasive filament needs the hardened-steel hot ends.
+
 ## Done means
 
 Exported parts within the bed, the audit at 0 to fix, the bench rebuilt and looked at, and every FIT number either measured or listed for the person to measure. When Claude ran the print: the bed seen empty before the start, the first layers looked at, and the real time and metres logged.
