@@ -331,6 +331,18 @@ for path, left_out in (("persistent/agent.json", True), ("snapmaker/product_info
                        ("printer-20261120_135204.cfg", True), (".moonraker.conf.bkp", True), ("printer.cfg", False),
                        ("snapmaker/input_shaper.json", False), ("extended/moonraker/02_internal_camera.cfg", False)):
     assert bool(printer.BACKUP_SKIP.search(path)) == left_out, path
+# uploaded models: only .stl/.3mf, a size limit and a hex colour; saved under uploads, then the shared slice path
+with tempfile.TemporaryDirectory() as d:
+    workshop.UPLOADS = d
+    seen = []
+    _sp = workshop.slice_parts
+    workshop.slice_parts = lambda dd, parts, req: (seen.append((dd, parts, req)), (200, {"ok": True}))[1]
+    assert workshop.slice_upload("x.gcode", b"1", {})[0] == 400
+    assert workshop.slice_upload("x.stl", b"", {})[0] == 400
+    assert workshop.slice_upload("x.stl", b"solid", {"colour": "red"})[0] == 400
+    code, _ = workshop.slice_upload("../../evil name.stl", b"solid x", {"colour": "1c1c1c", "preset": "lean"})
+    assert code == 200 and os.path.dirname(seen[-1][1][0][1]) == d and seen[-1][1][0][2] == "#1c1c1c", seen[-1]
+    workshop.slice_parts = _sp
 # the page's own script must parse (a stray // once cut a one-line function in half and the whole page stopped)
 import re as _re, shutil as _sh
 if _sh.which("node"):

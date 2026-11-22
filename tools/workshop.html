@@ -361,8 +361,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     </section>
 
     <section id="tab-files" hidden>
-      <label class="drop" id="drop">Drop a sliced .gcode here, or <u>choose a file</u> to send it to the printer
-        <input type="file" id="fileIn" accept=".gcode,.gco,.g" hidden multiple></label>
+      <label class="drop" id="drop">Drop a sliced .gcode to send it, or an <b>.stl</b> or <b>.3mf</b> to slice it here. Or <u>choose a file</u>.
+        <input type="file" id="fileIn" accept=".gcode,.gco,.g,.stl,.3mf" hidden multiple></label>
       <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-fview="list" aria-pressed="true">List</button><button class="btn sm" data-fview="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="fCards"></div>
@@ -920,7 +920,9 @@ $("#fCards").addEventListener("click", e => {
   if (b.dataset.del) confirmSheet("Delete " + b.dataset.del + "?", "It is removed from the printer's storage.", "Delete", async () => { await api(M("/server/files/gcodes/" + b.dataset.del.split("/").map(enc).join("/")), {method: "DELETE"}); toast("Deleted"); loadFiles(); });
 });
 async function uploadFiles(files) {
-  for (const f of files) {
+  const models = [...files].filter(f => /\.(stl|3mf)$/i.test(f.name));
+  if (models.length) sliceModel(models[0]);
+  for (const f of [...files].filter(f => !/\.(stl|3mf)$/i.test(f.name))) {
     const fd = new FormData(); fd.append("file", f, f.name);
     toast("Sending " + f.name + "...");
     try { await api(M("/server/files/upload"), {method: "POST", body: fd}); toast("On the printer: " + f.name); } catch (e) { toast(e.message, true); }
@@ -928,6 +930,29 @@ async function uploadFiles(files) {
   loadFiles();
 }
 $("#fileIn").onchange = e => uploadFiles(e.target.files);
+// a model from this device: pick the head (by its loaded colour) and a preset, slice it on the Workshop computer, send or queue it
+function sliceModel(file) {
+  const heads = (S.status && S.status.print_task_config) || {}, cols = (heads.filament_color_rgba || []).map(c => c.slice(0, 6));
+  const types = heads.filament_type || [], presets = Object.entries(S.info.presets || {standard: "the printer's own profile"});
+  const is3mf = /\.3mf$/i.test(file.name);
+  const body = openSheet("Slice " + file.name, `
+    ${is3mf ? `<p class="note">A 3MF keeps the parts and heads it was saved with.</p>` : `<div class="field"><label>Print it with</label><div class="ctrls" id="smHeads">${cols.map((c, i) =>
+      `<button class="btn" data-c="${esc(c)}" aria-pressed="${i === 0}"><i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#${esc(c)};margin-right:6px"></i>T${i} ${esc(types[i] || "")}</button>`).join("")}</div></div>`}
+    <div class="field"><label for="smPreset">Preset</label><select id="smPreset">${presets.map(([k, t]) => `<option value="${esc(k)}" ${k === (S.info.presets?.lean ? "lean" : "quality") ? "selected" : ""}>${esc(k)}: ${esc(t)}</option>`).join("")}</select></div>
+    <label class="check"><input type="checkbox" id="smQueue"> Add it to the queue too (it still waits for someone to say the bed is clear)</label>
+    <div class="actions"><button class="btn primary" id="smGo">Slice and send to the printer</button></div><div id="smOut"></div>`);
+  let colour = cols[0] || "888888";
+  body.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { colour = b.dataset.c; body.querySelectorAll("[data-c]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); });
+  body.querySelector("#smGo").onclick = async () => {
+    const go = body.querySelector("#smGo"); go.disabled = true; go.textContent = "Slicing...";
+    const q = new URLSearchParams({name: file.name, colour, preset: body.querySelector("#smPreset").value, queue: body.querySelector("#smQueue").checked ? "1" : "0"});
+    try {
+      const r = await api("/api/upload-model?" + q, {method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: file});
+      body.querySelector("#smOut").innerHTML = `<div class="result"><b>${esc(r.file)}</b> is on the printer: ${esc(r.time)}, ${r.total_g} g${r.queued ? ", and in the queue" : ""}${r.queue_note ? ". " + esc(r.queue_note) : ""}.</div>`;
+      go.textContent = "Sent"; loadFiles();
+    } catch (e) { body.querySelector("#smOut").innerHTML = `<div class="result" style="color:var(--bad)">${esc(e.message)}</div>`; go.disabled = false; go.textContent = "Slice and send to the printer"; }
+  };
+}
 const drop = $("#drop");
 ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));

@@ -124,6 +124,36 @@ def slice_design(req):
     parts = [(e[0], os.path.join(base, e[1]), e[2]) for e in d["parts"] if not (len(e) > 3 and e[3] == "not printed")]
     if not parts:
         return 400, {"error": "this design has nothing to print"}
+    return slice_parts(d, parts, req)
+
+
+UPLOADS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "uploads")
+MODEL_MAX = 100_000_000
+
+
+def slice_upload(name, data, req):
+    """Slice a model sent from the page (STL on one head, picked by colour; 3MF as the file assigns its parts).
+    Saved under ~/.config/claude-3d-printing/uploads, then the same path as a bench design: never starts a print."""
+    stem, ext = os.path.splitext(os.path.basename(name or ""))
+    ext = ext.lower()
+    if ext not in (".stl", ".3mf") or not stem:
+        return 400, {"error": "send an .stl or .3mf file"}
+    if not data or len(data) > MODEL_MAX:
+        return 400, {"error": "the file is empty or bigger than 100 MB"}
+    os.makedirs(UPLOADS, exist_ok=True)
+    path = os.path.join(UPLOADS, safe_name(stem) + ext)
+    with open(path, "wb") as f:
+        f.write(data)
+    colour = req.get("colour") or "#888888"
+    if not re.fullmatch(r"#?[0-9A-Fa-f]{6}", str(colour)):
+        return 400, {"error": "colour is a hex code like #1c1c1c"}
+    d = {"id": safe_name(stem), "name": stem}
+    return slice_parts(d, [(stem, path, "#" + str(colour).lstrip("#"))], req)
+
+
+def slice_parts(d, parts, req):
+    import make_3mf
+    import orca
     heads, material = loaded_heads(), ""
     head_note = None
     if heads:   # a tool changer that reports its filament: put each colour on the head holding it
@@ -149,9 +179,12 @@ def slice_design(req):
 
 def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, make_3mf, orca):
     try:
-        data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
-        p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
-        open(p3, "wb").write(data)
+        if len(parts) == 1 and parts[0][1].lower().endswith(".3mf"):   # an uploaded 3MF keeps its own parts and heads
+            p3 = parts[0][1]
+        else:
+            data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
+            p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
+            open(p3, "wb").write(data)
         s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out)
     except SystemExit as e:   # orca.py and make_3mf stop with a plain message
         return 422, {"error": str(e.code), "hint": "Slicing needs OrcaSlicer (ORCA_CLI) and a printer setup "
@@ -1367,6 +1400,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(409, {"error": "an unload is already running; wait for it to finish"})
             record("unload", head, who=actor(self))
             return self.send(202, {"started": head})
+        if p.startswith("/api/upload-model") and self.command == "POST":   # ?name=part.stl&colour=1c1c1c&preset=lean&queue=1, body = the file
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(p).query).items()}
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > MODEL_MAX:
+                return self.send(400, {"error": "the file is bigger than 100 MB"})
+            data = self.body() or b""
+            req = {"preset": q.get("preset") or "lean", "colour": q.get("colour"), "queue": q.get("queue") == "1",
+                   "upload": True, "allow_substitute": q.get("allow_substitute") == "1"}
+            return self.send(*slice_upload(q.get("name", ""), data, req))
         if p == "/api/slice" and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")
