@@ -226,7 +226,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .jhead .fname{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .jhead .si{width:15px;height:15px;display:block}
 .jpct{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.jbar{--p:0;height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:12px}
+.jbar{--p:0;height:4px;border-radius:2px;background:var(--panel2);overflow:hidden;margin-top:12px}
 .jbar i{display:block;height:100%;width:calc(var(--p) * 1%);background:var(--accent);border-radius:3px;transition:width .6s ease}
 .jbar.paused i{background:var(--warn)} .jbar.done i{background:var(--ok)}
 .jsub{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--dim);margin:7px 0 14px;font-variant-numeric:tabular-nums}
@@ -238,7 +238,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.hstat{display:none}}
 @media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .cam .camtools{left:8px;right:8px;flex-wrap:wrap;justify-content:flex-end} .cam .camtools .btn{min-height:34px;padding:0 10px;font-size:12.5px}}   /* phone: one header row, camera buttons that fit */
-.pushrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:12.5px}
+.pushrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px;font-size:12px;color:var(--dim)}.pushrow b{color:var(--text);font-weight:500}.pushrow .pacts{display:flex;gap:4px;flex:none}
 #pushHide{color:var(--dim)}
 /* Printer tab */
 .ctrls{display:flex;flex-wrap:wrap;gap:6px}
@@ -370,8 +370,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             <div class="list" id="partsList"></div>
             <p class="note" style="margin:10px 0 0">One part going wrong? Cancel just that part and the rest keep printing. You see it marked first.</p></div>
           <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
-          <div class="card pushrow" id="pushCard" hidden><div><b>Phone alerts</b><span class="note"> Get a push when a print pauses, finishes or stops (free <b>ntfy</b> app).</span></div>
-            <div class="actions" style="margin:0"><a class="btn sm" id="pushLink" target="_blank" rel="noopener">Subscribe</a><button class="btn sm ghost" id="pushHide" title="Hide on this device">Done</button></div></div>
+          <div class="pushrow" id="pushCard" hidden><span><b>Phone alerts</b> <span class="note">when a print pauses, finishes or stops (free ntfy app)</span></span><span class="pacts"><a class="btn sm" id="pushLink" target="_blank" rel="noopener">Subscribe</a><button class="btn sm ghost" id="pushHide" title="Hide on this device">Hide</button></span></div>
           <details class="card fold" id="framesCard" hidden><summary><h2>Layer photos</h2></summary>
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
             <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
@@ -737,7 +736,7 @@ function render() {
   $("#warm").hidden = !heating;
   if (ps.filename && !S.meta[ps.filename] && S.metaWant !== ps.filename) { S.metaWant = ps.filename; ensureMeta([ps.filename]).then(render); }
   const est = (S.meta[ps.filename] || {}).estimated_time;
-  $("#jobFile").textContent = ps.filename || "Nothing printing";
+  $("#jobFile").textContent = (ps.filename || "Nothing printing").replace(/\.gcode$/i, ""); $("#jobFile").title = ps.filename || "";
   const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
   $("#kLayer").textContent = (info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "") + (active && pal.enable ? ` · pauses at layer ${pal.layer}` : "");
   let left = null;
