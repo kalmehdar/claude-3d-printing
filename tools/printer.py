@@ -512,7 +512,9 @@ def unload(which):
         h = query(head_obj(i))[head_obj(i)]
         return h["target"] > 0 and h["temperature"] >= h["target"] - 5
 
-    call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=START"), "POST")
+    # START homes first (a minute or more): a 15 s call timed out, the thread died and its STOP landed mid-homing
+    # (22 Nov 2026), so it waits like the other steps, judged by the printer being idle again
+    run_waiting("AUTO_FEEDING_BATCH ACTION=START", idle, 240)
     try:
         for k, (i, name) in enumerate(todo):
             nxt = f" NEXT_EXTRUDER={todo[k + 1][0]}" if k + 1 < len(todo) else ""
@@ -562,7 +564,7 @@ def load(which):
         h = query(head_obj(i))[head_obj(i)]
         return h["target"] > 0 and h["temperature"] >= h["target"] - 5
 
-    call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=START"), "POST")
+    run_waiting("AUTO_FEEDING_BATCH ACTION=START", idle, 240)   # homes first: see unload()
     try:
         for k, i in enumerate(todo):
             nxt = f" NEXT_EXTRUDER={todo[k + 1]}" if k + 1 < len(todo) else ""
