@@ -1410,7 +1410,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except OSError as e:
             return self.send(502, {"error": f"printer unreachable: {e}"})
         data = r.read()
-        self.send(r.status, data, r.headers.get("Content-Type", "application/octet-stream"))
+        # a 206 without Content-Range is refused by iPhone Safari: the timelapse would neither play nor download (22 Nov)
+        keep = {k: r.headers[k] for k in ("Content-Range", "Accept-Ranges", "Content-Disposition") if r.headers.get(k)}
+        self.send(r.status, data, r.headers.get("Content-Type", "application/octet-stream"), keep)
 
     def allowed(self):
         """Refuse requests another web page could make: the Host must be an IP address, localhost or an --allow-host name
