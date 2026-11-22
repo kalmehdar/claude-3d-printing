@@ -76,7 +76,8 @@ PRESETS = {
                 "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
                 # scarf seam (the seam ramps in over 20 mm instead of a bump), staggered inner seams and the outer wall printed
                 # between two inner walls: four of ten videos found scarf works, none against (22 Nov, youtube-smooth-surfaces.md)
-                "seam_slope_type": "external", "seam_slope_conditional": "1",
+                # 22 Nov seam test on the U1 (A scarf, B scarf at half speed, C plain at the back): Khalid picked C, so scarf is off
+                "seam_slope_type": "none", "seam_slope_conditional": "1",
                 "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                 "wall_sequence": "inner-outer-inner wall"},
     # lean: quality's clean outside, less plastic inside. Measured 22 Nov on the U1 profile (test card, clip-on tags, ProDesk
@@ -91,7 +92,7 @@ PRESETS = {
     "smooth": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5",
                "outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
-               "seam_slope_type": "external", "seam_slope_conditional": "1", "seam_slope_inner_walls": "1",
+               "seam_slope_type": "none", "seam_slope_conditional": "1", "seam_slope_inner_walls": "1",
                "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                "wall_sequence": "inner-outer-inner wall"},
     "lean": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100", "wall_generator": "arachne",
@@ -99,7 +100,7 @@ PRESETS = {
              "sparse_infill_pattern": "lightning", "sparse_infill_density": "10%"},
     "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                  "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
-                 "seam_slope_type": "external", "seam_slope_conditional": "1",
+                 "seam_slope_type": "none", "seam_slope_conditional": "1",
                  "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                  "wall_sequence": "inner-outer-inner wall",
                  # ironing 25% flow, 0.15 mm spacing, 40 mm/s: SUNLU PETG, two rounds on 22 Nov. Round 1 picked 20% of 10-40%;
