@@ -560,6 +560,13 @@ def api_key():
     return (api_keys() or [None])[0]
 
 
+BEFORE_TEXT = """
+The first picture is the same camera at layer {before}, when the watch last looked and found nothing wrong; the second is now.
+Compare them part by part. Parts only grow taller between the two. A part that stood in the first picture and is now
+missing, shorter, tipped over, moved, or lying elsewhere on the plate has come off: that is detached, even if the rest
+looks fine. Loose strands that were not there before, round a part that changed, count as spaghetti."""
+PARTS_TEXT = """
+The slicer placed {n} separate parts on this plate: {names}. Count what you can see against that."""
 HEAD_CHANGE_TEXT = """
 A tool head change happened just before this photo. Also look for a blob or string of the previous colour left on the part,
 or a line that did not start; only a clear failure counts, as above."""
@@ -601,10 +608,12 @@ def ask_claude(content, schema, effort="low", max_tokens=4000):
     return v
 
 
-def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None):
+def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None, before=None):
     """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError.
     plan: PNG bytes of the first layer's planned paths (the first-layer check), sent as a second picture.
-    prompt and schema replace the in-print check (the finished-print look uses its own)."""
+    prompt and schema replace the in-print check (the finished-print look uses its own).
+    before: (jpg, layer) of the last frame the watch passed, sent first so a part that snapped or fell off between checks
+    shows as a change (22 Nov 2026: a single photo at layer 61 was judged fine with a snapped pillar lying on the plate)."""
     import base64
     keys = api_keys()
     if not keys:
@@ -612,6 +621,9 @@ def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None):
     body = {"model": PHOTO_MODEL, "max_tokens": 2000, "fallbacks": "default",
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema or PHOTO_SCHEMA}},
             "messages": [{"role": "user", "content": [
+                *([{"type": "text", "text": f"Earlier, layer {before[1]}:"},
+                   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(before[0], "rb").read()).decode()}},
+                   {"type": "text", "text": f"Now, layer {layer}:"}] if before else []),
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
                 *([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(plan).decode()}}] if plan else []),
                 {"type": "text", "text": prompt or PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "")}]}]}
@@ -793,6 +805,9 @@ def checked_block(file):
     return best
 
 
+_LAST_OK = {}   # file -> (photo, layer) the watch last passed: the "before" picture for its next look
+
+
 def photo_watch(file, layer, photo, first=None, head_change=False):
     """Check a layer photo; pause only on a clear failure that a second, fresh photo confirms. Logs every check."""
     import printer
@@ -806,17 +821,29 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
             plan = layer1_png(file)
         except Exception as e:
             log({"error": "no first-layer plan: " + str(e)[:150]})
+    before = _LAST_OK.get(file)
+    extra = BEFORE_TEXT.format(before=before[1]) if before else ""
     try:
-        v = look_at_photo(photo, layer, plan, prompt=PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "") + (HEAD_CHANGE_TEXT if head_change else ""))
+        names = [o["name"] for o in parts()["objects"]]
+        if len(names) > 1:
+            extra += PARTS_TEXT.format(n=len(names), names=", ".join(names)[:600])
+    except Exception:   # the check still runs without the parts list
+        pass
+    try:
+        prompt = PHOTO_PROMPT.format(layer=layer) + extra + (FIRST_LAYER_TEXT if plan else "") + (HEAD_CHANGE_TEXT if head_change else "")
+        v = look_at_photo(photo, layer, plan, prompt=prompt, before=before)
         log({"photo": photo, "first_layer": bool(plan), "head_change": head_change, **v})
-        if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= 0.85):
+        sure = 0.8 if before else 0.85   # a change against a frame that passed is firmer evidence than one photo alone
+        if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= sure):
+            if v["verdict"] == "ok" and v["problem"] == "none":
+                _LAST_OK[file] = (photo, layer)
             return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
-        v2 = look_at_photo(second, layer, plan)
+        v2 = look_at_photo(second, layer, plan, prompt=prompt, before=before)
         log({"photo": second, "second_look": True, **v2})
-        if not (v2["verdict"] == "pause" and v2["problem"] in PAUSE_ON and v2["confidence"] >= 0.85):
+        if not (v2["verdict"] == "pause" and v2["problem"] in PAUSE_ON and v2["confidence"] >= sure):
             return
         if printer.status()["state"] != "printing":
             return
