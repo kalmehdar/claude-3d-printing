@@ -398,6 +398,28 @@ for _bad in ({"action": "home"}, {"action": "dance"}):
         pass
 assert not _sent
 assert _pm.t_control({"action": "home", "nothing_in_the_way": True}) == "Homed." and _sent == ["/printer/gcode/script?script=G28"], _sent
+# full control: heat within limits; moves homed-only and never closer than 20 mm over the tallest thing; raw G-code guarded
+def _refused(f, arg):
+    try: f(arg); raise AssertionError(arg)
+    except ValueError: pass
+_sent.clear()
+for _bad in ({"heater": "T4", "celsius": 200}, {"heater": "bed", "celsius": 120}, {"heater": "T0", "celsius": 320}): _refused(_pm.t_heat, _bad)
+assert _pm.t_heat({"heater": "T2", "celsius": 250}) == "T2 set to 250 C." and _sent[-1].endswith(_pm.q("SET_HEATER_TEMPERATURE HEATER=extruder2 TARGET=250"))
+_homed = {"status": {"toolhead": {"homed_axes": "xyz"}}}
+_pm.mr = lambda m, path, **k: _homed if "toolhead" in path else ({"jobs": [{"metadata": {"object_height": 50}}]} if "history" in path else _sent.append(path))
+for _bad in ({"z": 60}, {"z": 69.9}, {"x": 300}, {"y": -1}, {}): _refused(_pm.t_move, _bad)
+_sent.clear(); assert _pm.t_move({"z": 70, "x": 100}) == "Moved to X100 Z70." and _pm.q("G1 X100 Z70 F3000") in _sent[-1], _sent
+assert _pm.t_move({"z": 30, "tallest_mm": 5}) == "Moved to Z30."
+_pm.mr = lambda m, path, **k: {"status": {"toolhead": {"homed_axes": ""}}}
+_refused(_pm.t_move, {"x": 10})
+_raw = []
+_pm.http = lambda m, path, *a, **k: _raw.append(path)
+_pm.mr = lambda m, path, **k: {"gcode_store": [{"type": "response", "message": "ok"}]}
+for _bad in ({"command": "SAVE_CONFIG", "why": "x"}, {"command": "M114"}, {"command": "G28", "why": "x"}, {"command": "SHAPER_CALIBRATE", "why": "x"},
+             {"command": "M114\nG28", "why": "x"}, {"command": "firmware_restart", "why": "x", "nothing_in_the_way": True}): _refused(_pm.t_gcode, _bad)
+assert not _raw
+assert _pm.t_gcode({"command": "M114", "why": "where is it"}).startswith("Sent M114") and len(_raw) == 1
+_pm.t_gcode({"command": "SHAPER_CALIBRATE", "why": "after the move", "nothing_in_the_way": True}); assert len(_raw) == 2
 for _bad in ({"path": "/etc/passwd"}, {"path": "/nope/part.stl"}):
     try:
         _pm.t_upload_model(_bad); raise AssertionError(_bad)

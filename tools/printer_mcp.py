@@ -15,6 +15,7 @@ Speaks MCP over stdio (JSON-RPC, one message per line). Standard library only; P
 import base64
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -345,6 +346,87 @@ def t_upload_model(a):
             + (f'. {d["queue_note"]}' if d.get("queue_note") else "") + ". Nothing starts until a person says the bed is clear.")
 
 
+HEATERS = {"T0": "extruder", "T1": "extruder1", "T2": "extruder2", "T3": "extruder3", "bed": "heater_bed"}
+MAX_C = {"bed": 110}   # nozzles 300 (the U1's hot ends); the bed 110
+
+
+def t_heat(a):
+    """Set one heater's target (0 turns it off). Workshop refuses it while a print runs."""
+    h, c = str(a.get("heater")), float(a.get("celsius", -1))
+    if h not in HEATERS:
+        raise ValueError("heater is T0, T1, T2, T3 or bed")
+    if not 0 <= c <= MAX_C.get(h, 300):
+        raise ValueError(f"{h} takes 0 to {MAX_C.get(h, 300)} C")
+    mr("POST", "/printer/gcode/script?script=" + q(f"SET_HEATER_TEMPERATURE HEATER={HEATERS[h]} TARGET={c:g}"))
+    return f"{h} set to {c:g} C." if c else f"{h} off."
+
+
+LIMITS = {"x": (0, 271), "y": (0, 335)}
+GAP = 20   # mm the nozzle stays above the tallest thing on the plate
+
+
+def last_height():
+    try:
+        return mr("GET", "/server/history/list?limit=1&order=desc")["jobs"][0].get("metadata", {}).get("object_height")
+    except (RuntimeError, KeyError, IndexError):
+        return None
+
+
+def t_move(a):
+    """Move the head (X, Y) and the bed (Z) to absolute positions, homed only; Z never closer than GAP mm over the
+    tallest thing on the plate (the last print's height unless the person says tallest_mm)."""
+    th = mr("GET", "/printer/objects/query?toolhead=homed_axes")["status"]["toolhead"]
+    if th.get("homed_axes") != "xyz":
+        raise ValueError("not homed: use printer_view_bed (it homes safely) or printer_control home first")
+    parts = []
+    for ax in ("x", "y"):
+        if a.get(ax) is not None:
+            v = float(a[ax]); lo, hi = LIMITS[ax]
+            if not lo <= v <= hi:
+                raise ValueError(f"{ax.upper()} is {lo} to {hi} mm")
+            parts.append(f"{ax.upper()}{v:g}")
+    if a.get("z") is not None:
+        z, tall = float(a["z"]), a.get("tallest_mm")
+        tall = float(tall) if tall is not None else last_height()
+        if tall is None:
+            raise ValueError("say tallest_mm (how tall the tallest thing on the plate is) before moving the bed up")
+        low = max(5.0, tall + GAP)
+        if not low <= z <= 275:
+            raise ValueError(f"Z is {low:g} to 275 mm here: the nozzle stays {GAP} mm over {tall:g} mm on the plate")
+        parts.append(f"Z{z:g}")
+    if not parts:
+        raise ValueError("give x, y and/or z")
+    mr("POST", "/printer/gcode/script?script=" + q("G90"))
+    mr("POST", "/printer/gcode/script?script=" + q("G1 " + " ".join(parts) + f" F{int(a.get('speed_mm_s', 50)) * 60}"))
+    return "Moved to " + " ".join(parts) + "."
+
+
+RAW_NEVER = re.compile(r"^(SAVE_CONFIG|FIRMWARE_RESTART|RESTART|FORCE_MOVE|SET_KINEMATIC_POSITION|SET_STEPPER_ENABLE|STEPPER_BUZZ|"
+                       r"Z_ENDSTOP_CALIBRATE|Z_OFFSET_APPLY|M502|M500)\b", re.I)
+RAW_MOVES = re.compile(r"^(G0|G1|G2|G3|G28|G29|M84|SENSORLESS_HOME|PROBE|BED_MESH_CALIBRATE|AUTO_BED_MESH|SHAPER_CALIBRATE|"
+                       r"TEST_RESONANCES|XYZ_OFFSET_CALIBRATE|PROBE_XYZ|AUTO_SCREWS|SCREWS_TILT|MOVE_TO_|AUTO_FEEDING|M600|M701|M702)", re.I)
+
+
+def t_gcode(a):
+    """Any one G-code command or macro, for what the other tools do not cover. Workshop refuses it while a print runs.
+    Commands that move or feed need nothing_in_the_way; ones that rewrite the printer's setup are never sent."""
+    cmd, why = str(a.get("command", "")).strip(), str(a.get("why", "")).strip()
+    if not cmd or "\n" in cmd or len(cmd) > 200:
+        raise ValueError("one command, under 200 characters")
+    if not why:
+        raise ValueError("say why (it goes in the activity log)")
+    if RAW_NEVER.match(cmd):
+        raise ValueError("that rewrites the printer's own setup or forces a motor: a person does it from the printer")
+    if RAW_MOVES.match(cmd) and a.get("nothing_in_the_way") is not True:
+        raise ValueError("that moves the head or bed, or feeds filament: check the camera (printer_view_bed), ask the person, then pass nothing_in_the_way=true")
+    http("POST", "/moonraker/printer/gcode/script?script=" + q(cmd), timeout=600)
+    try:   # what the printer said back
+        out = [g["message"] for g in mr("GET", "/server/gcode_store?count=12")["gcode_store"] if g["type"] == "response"][-6:]
+    except (RuntimeError, KeyError):
+        out = []
+    return f"Sent {cmd} ({why}).\n" + "\n".join(out)
+
+
 CONTROLS = {"heaters_off": ("TURN_OFF_HEATERS", "Heaters off."), "motors_off": ("M84", "Motors off."), "home": ("G28", "Homed.")}
 
 
@@ -456,6 +538,12 @@ TOOLS = [
       "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
+    ("printer_heat", "Set a heater's target temperature (T0 to T3 up to 300 C, the bed up to 110 C; 0 turns it off). Not while a print runs.",
+     {"heater": {"type": "string", "enum": list(HEATERS)}, "celsius": {"type": "number", "minimum": 0, "maximum": 300}}, t_heat, ["heater", "celsius"]),
+    ("printer_move", "Move the head (x 0-271, y 0-335) and the bed (z: 0 is at the nozzle, 275 the bottom) to absolute positions. Homed only, not while printing. The bed never comes closer than 20 mm over the tallest thing on the plate (last print's height, or tallest_mm). Check the camera first.",
+     {"x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}, "tallest_mm": {"type": "number"}, "speed_mm_s": {"type": "integer", "minimum": 5, "maximum": 200}}, t_move),
+    ("printer_gcode", "Send one G-code command or macro the other tools do not cover (calibration macros such as SHAPER_CALIBRATE or XYZ_OFFSET_CALIBRATE_ALL, SET_SPOOL_ID, queries such as M114). Not while printing. Anything that moves or feeds needs nothing_in_the_way=true after a camera check and the person's word; SAVE_CONFIG, restarts and forced motor moves are never sent. Returns the printer's reply.",
+     {"command": {"type": "string"}, "why": {"type": "string"}, "nothing_in_the_way": {"type": "boolean"}}, t_gcode, ["command", "why"]),
     ("printer_pause_at_layer", "Make the running print pause itself at a layer, for magnets, nuts or inserts dropped into pockets; or off=true to cancel that.",
      {"layer": {"type": "integer"}, "off": {"type": "boolean"}}, t_pause_at_layer),
     ("printer_view_bed", "Bring the bed up to the camera so you can see the plate (after a print the bed drops out of view). Idle only. Homes first if the motors are off (Z homes downwards, away from the head), then raises the bed until the head is 20 mm above the tallest thing on the plate, which is the last print's height, or tallest_mm when the person says something taller is there. Returns a picture.",
