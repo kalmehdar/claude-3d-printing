@@ -74,6 +74,14 @@ PRESETS = {
     # ponytail: 80 mm/s and 3000 mm/s2 are common PETG starting values, not measured on the U1; tune after a seam/corner test.
     "quality": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                 "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back"},
+    # lean: quality's clean outside, less plastic inside. Measured 22 Nov on the U1 profile (test card, clip-on tags, ProDesk
+    # sleeve, X9 cradle): about standard's time, 11-30% less filament. The tool changer's prime at each head change was the
+    # biggest waste (45 mm3 a change; flushing does nothing on separate nozzles); lightning infill only holds up the tops,
+    # so lean is for covers, labels, cases and decorative parts, not brackets or anything that takes a load (use strong).
+    # ponytail: prime 15 mm3 is not yet proved on a print; check the first multi-colour print for gaps after head changes.
+    "lean": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100", "wall_generator": "arachne",
+             "precise_outer_wall": "1", "seam_position": "back", "prime_volume": "15",
+             "sparse_infill_pattern": "lightning", "sparse_infill_density": "10%"},
     "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                  "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
                  "ironing_type": "top", "ironing_speed": "30", "ironing_flow": "10%"},
@@ -86,6 +94,7 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
                 "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
                 "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
+                "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
 
 
