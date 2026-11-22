@@ -1492,21 +1492,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # it stayed in the connection and was taken for the next request ("Unsupported method '{...}POST'")
                 parts, total = [], 0
                 while True:
-                    size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
-                    total += size
-                    if total > BODY_MAX:   # no endless chunked body filling the memory (22 Nov 2026 review)
+                    try:   # a size line is short hex; "-1" or junk would slip under the cap (22 Nov 2026 review)
+                        size = int(self.rfile.readline(64).split(b";")[0].strip() or b"0", 16)
+                    except ValueError:
+                        size = -1
+                    total += max(size, 0)
+                    if size < 0 or total > BODY_MAX:   # no endless chunked body filling the memory (22 Nov 2026 review)
                         self.close_connection = True
                         parts = []
                         break
                     if size == 0:
-                        while self.rfile.readline() not in (b"\r\n", b"\n", b""):   # trailers, then the blank line
+                        while self.rfile.readline(1024) not in (b"\r\n", b"\n", b""):   # trailers, then the blank line
                             pass
                         break
                     parts.append(self.rfile.read(size)); self.rfile.readline()
                 self._body = b"".join(parts) or None
             else:
-                n = int(self.headers.get("Content-Length") or 0)
-                if n > BODY_MAX:   # never read it: the connection closes instead (see send)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    n = -1
+                if n < 0 or n > BODY_MAX:   # never read it (a negative length reads to the end): the connection closes (see send)
                     self._body = None
                     self.close_connection = True
                 else:

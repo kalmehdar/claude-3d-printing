@@ -58,6 +58,11 @@ import io as _io
 class _B: body = w.Handler.body
 _b = _B(); _b.headers = {"Transfer-Encoding": "chunked"}; _b.rfile = _io.BytesIO(b'7\r\n{"a": 1\r\n1\r\n}\r\n0\r\n\r\nGET / HTTP/1.1\r\n')
 assert _b.body() == b'{"a": 1}' and _b.rfile.read() == b"GET / HTTP/1.1\r\n"
+# a negative or junk length must not read to the end of the stream (22 Nov 2026 review, P1)
+for _h, _raw in (({"Transfer-Encoding": "chunked"}, b"-1\r\n" + b"x" * 100), ({"Content-Length": "-1"}, b"x" * 100),
+                 ({"Content-Length": "abc"}, b"x" * 100), ({"Transfer-Encoding": "chunked"}, b"zz\r\n" + b"x" * 100)):
+    _b = _B(); _b.headers = _h; _b.rfile = _io.BytesIO(_raw)
+    assert _b.body() is None and _b.close_connection and len(_b.rfile.read()) >= 90, _h
 print("chunked body check passed")
 
 # On a real socket (22 Nov 2026 review, P0): a refused POST whose body hides a second request must get one answer and a
