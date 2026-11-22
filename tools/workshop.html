@@ -55,7 +55,7 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .pill.printing{color:var(--ok)} .pill.paused{color:var(--warn)} .pill.error{color:var(--bad)} .pill.complete{color:var(--info)}
 .spacer{flex:1}
 [hidden]{display:none!important}
-.grid{display:grid;gap:14px;align-content:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-content:start}
 .now{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .card h2{font-size:12.5px;font-weight:500;color:var(--dim);margin:0 0 12px;letter-spacing:0}
@@ -267,7 +267,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
 #cmdkList button span{color:var(--faint);font-size:12px;margin-left:auto}
 #cmdkList .grp{font-size:11.5px;color:var(--faint);padding:8px 12px 4px}
 @media (max-width:900px){
-  .app{grid-template-columns:1fr}
+  .app{grid-template-columns:minmax(0,1fr)}   /* 1fr let a wide card push the page past a phone (22 Nov audit) */
   nav.side{position:fixed;bottom:0;left:0;right:0;top:auto;height:calc(var(--tab) + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);flex-direction:row;border-right:0;border-top:1px solid var(--line);background:rgba(13,14,16,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:20;gap:0}
   .brand,.jump,.navlabel,.sidefoot,.tabbtn .key{display:none}
   .tabbtn{flex-direction:column;gap:3px;font-size:10.5px;height:auto;padding:6px 2px;justify-content:center;min-height:52px;position:relative}
@@ -931,6 +931,12 @@ function thumbUrl(name, m) {
 async function ensureMeta(names) {
   await Promise.all(names.filter(n => !S.meta[n]).map(async n => { try { S.meta[n] = await api(M("/server/files/metadata?filename=" + enc(n))); } catch (e) { S.meta[n] = {}; } }));
 }
+// The file printing (or paused) now gets Preview only: no second Print, no Delete under a running job (22 Nov audit)
+function fileActs(path) {
+  const st = S.status?.print_stats?.state, busy = (st === "printing" || st === "paused") && S.status?.print_stats?.filename === path;
+  const prev = `<button class="btn sm" data-prev="${esc(path)}">Preview</button>`;
+  return busy ? prev : prev + `<button class="btn sm" data-q="${esc(path)}">Queue</button><button class="btn sm primary" data-print="${esc(path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(path)}" aria-label="Delete ${esc(path)}">Delete</button>`;
+}
 async function loadFiles() {
   try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); }
   catch (e) { return toast(e.message, true); }
@@ -948,7 +954,7 @@ function renderFiles() {
     box.innerHTML = list.map((f, i) => { const m = S.meta[f.path] || {}, d = dayLabel(f.modified), c = cost(m.filament_weight_total, m.filament_type);
       const head = d !== last ? ghead("", d, list.filter(x => dayLabel(x.modified) === d).length) : ""; last = d;
       const icon = f.path === now ? "progress" : queued.has(f.path) ? "queued" : "waiting";
-      const acts = `<button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button>`;
+      const acts = `${fileActs(f.path)}`;
       return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path), detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
         meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>`],
         acts, panel: `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` +
@@ -964,7 +970,7 @@ function renderFiles() {
       <div class="t">${esc(f.path)}</div>
       <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
       <div class="s">${day(f.modified)}${m.slicer ? " · " + esc(m.slicer) : ""}</div>
-      <div class="acts"><button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button></div>
+      <div class="acts">${fileActs(f.path)}</div>
     </div></div>`; }).join("") : `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
 }
 const fView = () => { try { return localStorage.getItem("workshop-fview") || "list"; } catch (e) { return "list"; } };
