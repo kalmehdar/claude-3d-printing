@@ -719,7 +719,9 @@ DOCTOR_KEYS = ("layer_height", "nozzle_temperature", "bed_temperature", "outer_w
                "retraction_length", "retraction_speed", "z_hop", "z_hop_types", "wipe", "reduce_crossing_wall", "wall_loops",
                "sparse_infill_density", "sparse_infill_pattern", "prime_volume", "fan_max_speed", "fan_min_speed",
                "slow_down_layer_time", "enable_support", "brim_type", "filament_type", "filament_max_volumetric_speed",
-               "pressure_advance", "seam_position", "first_layer_height", "first_layer_speed")
+               "pressure_advance", "seam_position", "first_layer_height", "first_layer_speed", "wall_sequence",
+               "seam_slope_type", "overhang_fan_speed", "outer_wall_acceleration", "default_acceleration", "ironing_type",
+               "resolution", "slice_closing_radius", "top_bottom_infill_wall_overlap", "z_offset")
 DOCTOR_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["diagnosis", "causes", "changes", "next_step"],
                  "properties": {"diagnosis": {"type": "string"},
                                 "causes": {"type": "array", "items": {"type": "string"}},
@@ -736,6 +738,24 @@ Say plainly what went wrong and why, list the likely causes most likely first, a
 changes using the exact setting names given (now and suggested values). Only suggest a change the evidence supports; if the
 photos do not show the fault clearly, say so and suggest a check instead. next_step is one sentence: what to print or check
 next.
+
+Known causes to weigh against the evidence (from makers' tested videos and this printer's own failures, 22 Nov 2026):
+- Stringing on PETG: wet filament first, then too hot, then retraction. A popping sound a few seconds after retraction
+  means too much retraction (air drawn in), which gives blobs and pinholes. Direct drive rarely needs over 1.5 mm.
+- Gashes or dragged lines where a feature joins the main part: PETG sticking to the nozzle; lower the temperature
+  before lowering speed. Pressure advance does not cure it.
+- PETG fused hard to the plate or tearing the plate: die swell; a small positive Z offset (0.05 to 0.1 mm) cures it.
+- A line round the outer wall exactly where a big flat layer (lid, floor, ironing) starts: shrink of the big layer
+  pulling the walls; chamfer the edge, print walls inner-outer-inner, keep speeds even. Longer layer times make it worse.
+- A thin part snapping at one height: a cold, weak layer where the printer spent minutes on something else at that
+  height (ironing, a big top layer, a long tool change), then the nozzle knocked it. Seen on this U1 at 3 mm on 22 Nov.
+- Fine vertical lines evenly spaced about 2 mm apart: belt pitch (belt tension); irregular ones that change with
+  speed: stepper resonance. Slower can be worse. Input shaper does not fix either.
+- Dark bands on translucent PETG walls at regular spacing: infill showing through and cooling unevenly (gyroid turning).
+- Seam blobs or a zip on round parts: scarf seam; on corners an aligned or back seam hides better.
+- One head misaligned after the printer was moved, or after a nozzle swap: rerun nozzle offset calibration and the mesh.
+- Dirty-contact warnings or failed pickups: pogo pins and steel connectors need cleaning; dust is the usual cause.
+- Small parts knocked off mid-print, then others in a domino: add a brim to small parts.
 
 Slicer settings:
 {settings}

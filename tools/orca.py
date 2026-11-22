@@ -77,7 +77,7 @@ PRESETS = {
                 # scarf seam (the seam ramps in over 20 mm instead of a bump), staggered inner seams and the outer wall printed
                 # between two inner walls: four of ten videos found scarf works, none against (22 Nov, youtube-smooth-surfaces.md)
                 "seam_slope_type": "external", "seam_slope_conditional": "1",
-                "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "staggered_inner_seams": "1",
+                "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                 "wall_sequence": "inner-outer-inner wall"},
     # lean: quality's clean outside, less plastic inside. Measured 22 Nov on the U1 profile (test card, clip-on tags, ProDesk
     # sleeve, X9 cradle): about standard's time, 11-30% less filament. The tool changer's prime at each head change was the
@@ -90,7 +90,7 @@ PRESETS = {
     "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                  "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
                  "seam_slope_type": "external", "seam_slope_conditional": "1",
-                 "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "staggered_inner_seams": "1",
+                 "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                  "wall_sequence": "inner-outer-inner wall",
                  # ironing 40% flow at 40 mm/s: a widely upvoted tip (dozens of filaments, "almost like glass"), up from Orca's
                  # cautious 10% / 30. ponytail: not yet proved on the U1; check the ironing test (10% against 40%) before trusting it.
