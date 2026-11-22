@@ -1115,14 +1115,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 slicer = True
             except SystemExit:
                 slicer = False
-            try:   # Snapmaker U1 Extended firmware (and most Klipper camera stacks) serve a live player here
-                with urllib.request.urlopen(f"http://{CFG['printer']}/webcam/", timeout=3) as r:
-                    live = f"http://{CFG['printer']}/webcam/" if r.status == 200 else None
-            except OSError:
-                live = None
+            live = screen = None
+            try:   # the printer's own webcam list names the live player (U1 Extended Firmware: /webcam/webrtc) and the screen
+                with moonraker("GET", "/server/webcams/list", timeout=3) as r:
+                    cams = json.load(r)["result"]["webcams"]
+                host = f"http://{CFG['printer']}"
+                for c in cams:
+                    url = c.get("stream_url") or ""
+                    full = url if url.startswith("http") else host + url if url.startswith("/") else None
+                    if not full:
+                        continue
+                    if c.get("service", "").startswith("webrtc") and not live:
+                        live = full
+                    elif c.get("service") == "iframe" and "/screen" in url:
+                        screen = full
+            except (OSError, ValueError, KeyError):
+                pass
             conf = printer_conf()
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
-            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "push": push,
+            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "printer_screen": screen, "push": push,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
         m = re.fullmatch(r"/calibration-photo/([\w-]+\.jpg)", p)
         if m:
