@@ -379,16 +379,17 @@ _look_slots = _threading.BoundedSemaphore(2)
 UPLOAD_PRINT = re.compile(rb'name="print"[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*\r?\n\s*true', re.I)
 
 
-def start_unload(head):
-    """Run printer.unload (the U1 screen's own batch protocol) in a thread; about a minute per head. False if one is running."""
+def start_unload(head, action="unload"):
+    """Run printer.unload or printer.load (the U1's own feeder batch protocol) in a thread; a few minutes per head.
+    False if one is running (load and unload share the lock: one feeder job at a time)."""
     import printer
     printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
 
     def go():
         try:
-            printer.unload(head if head.lower() == "all" else "T" + head.upper().lstrip("T"))
+            getattr(printer, action)(head if head.lower() == "all" else "T" + head.upper().lstrip("T"))
         except SystemExit as e:
-            sys.stderr.write(f"unload {head}: {e}\n")
+            sys.stderr.write(f"{action} {head}: {e}\n")
 
     with _unload_lock:   # two people pressing Unload at once start one unload
         if _unloading and _unloading[0].is_alive():
@@ -1571,7 +1572,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(502, {"error": f"printer: {e}"})
             record("brought the bed up to the camera", f"Z {v['z']} mm" + (", homed first" if v["homed"] else ""), who=actor(self))
             return self.send(200, v)
-        if p == "/api/unload" and self.command == "POST":
+        if p in ("/api/unload", "/api/load") and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")
                 head = str(req.get("head", "")) if isinstance(req, dict) else ""
@@ -1579,11 +1580,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 head = ""
             if not re.fullmatch(r"all|T?[0-3]", head, re.I):
                 return self.send(400, {"error": "head is T0 to T3, or all"})
+            action = p.rsplit("/", 1)[1]
             if self.printer_busy():
-                return self.send(409, {"error": "a job is running; unload after it ends"})
-            if not start_unload(head):
-                return self.send(409, {"error": "an unload is already running; wait for it to finish"})
-            record("unload", head, who=actor(self))
+                return self.send(409, {"error": f"a job is running; {action} after it ends"})
+            if not start_unload(head, action):
+                return self.send(409, {"error": "a load or unload is already running; wait for it to finish"})
+            record(action, head, who=actor(self))
             return self.send(202, {"started": head})
         if p.startswith("/api/upload-model") and self.command == "POST":   # ?name=part.stl&colour=1c1c1c&preset=lean&queue=1, body = the file
             q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(p).query).items()}

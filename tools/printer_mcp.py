@@ -282,6 +282,11 @@ def t_unload(a):
     return f'Unloading {a["head"]}: about a minute per head. Check printer_status afterwards.'
 
 
+def t_load(a):
+    http("POST", "/api/load", {"head": a["head"]})
+    return f'Loading {a["head"]} from its feeder into the head: a few minutes (it heats to about 270 C). Check printer_status afterwards.'
+
+
 def t_filament(a):
     return http("POST", "/api/filament", {"head": a["head"], "type": a["type"], "vendor": a.get("vendor") or "generic",
                                           "sub": a.get("sub") or "generic", "colour": a["colour"].lstrip("#")})   # http() unwraps {"result": ...}
@@ -519,6 +524,8 @@ TOOLS = [
       "job_id": {"type": "string"}, "bed_clear": {"type": "boolean"}}, t_queue, ["action"]),
     ("printer_unload", "Unload a head's filament back to its spool (Snapmaker U1), or all heads. Not during a print.",
      {"head": {"type": "string", "description": "T0 to T3, or all"}}, t_unload, ["head"]),
+    ("printer_load", "Load a head whose filament is parked at its feeder into the head (the printer's own feed routine; it heats and feeds). Not while printing. Use it when a start is refused because a head is not loaded.",
+     {"head": {"type": "string", "enum": ["T0", "T1", "T2", "T3", "all"]}}, t_load, ["head"]),
     ("printer_set_filament", "Tell the printer what spool was loaded on a head, as its screen asks after loading (type from printer_filament_types; an unknown brand uses the type's generic settings). Not during a print.",
      {"head": HEAD, "type": {"type": "string", "description": "e.g. PLA, PETG"}, "vendor": {"type": "string", "description": "brand, e.g. SUNLU"},
       "sub": {"type": "string", "description": "sub-type, e.g. generic, HF, Silk"}, "colour": {"type": "string", "description": "hex RRGGBB"}},

@@ -9,6 +9,7 @@
     python printer.py pause | resume | cancel
     python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
+    python printer.py load T2 | all               Snapmaker U1: load a head parked at its feeder into the head
     python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
     python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
                                                   Snapmaker U1: tell the printer what was loaded on a head (as its screen does)
@@ -524,6 +525,61 @@ def unload(which):
         call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
 
 
+def load(which):
+    """Snapmaker U1: load a head whose filament is parked at the feeder (preload_finish) into the head, the same feed
+    sequence as unload with LOAD=1 in place of UNLOAD=1 (the firmware's own SM_PRINT_AUTO_FEED feeds with LOAD=1):
+    AUTO_FEEDING_BATCH START, DOING STAGE=prepare (pick and heat the head), DOING STAGE=doing (feed it to the nozzle),
+    STOP (heaters off). Done when the feeder reports load_finish."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; load after it ends")
+    t = query("print_task_config").get("print_task_config")
+    if not t or "filament_exist" not in t:
+        sys.exit("this printer does not report its heads' filament (load is for the Snapmaker U1)")
+    n = len(t["filament_exist"])
+    heads = [i for i in range(n) if channel_state(i) == "preload_finish"] if which == "all" else [int(which.upper().lstrip("T"))]
+    for i in heads:
+        if not 0 <= i < n:
+            sys.exit(f"no head T{i}: this printer has T0 to T{n - 1}")
+    todo = []
+    for i in heads:
+        st = channel_state(i)
+        if st == "load_finish":
+            print(f"T{i}: already in the head")
+        elif st != "preload_finish":
+            print(f"T{i}: no filament parked at the feeder ({st}); put the spool's end into the feeder first")
+        elif t["filament_soft"][i]:
+            print(f"T{i}: soft filament, load it from the printer's screen")
+        else:
+            todo.append(i)
+    if not todo:
+        return
+
+    def idle():
+        return query("machine_state_manager")["machine_state_manager"]["main_state"] == 0
+
+    def hot(i):
+        h = query(head_obj(i))[head_obj(i)]
+        return h["target"] > 0 and h["temperature"] >= h["target"] - 5
+
+    call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=START"), "POST")
+    try:
+        for k, i in enumerate(todo):
+            nxt = f" NEXT_EXTRUDER={todo[k + 1]}" if k + 1 < len(todo) else ""
+            print(f"T{i}: heating...", flush=True)
+            # the U1 often does the whole load in the prepare stage (seen 22 Nov 2026: heat to 270, feed, load_finish, cool)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} LOAD=1",
+                        lambda: hot(i) or channel_state(i) == "load_finish", 300)
+            if channel_state(i) == "load_finish":
+                print(f"T{i}: loaded")
+                continue
+            print(f"T{i}: loading...", flush=True)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} LOAD=1",
+                        lambda: idle() and channel_state(i) == "load_finish", 300)
+            print(f"T{i}: loaded")
+    finally:
+        call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
+
+
 def heads_not_loaded(filename):
     """Snapmaker U1: heads the file uses whose feeder does not report load_finish (filament only parked at the feeder
     runs out at the first move). Empty on printers without feeders."""
@@ -767,6 +823,11 @@ def main():
             print(f"speed {pct}%")
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
+    elif c == "load":
+        if not x:
+            sys.exit("load T0..T3, or load all (every head parked at its feeder)")
+        record("load requested", x[0])
+        load(x[0])
     elif c == "unload":
         if not x:
             sys.exit("unload T0..T3, or unload all")
