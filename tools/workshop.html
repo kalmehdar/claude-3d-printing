@@ -60,10 +60,14 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .card h2{font-size:12.5px;font-weight:500;color:var(--dim);margin:0 0 12px;letter-spacing:0}
 .cam{position:relative;padding:0;overflow:hidden;background:#000;aspect-ratio:16/9}
+.camrow{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.camrow:has(#l3Card:not([hidden])){grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.live3d{position:relative;padding:0;overflow:hidden;aspect-ratio:16/9}
+.live3d .viewer{height:100%;border-radius:0}
 .cam img{width:100%;height:100%;object-fit:cover;display:block}
-.cam .stamp{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:#fff;background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;font-variant-numeric:tabular-nums}
-.cam .camtools{position:absolute;right:8px;top:8px;display:flex;gap:6px}
-.cam .camtools .btn{background:rgba(16,17,19,.75);backdrop-filter:blur(8px)}
+.cam .stamp,.live3d .stamp{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:#fff;background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;font-variant-numeric:tabular-nums}
+.cam .camtools,.live3d .camtools{position:absolute;right:8px;top:8px;display:flex;gap:6px}
+.cam .camtools .btn,.live3d .camtools .btn{background:rgba(16,17,19,.75);backdrop-filter:blur(8px)}
 .job{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
 .ring{--p:0;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;
   background:conic-gradient(var(--accent) calc(var(--p)*1%),var(--panel2) 0)}
@@ -330,8 +334,13 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             </div>
             <div class="actions" id="jobActions"></div>
           </div>
+          <div class="camrow">
           <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
             <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
+          <div class="card live3d" id="l3Card" hidden><div class="viewer" id="l3"></div>
+            <span class="stamp" id="l3Stamp">3D</span>
+            <div class="camtools"><button class="btn sm" id="l3Reset" aria-label="Back to the starting view">Reset view</button></div></div>
+          </div>
           <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
           <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
@@ -647,7 +656,7 @@ async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
     const was = S.status?.print_stats?.filename;
-    S.status = r.status; $("#conn").className = "dot on"; render(); sampleLive(r.status);
+    S.status = r.status; $("#conn").className = "dot on"; render(); sampleLive(r.status); live3d();
     if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
     const st = S.status?.print_stats?.state;
@@ -1112,6 +1121,50 @@ function parseGcode(text) {
     x = nx; y = ny; z = nz;
   }
   return {pos: pos.subarray(0, count * 6), col: col.subarray(0, count * 6), count, layers, tools};
+}
+
+/* ---------- live 3D: the running print's toolpath, printed layers solid, the rest a faint ghost ---------- */
+const L3 = {file: null, v: null, g: null, solid: null, ghost: null, head: null, layer: -1, busy: false, box: null};
+async function live3d() {
+  const s = S.status, ps = s?.print_stats, card = $("#l3Card");
+  const active = ps && (ps.state === "printing" || ps.state === "paused") && ps.filename;
+  if (!active) { if (!card.hidden) { card.hidden = true; } return; }
+  card.hidden = false;
+  if (L3.file !== ps.filename && !L3.busy) {
+    L3.busy = true; L3.file = ps.filename; L3.layer = -1; $("#l3Stamp").textContent = "3D: loading the toolpath";
+    if (L3.v) { L3.v.dispose(); $("#l3").innerHTML = ""; L3.v = null; }
+    try {
+      const r = await fetch(M("/server/files/gcodes/" + ps.filename.split("/").map(enc).join("/")));
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      L3.g = parseGcode(await r.text());
+      const v = L3.v = makeViewer($("#l3")); if (!v) return;
+      const c = L3.g.col.slice();   // black filament on the dark viewer vanishes: lift very dark colours to a readable grey
+      for (let k = 0; k < c.length; k += 3) { const l = 0.2126 * c[k] + 0.7152 * c[k + 1] + 0.0722 * c[k + 2];
+        if (l < 0.22) { const f = 0.42 - l; c[k] += f; c[k + 1] += f; c[k + 2] += f; } }
+      const pos = new THREE.BufferAttribute(L3.g.pos, 3), col = new THREE.BufferAttribute(c, 3);
+      const gs = new THREE.BufferGeometry(); gs.setAttribute("position", pos); gs.setAttribute("color", col);
+      const gg = new THREE.BufferGeometry(); gg.setAttribute("position", pos);   // same points, its own draw range
+      L3.solid = new THREE.LineSegments(gs, new THREE.LineBasicMaterial({vertexColors: true}));
+      L3.ghost = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({color: 0x8a8f99, transparent: true, opacity: 0.14, depthWrite: false}));
+      L3.head = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12), new THREE.MeshBasicMaterial({color: 0xffb347}));
+      v.scene.add(L3.ghost, L3.solid, L3.head);
+      const bedMm = (DESIGNS && DESIGNS.bed) || 270; v.bed(bedMm, bedMm / 2, bedMm / 2);
+      gs.computeBoundingBox(); L3.box = gs.boundingBox; v.frame(L3.box);
+      $("#l3Reset").onclick = () => v.frame(L3.box);
+    } catch (e) { $("#l3Stamp").textContent = "3D: could not load the toolpath (" + e.message + ")"; L3.g = null; }
+    finally { L3.busy = false; }
+  }
+  if (!L3.g || !L3.v) return;
+  // printed so far: every layer at or below the nozzle's height now
+  const z = s.gcode_move?.gcode_position?.[2] ?? 0, ls = L3.g.layers;
+  let i = -1; for (let k = 0; k < ls.length; k++) { if (ls[k].z <= z + 0.01) i = k; else break; }
+  const end = i < 0 ? 0 : (i + 1 < ls.length ? ls[i + 1].start : L3.g.count);
+  if (i !== L3.layer) {
+    L3.layer = i;
+    L3.solid.geometry.setDrawRange(0, end * 2); L3.ghost.geometry.setDrawRange(end * 2, (L3.g.count - end) * 2);
+    $("#l3Stamp").textContent = `3D: layer ${Math.max(0, i + 1)} of ${ls.length} printed`;
+  }
+  const gp = s.gcode_move?.gcode_position; if (gp) L3.head.position.set(gp[0], gp[1], gp[2]);
 }
 
 /* ---------- designs ---------- */
