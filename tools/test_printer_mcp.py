@@ -331,4 +331,13 @@ for path, left_out in (("persistent/agent.json", True), ("snapmaker/product_info
                        ("printer-20261120_135204.cfg", True), (".moonraker.conf.bkp", True), ("printer.cfg", False),
                        ("snapmaker/input_shaper.json", False), ("extended/moonraker/02_internal_camera.cfg", False)):
     assert bool(printer.BACKUP_SKIP.search(path)) == left_out, path
+# the page's own script must parse (a stray // once cut a one-line function in half and the whole page stopped)
+import re as _re, shutil as _sh
+if _sh.which("node"):
+    _js = max(_re.findall(r"<script>(.*?)</script>", open(os.path.join(os.path.dirname(__file__), "workshop.html"), encoding="utf-8").read(), _re.S), key=len)
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as _f:
+        _f.write(_js)
+    _r = subprocess.run(["node", "--check", _f.name], capture_output=True, text=True)
+    os.remove(_f.name)
+    assert _r.returncode == 0, "workshop.html script does not parse: " + _r.stderr[-300:]
 print("printer_mcp.py checks passed")

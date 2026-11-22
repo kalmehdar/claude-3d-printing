@@ -26,6 +26,7 @@ import argparse
 import ipaddress
 import shutil
 import http.server
+import datetime
 import json
 import os
 import re
@@ -803,6 +804,76 @@ def take_off_spools(file, actual_mm, meta):
     return use
 
 
+def _get(path, timeout=15):
+    with moonraker("GET", path, timeout=timeout) as r:
+        return json.load(r)["result"]
+
+
+def insight(kind):
+    """The data behind the Printer tab, the cost card and the planner. Reads only."""
+    import insights, printer
+    if kind == "health":
+        st = _get("/printer/objects/query?bed_mesh=probed_matrix,mesh_min,mesh_max,profile_name")["status"]
+        temps = _get("/server/temperature_store?include_monitors=false")
+        keep = {k: {f: v[f][::20] for f in ("temperatures", "targets") if f in v} for k, v in temps.items()}   # the last 20 minutes, every 20 s
+        return {"mesh": insights.mesh(st.get("bed_mesh")), "temps": keep}
+    if kind == "costs":
+        jobs = _get("/server/history/list?limit=300&order=desc")["jobs"]
+        starters = {}
+        try:   # who pressed start, from the activity log (Workshop and printer.py both write it)
+            for line in open(printer.ACTIVITY, encoding="utf-8"):
+                try:
+                    a = json.loads(line)
+                except ValueError:
+                    continue
+                if a.get("what") in ("started", "started the queue") and a.get("detail"):
+                    starters[(a["detail"], int(a["t"] // 60))] = a.get("who", "someone")
+        except OSError:
+            pass
+        def who(j):   # a start logged within two minutes either side of the job's start time
+            t = int((j.get("start_time") or 0) // 60)
+            return next((starters[(j.get("filename"), t + d)] for d in (0, -1, 1, -2, 2) if (j.get("filename"), t + d) in starters), None)
+        found = {(j.get("filename"), int((j.get("start_time") or 0) // 60)): w for j in jobs if (w := who(j))}
+        out = insights.costs(jobs, filament_prices(CFG.get("register")), found)
+        out["prints"] = [{**r, "when": r["when"].isoformat(timespec="minutes")} for r in out["prints"][:60]]
+        return out
+    if kind == "plan":
+        q = _get("/server/job_queue/status").get("queued_jobs") or []
+        ps = _get("/printer/objects/query?print_stats&display_status")["status"]
+        acc = accuracy(_get("/server/history/list?limit=100&order=desc")["jobs"])
+        k = acc["time"] or 1
+        busy = None
+        if ps["print_stats"].get("state") in ("printing", "paused"):
+            prog = (ps.get("display_status") or {}).get("progress") or 0
+            dur = ps["print_stats"].get("print_duration") or 0
+            if prog > 0.02:
+                busy = dt_now() + datetime.timedelta(seconds=dur * (1 - prog) / prog)
+        rows = []
+        for j in q:
+            try:
+                est = _get("/server/files/metadata?filename=" + urllib.parse.quote(j["filename"])).get("estimated_time") or 0
+            except (OSError, ValueError, KeyError):
+                est = 0
+            rows.append({"filename": j["filename"], "seconds": est * k + (acc["prep_min"] or 0) * 60})
+        plan = insights.plan(rows, dt_now(), busy)
+        return {"busy_until": busy.isoformat(timespec="minutes") if busy else None, "quiet": insights.QUIET,
+                "jobs": [{**r, "start": r["start"].isoformat(timespec="minutes"), "end": r["end"].isoformat(timespec="minutes")} for r in plan]}
+    if kind == "spoolman":
+        conf = printer_conf()
+        url = (conf.get("spoolman") or "").rstrip("/")
+        if not url:
+            return {"spools": [], "note": "Spoolman isn't set up on this computer yet (its address goes in printer.json as \"spoolman\")."}
+        with urllib.request.urlopen(url + "/api/v1/spool", timeout=8) as r:
+            data = json.load(r)
+        heads = conf.get("spool_heads") or {"T0": 1, "T1": 2, "T2": 3, "T3": 4}   # Legion d95efb set these spools up on 21 Nov
+        return {"spools": insights.spools(data, heads), "url": url}
+    raise KeyError(kind)
+
+
+def dt_now():
+    return datetime.datetime.now()
+
+
 def accuracy(jobs):
     """Slicer against printer for finished jobs: per job the ratios, and medians to correct estimates with.
     jobs: Moonraker history entries. time = print_duration / slicer estimate; prep = total - print minutes (heating,
@@ -1185,6 +1256,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     return self.send(400, {"error": str(e)})
             return self.send(200, {"low_g": LOW_G, "heads": spools()})
+        if p in ("/api/health", "/api/costs", "/api/plan", "/api/spoolman"):   # read-only views built by tools/insights.py
+            try:
+                return self.send(200, insight(p.rsplit("/", 1)[1]))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"could not read it: {e}"})
         if p == "/api/accuracy":   # slicer vs printer from the printer's own history
             try:
                 with moonraker("GET", "/server/history/list?limit=100&order=desc", timeout=15) as r:

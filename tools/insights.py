@@ -67,6 +67,7 @@ def costs(jobs, prices, starters=None):
         c = g * prices.get(mat, 0) / 1000
         when = dt.datetime.fromtimestamp(j.get("start_time") or 0)
         who = starters.get((j.get("filename"), int((j.get("start_time") or 0) // 60)), "someone")
+        who = who[:1].upper() + who[1:]   # "khalid" from printer.py and "Khalid" from the page are one person
         rows.append({"file": j.get("filename"), "when": when, "status": j.get("status"), "grams": round(g, 1), "cost": round(c, 2), "who": who})
         m = months.setdefault(when.strftime("%Y-%m"), {"prints": 0, "grams": 0.0, "cost": 0.0})
         p = people.setdefault(who, {"prints": 0, "grams": 0.0, "cost": 0.0})

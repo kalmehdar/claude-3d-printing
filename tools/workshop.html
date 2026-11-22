@@ -211,6 +211,16 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 @media (max-width:640px){.hstat{display:none}}
 .pushrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:12.5px}
 #pushHide{color:var(--dim)}
+/* Printer tab */
+.ctrls{display:flex;flex-wrap:wrap;gap:6px}
+.mesh{display:grid;gap:2px;margin:4px 0 10px}
+.mesh i{display:grid;place-items:center;aspect-ratio:1.4;border-radius:3px;font:500 10.5px ui-monospace,Menlo,monospace;color:#fff;font-style:normal}
+.tchart{width:100%;height:150px;display:block}
+.tlegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--dim);margin-top:6px}
+.tlegend b{font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
+.ctable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.ctable th{text-align:left;color:var(--faint);font-weight:500;padding:4px 0}
+.ctable td{padding:5px 0;border-top:1px solid var(--line)}
 /* activity feed: initial badge, event, time on the right */
 .feed{display:flex;flex-direction:column}
 .fday{font-size:11.5px;color:var(--faint);padding:8px 0 4px}
@@ -283,6 +293,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <button class="tabbtn" data-tab="queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="count" id="qCount" hidden></span><span class="key">G Q</span></button>
     <button class="tabbtn" data-tab="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg>Files<span class="key">G F</span></button>
     <button class="tabbtn" data-tab="designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Designs<span class="key">G D</span></button>
+    <button class="tabbtn" data-tab="printer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="9" rx="2"/><path d="M7 18v3h10v-3"/><path d="M17 13h.01"/></svg>Printer<span class="key">G P</span></button>
     <button class="tabbtn" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 8v4l3 2"/></svg>History<span class="key">G H</span></button>
     <div class="sidefoot">Press <kbd>?</kbd> for shortcuts</div>
   </nav>
@@ -342,6 +353,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
           <input id="rqNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
           <button class="btn primary" id="rqAdd">Ask</button></div>
         <div class="list" id="rqList"></div></div>
+      <p class="note" id="planNote" style="margin:0 0 10px"></p>
       <div class="toolbar"><span class="note" id="qState"></span><span class="spacer"></span>
         <button class="btn" id="qPause">Hold queue</button><button class="btn primary" id="qStart">Start queue</button></div>
       <div class="list" id="qList"></div>
@@ -366,8 +378,29 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     </section>
 
 
+    <section id="tab-printer" hidden>
+      <div class="grid now">
+        <div class="grid" style="align-content:start">
+          <div class="card"><h2>Controls</h2>
+            <div class="ctrls">
+              <button class="btn" data-ctl="light">Light on or off</button>
+              <button class="btn" data-ctl="heaters">Heaters off</button>
+              <button class="btn" data-ctl="home">Home</button>
+              <button class="btn" data-ctl="motors">Motors off</button>
+            </div>
+            <p class="note" style="margin:10px 0 0">While a print runs, only the light works: Workshop refuses anything that moves, heats or feeds. Load and unload are on each head in Now.</p></div>
+          <div class="card"><h2>Bed mesh</h2><div id="meshBox" class="note">Loading...</div></div>
+        </div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
+          <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
+      <div class="card" id="costCard" hidden style="margin-bottom:16px"><h2>Filament and cost</h2><div id="costBox"></div></div>
       <div class="card" id="accCard" hidden style="margin-bottom:16px"><h2>Slicer against the printer</h2><div class="note" id="accInfo"></div></div>
       <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
         <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
@@ -438,13 +471,13 @@ const post = (p, body) => api(p, {method: "POST", headers: body ? {"Content-Type
 const gcode = s => post(M("/printer/gcode/script?script=" + enc(s)));
 
 /* ---------- tabs ---------- */
-const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", history: "History"};
+const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", printer: "Printer", history: "History"};
 let tab = "now";
 function go(t) {
   tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
   document.querySelectorAll("main>section").forEach(s => s.hidden = s.id !== "tab-" + t);
   $("#title").textContent = TITLES[t]; history.replaceState(null, "", "#" + t);
-  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, history: loadHistory}[t] || (() => {}))();
+  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, printer: loadPrinter, history: loadHistory}[t] || (() => {}))();
 }
 document.querySelectorAll(".tabbtn").forEach(b => b.onclick = () => go(b.dataset.tab));
 
@@ -453,6 +486,7 @@ const focusOn = (t, sel) => { go(t); setTimeout(() => { const el = $(sel); if (e
 const COMMANDS = [
   ["Go to", "Now", "G N", () => go("now")], ["Go to", "Queue", "G Q", () => go("queue")],
   ["Go to", "Files on the printer", "G F", () => go("files")], ["Go to", "Designs", "G D", () => go("designs")],
+  ["Go to", "Printer", "G P", () => go("printer")], ["Go to", "History", "G H", () => go("history")],
   ["Do", "Ask for a print", "", () => focusOn("queue", "#rqWhat")],
   ["Do", "Search designs", "", () => focusOn("designs", "#dSearch")],
   ["Do", "Search files", "", () => focusOn("files", "#fSearch")],
@@ -490,7 +524,7 @@ $("#jumpBtn").onclick = openCmdk;
 function showKeys() {
   const row = (k, t) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>${t}</span><span>${k.split(" ").map(x => `<kbd>${x}</kbd>`).join(" ")}</span></div>`;
   openSheet("Keyboard shortcuts", row("⌘ K", "Search or jump") + row("/", "Search or jump") + row("G N", "Now") + row("G Q", "Queue") +
-    row("G F", "Files") + row("G D", "Designs") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row's details") + row("Esc", "Close the details") + row("L", "Light on or off") + row("?", "This list"));
+    row("G F", "Files") + row("G D", "Designs") + row("G P", "Printer") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row's details") + row("Esc", "Close the details") + row("L", "Light on or off") + row("?", "This list"));
 }
 let gPressed = 0;
 document.addEventListener("keydown", e => {
@@ -514,7 +548,7 @@ document.addEventListener("keydown", e => {
   if (k === "/") { e.preventDefault(); openCmdk(); return; }
   if (k === "?") { showKeys(); return; }
   if (Date.now() - gPressed < 1200) {
-    const t = {n: "now", q: "queue", f: "files", d: "designs", h: "history"}[k]; gPressed = 0;
+    const t = {n: "now", q: "queue", f: "files", d: "designs", p: "printer", h: "history"}[k]; gPressed = 0;
     if (t) { go(t); e.preventDefault(); } return;
   }
   if (k === "g") { gPressed = Date.now(); return; }
@@ -745,7 +779,7 @@ $("#lightBtn").onclick = async () => { const on = $("#lightBtn").getAttribute("a
 
 /* camera */
 let camTimer = null;
-function camTick() { const img = new Image(); img.onload = () => { $("#camImg").src = img.src; $("#camStamp").textContent = "Camera · " + clock(new Date()); }; img.src = "/cam.jpg?t=" + Date.now(); }
+function camTick() { const img = new Image(); img.onload = () => { const el = $("#camImg"); if (!el) return; el.src = img.src; $("#camStamp").textContent = "Camera · " + clock(new Date()); }; img.src = "/cam.jpg?t=" + Date.now(); }
 let camLoop = function () { clearInterval(camTimer); if (document.hidden) return; camTick(); camTimer = setInterval(camTick, 2000); };
 document.addEventListener("visibilitychange", () => camLoop());
 $("#camFull").onclick = () => { const b = openSheet("Camera", `<img id="bigCam" style="width:100%;border-radius:12px" alt="Live camera">`); const t = setInterval(() => { const el = $("#bigCam"); if (el) el.src = "/cam.jpg?t=" + Date.now(); }, 1500); b.querySelector("img").src = "/cam.jpg?t=" + Date.now(); onSheetClose = () => clearInterval(t); };
@@ -799,6 +833,7 @@ $("#rqAdd").onclick = async () => {
 $("#rqList").addEventListener("click", async e => { const b = e.target.closest("[data-rq]"); if (!b) return;
   try { await post("/api/requests", {id: +b.dataset.rq, state: b.dataset.to}); loadRequests(); } catch (err) { toast(err.message, true); } });
 async function loadQueue() {
+  loadPlan();
   loadRequests();
   try {
     const q = await api(M("/server/job_queue/status")); S.queue = q.queued_jobs || [];
@@ -1108,6 +1143,7 @@ async function openDesign(key) {
 
 /* ---------- history ---------- */
 async function loadHistory() {
+  loadCosts();
   try {
     loadCalibration();
     await loadAccuracy();
@@ -1273,6 +1309,64 @@ async function loadActivity() {
     return head + `<div class="fitem"><span class="av" style="--h:${hue(r.who)}" aria-hidden="true">${esc(name(r.who)[0])}</span>
       <div class="ftext"><b>${esc(name(r.who))}</b> ${esc(r.what)}${r.detail ? ` <span class="fdet">${esc(r.detail)}</span>` : ""}<span class="fvia"> via ${esc(r.via)}</span></div>
       <time>${clock(new Date(r.t * 1000))}</time></div>`; }).join("")}</div>` : "Nothing yet.";
+}
+
+/* ---------- Printer tab: controls, bed mesh, temperatures, spools ---------- */
+const CTL = {heaters: ["TURN_OFF_HEATERS", "Heaters off"], home: ["G28", "Homing"], motors: ["M84", "Motors off"]};
+$("#tab-printer").addEventListener("click", e => { const b = e.target.closest("[data-ctl]"); if (!b) return;
+  const k = b.dataset.ctl;
+  if (k === "light") return $("#lightBtn").click();
+  const [cmd, word] = CTL[k];
+  if (k === "home") return confirmSheet("Home the printer?", "The head moves to its corners and back. Check nothing is in its way.", "Home", async () => { await gcode(cmd); toast(word); });
+  (async () => { try { await gcode(cmd); toast(word); } catch (err) { toast(err.message, true); } })();
+});
+async function loadPrinter() {
+  api("/api/health").then(h => {
+    const m = h.mesh;
+    if (!m.rows.length) $("#meshBox").textContent = "No mesh yet: the printer probes the bed at the start of each print.";
+    else {
+      const span = Math.max(Math.abs(m.min), Math.abs(m.max), 0.05);
+      const cell = v => { const t = v / span, c = t >= 0 ? `rgba(235,93,93,${(0.25 + 0.75 * t).toFixed(2)})` : `rgba(94,158,240,${(0.25 + 0.75 * -t).toFixed(2)})`;
+        return `<i style="background:${c}" title="${v.toFixed(3)} mm">${(v >= 0 ? "+" : "") + v.toFixed(2)}</i>`; };
+      $("#meshBox").innerHTML = `<div class="mesh" style="grid-template-columns:repeat(${m.rows[0].length},1fr)">${m.rows.slice().reverse().map(r => r.map(cell).join("")).join("")}</div>
+        <div class="note">Spread <b>${m.range} mm</b> (lowest ${m.min}, highest ${m.max}): ${esc(m.verdict)}. Back of the bed at the top; red is high, blue is low.
+        The U1 probes only the area it is about to print, so a small part shows a small mesh.</div>`;
+    }
+    const COL = {heater_bed: "#f0bf4c", extruder: "#e2dedb", extruder1: "#8a8d95", extruder2: "#eb5d5d", extruder3: "#5e9ef0", "temperature_sensor cavity": "#4cb782"};
+    const NAME = {heater_bed: "Bed", extruder: "T0", extruder1: "T1", extruder2: "T2", extruder3: "T3", "temperature_sensor cavity": "Chamber"};
+    const series = Object.entries(h.temps).filter(([, v]) => (v.temperatures || []).length);
+    const top = Math.max(60, ...series.flatMap(([, v]) => v.temperatures)) * 1.05, W = 600, H = 150;
+    const line = vals => vals.map((v, i) => `${(i / Math.max(vals.length - 1, 1) * W).toFixed(1)},${(H - v / top * H).toFixed(1)}`).join(" ");
+    $("#tempBox").innerHTML = `<svg class="tchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Temperatures over the last 20 minutes">
+        ${[50, 100, 150, 200, 250].filter(g => g < top).map(g => `<line x1="0" x2="${W}" y1="${H - g / top * H}" y2="${H - g / top * H}" stroke="rgba(255,255,255,.06)"/>`).join("")}
+        ${series.map(([k, v]) => `<polyline fill="none" stroke="${COL[k] || "#aaa"}" stroke-width="1.6" vector-effect="non-scaling-stroke" points="${line(v.temperatures)}"/>`).join("")}</svg>
+      <div class="tlegend">${series.map(([k, v]) => `<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${COL[k] || "#aaa"};margin-right:5px"></i>${NAME[k] || esc(k)} <b>${Math.round(v.temperatures.at(-1))}°</b>${v.targets && v.targets.at(-1) ? ` / ${Math.round(v.targets.at(-1))}°` : ""}</span>`).join("")}</div>`;
+  }).catch(e => { $("#meshBox").textContent = $("#tempBox").textContent = "Could not read the printer: " + e.message; });
+  api("/api/spoolman").then(r => {
+    $("#spoolBox").innerHTML = r.spools.length ? `<div class="list">${r.spools.map(x => issueHtml({icon: x.low ? "error" : "queued", id: x.head || "#" + x.id,
+        title: `<i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${esc(x.colour)};margin-right:6px;vertical-align:-1px"></i>${esc(x.name)}`,
+        meta: [x.left_g != null ? `${x.left_g} g left` : "", `${x.used_g} g used`, x.low ? "reorder" : ""]})).join("")}</div>`
+      : `<p class="note" style="margin:0">${esc(r.note || "No spools in Spoolman yet.")} The heads in Now still show Workshop's own count.</p>`;
+  }).catch(e => { $("#spoolBox").textContent = "Spoolman did not answer: " + e.message; });
+}
+async function loadCosts() {
+  let c; try { c = await api("/api/costs"); } catch (e) { return; }
+  const months = Object.entries(c.months).sort().reverse(), people = Object.entries(c.people).sort((a, b) => b[1].grams - a[1].grams);
+  if (!months.length) return;
+  $("#costCard").hidden = false;
+  const table = (head, rows) => `<table class="ctable"><tr><th>${head}</th><th>Prints</th><th>Filament</th><th>Cost</th></tr>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.prints}</td><td>${v.grams} g</td><td>£${v.cost.toFixed(2)}</td></tr>`).join("")}</table>`;
+  $("#costBox").innerHTML = `<div class="two"><div>${table("Month", months.map(([k, v]) => [new Date(k + "-01").toLocaleDateString("en-GB", {month: "long", year: "numeric"}), v]))}</div><div>${table("Who started it", people)}</div></div>
+    <p class="note" style="margin:10px 0 0">From the printer's own measure of filament used. Cost needs a price in the filament register; "Someone" means the start was not logged with a name.</p>`;
+}
+async function loadPlan() {
+  let p; try { p = await api("/api/plan"); } catch (e) { return; }
+  const t = s => s ? new Date(s).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}) : "";
+  const hh = n => String(n).padStart(2, "0") + ":00";
+  const total = p.jobs.reduce((a, j) => a + (j.seconds || 0), 0), quiet = p.jobs.filter(j => j.quiet_start);
+  $("#planNote").innerHTML = p.jobs.length ? `All ${p.jobs.length} done about <b>${t(p.jobs.at(-1).end)}</b> (${hm(total)} of printing${p.busy_until ? ", after the current print ends about " + t(p.busy_until) : ""}).`
+      + (quiet.length ? ` <span style="color:var(--warn)">${quiet.map(j => esc(j.file)).join(", ")} would start in the quiet hours (${hh(p.quiet[0])} to ${hh(p.quiet[1])}): no new print starts then; a running one may finish.</span>` : "")
+    : (p.busy_until ? `The printer is busy until about ${t(p.busy_until)}.` : "");
+  p.jobs.forEach((j, i) => { const row = document.querySelector(`#qList .issue[data-pid="Q-${i + 1}"] .meta`); if (row) row.insertAdjacentHTML("afterbegin", `<span>${t(j.start)} to ${t(j.end)}</span>`); });
 }
 
 /* ---------- start ---------- */
