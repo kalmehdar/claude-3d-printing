@@ -439,7 +439,13 @@ def alert_change(prev, s, folder=None):
             threading.Thread(target=print_doctor, args=(s["file"], "the print " + ("stopped with an error: " + (s.get("message") or "") if s["state"] == "error" else "was cancelled")), daemon=True).start()
         if s["state"] == "complete":   # Claude looks at what came out (Khalid, 22 Nov: Claude does the jobs without being asked)
             import threading
-            threading.Thread(target=finish_look, args=(s.get("file") or "",), daemon=True).start()
+            def lift_then_look(f=s.get("file") or ""):
+                try:
+                    lift_after_print(f)
+                except (OSError, ValueError, KeyError) as e:
+                    print("bed lift after the print failed:", e, flush=True)
+                finish_look(f)
+            threading.Thread(target=lift_then_look, daemon=True).start()
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
             try:
                 with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
@@ -1325,6 +1331,40 @@ def view_bed(tallest=None):
     for cmd in ("G90", f"G1 Z{z} F900"):
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
     return {"z": z, "homed": not homed}
+
+
+LIFT_MAX_PART = 190   # PRINT_END sends the bed to Z200 only when the last layer is under Z195
+
+
+def lift_after_print(file, wait=120):
+    """After a completed print, bring the bed up to the camera WITHOUT homing (Khalid, 22 Nov 2026: a full G28 to look at
+    the plate is wrong). The U1's PRINT_END lowers the bed to Z200 and then M84 turns the motors off, so the printer no
+    longer knows Z. The bed cannot rise by itself (it only sinks), so it is at Z200 or lower: tell the printer Z=200, rise
+    to view_height(part), motors off again so any real move still homes first. Z only; X and Y never move. Completed
+    prints only, parts up to LIFT_MAX_PART tall. Returns the Z it rose to, or None when it did nothing."""
+    try:
+        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file or ""), timeout=10) as r:
+            h = json.load(r)["result"].get("object_height")
+    except (OSError, ValueError, KeyError):
+        return None
+    if h is None or not 0 < float(h) <= LIFT_MAX_PART:
+        return None
+    end = time.time() + wait
+    while time.time() < end:   # PRINT_END's moves and M84 finish first
+        with moonraker("GET", "/printer/objects/query?print_stats=state&idle_timeout=state&toolhead=homed_axes", timeout=5) as r:
+            st = json.load(r)["result"]["status"]
+        if st["print_stats"]["state"] != "complete":
+            return None   # someone started something
+        if st["idle_timeout"]["state"] != "Printing" and not st["toolhead"].get("homed_axes"):
+            break
+        time.sleep(3)
+    else:
+        return None
+    z = view_height(float(h))
+    for cmd in ("SET_KINEMATIC_POSITION Z=200", "G90", f"G1 Z{z} F600", "M400", "M84"):
+        moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
+    record(f"bed up to the camera at Z{z} without homing", file, who="photo watch")
+    return z
 
 
 HEATERS = {"T0": "extruder", "T1": "extruder1", "T2": "extruder2", "T3": "extruder3", "bed": "heater_bed"}
