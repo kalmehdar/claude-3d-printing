@@ -102,9 +102,10 @@ PRESETS = {
                  "seam_slope_type": "external", "seam_slope_conditional": "1",
                  "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                  "wall_sequence": "inner-outer-inner wall",
-                 # ironing 20% flow at 40 mm/s: best of 10/20/30/40% on one plate of SUNLU PETG, 22 Nov (Khalid's pick; still faint
-                 # lines and some pits, filament not yet dried). ponytail: retest 20-25% and finer spacing once the PETG is dry.
-                 "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "20%"},
+                 # ironing 25% flow, 0.15 mm spacing, 40 mm/s: SUNLU PETG, two rounds on 22 Nov. Round 1 picked 20% of 10-40%;
+                 # round 2 (labelled A-D, Khalid's pick A and B) showed 20 mm/s leaves diagonal streaks and 0.08 spacing adds
+                 # nothing over 0.15. Filament not yet dried. ponytail: retest after drying.
+                 "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "25%", "ironing_spacing": "0.15"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
     # grip: fuzzy skin on the outside, for handles and anything held (the default is too coarse to look good; 10 Ways to Hide
