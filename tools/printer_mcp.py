@@ -359,6 +359,17 @@ def t_control(a):
     return done
 
 
+def t_pause_at_layer(a):
+    if a.get("off"):
+        mr("POST", "/printer/gcode/script?script=" + q("SET_PAUSE_AT_LAYER ENABLE=0"))
+        return "No pause at a layer any more."
+    n = int(a["layer"])
+    if not 1 <= n <= 9999:
+        raise ValueError("layer is a number from 1")
+    mr("POST", "/printer/gcode/script?script=" + q(f"SET_PAUSE_AT_LAYER LAYER={n}"))
+    return f"The printer pauses itself at layer {n} (for magnets, nuts or a colour change by hand); resume with printer_resume."
+
+
 def t_screen(_):
     png = http("GET", "/screen.jpg?t=" + str(time.time()), raw=True, timeout=20)
     kind = "image/png" if png[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
@@ -435,6 +446,8 @@ TOOLS = [
       "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
+    ("printer_pause_at_layer", "Make the running print pause itself at a layer, for magnets, nuts or inserts dropped into pockets; or off=true to cancel that.",
+     {"layer": {"type": "integer"}, "off": {"type": "boolean"}}, t_pause_at_layer),
     ("printer_screen", "A picture of what the printer's own touchscreen shows right now.", {}, t_screen),
     ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
      {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),

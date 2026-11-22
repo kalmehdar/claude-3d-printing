@@ -226,7 +226,9 @@ class _G:
     guard = workshop.Handler.guard
 g = _G()
 for script, ok in (("M220 S115", True), ("M220 S50", True), ("M220 S200", False), ("M220 S20", False),
-                   ("SET_LED LED=cavity_led WHITE=1", True), ("G28", False), ("M104 S250", False)):
+                   ("SET_LED LED=cavity_led WHITE=1", True), ("G28", False), ("M104 S250", False),
+                   ("SET_PAUSE_AT_LAYER LAYER=120", True), ("SET_PAUSE_AT_LAYER ENABLE=0", True), ("SET_PAUSE_AT_LAYER LAYER=5 MACRO=G28", False),
+                   ("SET_PAUSE_AT_LAYER MACRO=G28", False)):
     why = g.guard("/printer/gcode/script?script=" + workshop.urllib.parse.quote(script))
     assert (why is None) == ok, (script, why)
 # slicer accuracy from history (the real fit test and plaque numbers of 21 Nov 2026)

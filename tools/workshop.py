@@ -344,8 +344,9 @@ def watch_alerts():
                     checked[s["file"]] = checked_block(s["file"])
                 due = (n == 2 and checked[s["file"]] < 0) or (n > 2 and n // PHOTO_EVERY > checked[s["file"]])
                 if due and api_key() and not (watcher and watcher.is_alive()):
+                    first = checked[s["file"]] < 0   # the first look at this print carries the first-layer plan, whatever layer it lands on
                     checked[s["file"]] = n // PHOTO_EVERY
-                    watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f), daemon=True)
+                    watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f, first), daemon=True)
                     watcher.start()
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
@@ -594,7 +595,7 @@ def checked_block(file):
     return best
 
 
-def photo_watch(file, layer, photo):
+def photo_watch(file, layer, photo, first=None):
     """Check a layer photo; pause only on a clear failure that a second, fresh photo confirms. Logs every check."""
     import printer
     def log(row):
@@ -602,7 +603,7 @@ def photo_watch(file, layer, photo):
         with open(PHOTO_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps({"t": time.time(), "file": file, "layer": layer, **row}) + "\n")
     plan = None
-    if layer <= 2:   # the first-layer check: what the slicer planned for layer 1 goes beside the photo
+    if first if first is not None else layer <= 2:   # the first-layer check: what the slicer planned for layer 1 goes beside the photo
         try:
             plan = layer1_png(file)
         except Exception as e:
@@ -1172,7 +1173,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             speed = re.fullmatch(r"M220 S(\d{1,3})", script.strip().upper())
             if speed and not 50 <= int(speed.group(1)) <= 150:
                 return "speed is 50 to 150 percent"
-            if not (script.upper().startswith("SET_LED ") or speed) and self.printer_busy():   # light and speed are fine mid-print
+            pause_at = re.fullmatch(r"SET_PAUSE_AT_LAYER (LAYER=\d{1,4}|ENABLE=0)", script.strip().upper())   # never MACRO=: it would run any command
+            if script.strip().upper().startswith("SET_PAUSE_AT_LAYER") and not pause_at:
+                return "pause at layer takes LAYER=<number> or ENABLE=0 only"
+            if not (script.upper().startswith("SET_LED ") or speed or pause_at) and self.printer_busy():   # light, speed and pause-at-layer are fine mid-print
                 return "a job is running; that command waits until it ends"
         if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")):
             import printer
@@ -1337,6 +1341,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     return self.send(400, {"error": str(e)})
             return self.send(200, {"low_g": LOW_G, "heads": spools()})
+        if p == "/api/timelapses":   # the printer's own videos (Extended Firmware makes one per print), newest first
+            try:
+                files = _get("/server/files/list?root=timelapse")
+                names = {f["path"] for f in files}
+                vids = sorted((f for f in files if f["path"].lower().endswith(".mp4")), key=lambda f: -f["modified"])
+                return self.send(200, [{"file": f["path"], "size": f["size"], "t": f["modified"],
+                                        "cover": f["path"][:-4] + "_cover.jpg" if f["path"][:-4] + "_cover.jpg" in names else None,
+                                        "print": re.sub(r"_\d{14}$", "", f["path"][:-4])} for f in vids[:40]])
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": str(e)})
         if p in ("/api/health", "/api/costs", "/api/plan", "/api/spoolman"):   # read-only views built by tools/insights.py
             try:
                 return self.send(200, insight(p.rsplit("/", 1)[1]))

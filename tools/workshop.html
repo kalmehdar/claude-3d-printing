@@ -400,6 +400,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
+      <div class="card" id="tlCard" hidden style="margin-bottom:16px"><h2>Printer timelapses</h2><div id="tlBox"></div></div>
       <div class="card" id="costCard" hidden style="margin-bottom:16px"><h2>Filament and cost</h2><div id="costBox"></div></div>
       <div class="card" id="accCard" hidden style="margin-bottom:16px"><h2>Slicer against the printer</h2><div class="note" id="accInfo"></div></div>
       <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
@@ -604,7 +605,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move"];
+const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -669,7 +670,8 @@ function render() {
   if (ps.filename && !S.meta[ps.filename] && S.metaWant !== ps.filename) { S.metaWant = ps.filename; ensureMeta([ps.filename]).then(render); }
   const est = (S.meta[ps.filename] || {}).estimated_time;
   $("#jobFile").textContent = ps.filename || "Nothing printing";
-  $("#kLayer").textContent = info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "";
+  const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
+  $("#kLayer").textContent = (info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "") + (active && pal.enable ? ` · pauses at layer ${pal.layer}` : "");
   let left = null;
   let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
@@ -687,6 +689,7 @@ function render() {
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
   if (ps.state === "paused") acts.push(`<button class="btn primary" data-a="resume">Resume</button>`);
   if (active) acts.push(`<button class="btn danger" data-a="cancel">Cancel print</button>`);
+  if (active) acts.push(`<button class="btn" data-a="pauseat">Pause at layer</button>`);
   const sp = Math.round(100 * ((s.gcode_move || {}).speed_factor || 1));
   if (active) acts.push(`<span class="jspeed"><span class="note">Speed</span><span class="seg"><button class="btn sm" data-a="slower" aria-label="Slower" ${sp <= 50 ? "disabled" : ""}>−</button><b>${sp}%</b><button class="btn sm" data-a="faster" aria-label="Faster" ${sp >= 150 ? "disabled" : ""}>+</button></span></span>`);
   if (!active && ps.filename) acts.push(`<button class="btn" data-a="again">Print again</button>`);
@@ -718,6 +721,17 @@ $("#jobActions").addEventListener("click", async e => {
     if (a === "resume") { await post(M("/printer/print/resume")); toast("Resuming"); }
     if (a === "cancel") return confirmSheet("Cancel this print?", "The print stops and cannot be resumed.", "Cancel print", async () => { await post(M("/printer/print/cancel")); toast("Cancelling"); });
     if (a === "again") return bedCheck(S.status.print_stats.filename);
+    if (a === "pauseat") {   // the printer pauses itself at that layer: for magnets, nuts or a colour change by hand
+      const info = S.status.print_stats.info || {}, pal = (S.status["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
+      const body = openSheet("Pause at a layer", `<p class="note">The printer pauses on its own when it reaches that layer, so you can drop in magnets or nuts, then resume. It is on layer ${info.current_layer || 0} of ${info.total_layer || "?"}.</p>
+        <div class="field"><label for="palN">Layer</label><input id="palN" type="number" min="${(info.current_layer || 0) + 1}" max="${info.total_layer || 9999}" value="${pal.enable ? pal.layer : (info.current_layer || 0) + 1}"></div>
+        <div class="actions"><button class="btn primary" id="palSet">Pause there</button>${pal.enable ? `<button class="btn" id="palOff">Don't pause (was layer ${pal.layer})</button>` : ""}</div>`);
+      body.querySelector("#palSet").onclick = async () => { const n = parseInt(body.querySelector("#palN").value, 10);
+        if (!(n > (info.current_layer || 0))) return toast("Pick a layer after the current one", true);
+        try { await gcode(`SET_PAUSE_AT_LAYER LAYER=${n}`); toast(`Pauses at layer ${n}`); closeSheet(); poll(); } catch (err) { toast(err.message, true); } };
+      const off = body.querySelector("#palOff"); if (off) off.onclick = async () => { try { await gcode("SET_PAUSE_AT_LAYER ENABLE=0"); toast("No pause"); closeSheet(); poll(); } catch (err) { toast(err.message, true); } };
+      return;
+    }
     if (a === "cool") { await gcode("TURN_OFF_HEATERS"); toast("Heaters off"); }
     if (a === "slower" || a === "faster") {   // 10% steps, 50-150% (Workshop refuses anything outside)
       const now = Math.round(100 * ((S.status.gcode_move || {}).speed_factor || 1)), to = Math.max(50, Math.min(150, now + (a === "faster" ? 10 : -10)));
@@ -1169,7 +1183,7 @@ async function openDesign(key) {
 
 /* ---------- history ---------- */
 async function loadHistory() {
-  loadCosts();
+  loadCosts(); loadTimelapses();
   try {
     loadCalibration();
     await loadAccuracy();
@@ -1399,6 +1413,17 @@ async function loadPrinter() {
         meta: [x.left_g != null ? `${x.left_g} g left` : "", `${x.used_g} g used`, x.low ? "reorder" : ""]})).join("")}</div>`
       : `<p class="note" style="margin:0">${esc(r.note || "No spools in Spoolman yet.")} The heads in Now still show Workshop's own count.</p>`;
   }).catch(e => { $("#spoolBox").textContent = "Spoolman did not answer: " + e.message; });
+}
+async function loadTimelapses() {
+  let t; try { t = await api("/api/timelapses"); } catch (e) { return; }
+  $("#tlCard").hidden = !t.length; if (!t.length) return;
+  const url = f => M("/server/files/timelapse/" + f.split("/").map(enc).join("/"));
+  $("#tlBox").innerHTML = `<div class="list">${t.map((v, i) => issue({icon: "done", id: "T-" + (t.length - i), title: esc(v.print),
+      meta: [day(v.t), (v.size / 1048576).toFixed(0) + " MB", v.cover ? `<i class="mini" style="background-image:url('${url(v.cover)}')"></i>` : ""],
+      acts: `<a class="btn sm" href="${url(v.file)}" download>Download</a>`,
+      panel: `<video controls preload="metadata" playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px" ${v.cover ? `poster="${url(v.cover)}"` : ""} src="${url(v.file)}"></video>` +
+        pkv([["Print", esc(v.print)], ["Made", day(v.t)], ["Size", (v.size / 1048576).toFixed(1) + " MB"], ["File", esc(v.file)]])})).join("")}</div>
+    <p class="note" style="margin:8px 0 0">Made by the printer itself (1080p) for each print. Workshop's layer photos are on Now.</p>`;
 }
 async function loadCosts() {
   let c; try { c = await api("/api/costs"); } catch (e) { return; }
