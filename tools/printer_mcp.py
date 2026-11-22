@@ -367,6 +367,23 @@ def t_doctor(_):
     return "\n\n".join(out)
 
 
+def t_fan(a):
+    return http("POST", "/api/control", {"action": "fan", "fan": a.get("fan", "part"), "percent": a["percent"]})["done"]
+
+
+def t_calibrate(a):
+    if a.get("nothing_in_the_way") is not True:
+        raise ValueError("calibration moves the head and bed: check the camera (printer_view_bed), ask the person, then pass nothing_in_the_way=true")
+    out = http("POST", "/api/control", {"action": "calibrate", "which": a["which"], "nothing_in_the_way": True}, timeout=960)["done"]
+    return out + "\n" + t_console({"lines": 15})
+
+
+def t_console(a):
+    rows = mr("GET", "/server/gcode_store?count=120")["gcode_store"]
+    rows = [g for g in rows if not g["message"].startswith(("B:", "T0", "ok"))][-int(a.get("lines", 30)):]
+    return "\n".join(("> " if g["type"] == "command" else "") + g["message"] for g in rows) or "Nothing in the console."
+
+
 def t_heat(a):
     """Set one heater's target (0 turns it off). Workshop refuses it while a print runs."""
     h, c = str(a.get("heater")), float(a.get("celsius", -1))
@@ -558,6 +575,12 @@ TOOLS = [
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
     ("printer_doctor", "The print doctor's latest reports: after a pause, a failure or a flawed finish, Claude reads the layer photos and slicer settings and suggests setting changes. Read them before re-slicing a print that went wrong.", {}, t_doctor),
+    ("printer_fan", "Set a fan: part (the cooling fan on the head; works mid-print), cavity, exhaust or circulation (idle only), 0 to 100 percent.",
+     {"fan": {"type": "string", "enum": ["part", "cavity", "exhaust", "circulation"]}, "percent": {"type": "number", "minimum": 0, "maximum": 100}}, t_fan, ["percent"]),
+    ("printer_calibrate", "Run a calibration: shaper (input shaping, the head shakes for minutes), offsets (lines the four heads up), mesh (probes the whole bed) or screws (says how far to turn each bed screw). Idle only, homes first; the plate must be clear: check printer_view_bed and ask the person, then pass nothing_in_the_way. Returns the console's result lines.",
+     {"which": {"type": "string", "enum": ["shaper", "offsets", "mesh", "screws"]}, "nothing_in_the_way": {"type": "boolean"}}, t_calibrate, ["which"]),
+    ("printer_console", "The printer's own console: the last commands and its replies (results of calibrations, errors, M114 positions).",
+     {"lines": {"type": "integer", "minimum": 5, "maximum": 100}}, t_console),
     ("printer_heat", "Set a heater's target temperature (T0 to T3 up to 300 C, the bed up to 110 C; 0 turns it off). Not while a print runs.",
      {"heater": {"type": "string", "enum": list(HEATERS)}, "celsius": {"type": "number", "minimum": 0, "maximum": 300}}, t_heat, ["heater", "celsius"]),
     ("printer_move", "Move the head (x 0-271, y 0-335) and the bed (z: 0 is at the nozzle, 275 the bottom) to absolute positions. Homed only, not while printing. The bed never comes closer than 20 mm over the tallest thing on the plate (last print's height, or tallest_mm). Check the camera first.",

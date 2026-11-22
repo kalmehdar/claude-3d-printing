@@ -1266,6 +1266,95 @@ def view_bed(tallest=None):
     return {"z": z, "homed": not homed}
 
 
+HEATERS = {"T0": "extruder", "T1": "extruder1", "T2": "extruder2", "T3": "extruder3", "bed": "heater_bed"}
+LIMITS = {"x": (0.0, 271.0), "y": (0.0, 335.0)}
+FANS = {"part": None, "cavity": "cavity_fan", "exhaust": "exhaust_fan", "circulation": "circulation_fan"}
+CALIBRATIONS = {"shaper": ("SHAPER_CALIBRATE", "input shaping: the head shakes in X and Y for a few minutes"),
+                "offsets": ("XYZ_OFFSET_CALIBRATE_ALL", "tool head offsets: each head touches the calibration point"),
+                "mesh": ("BED_MESH_CALIBRATE", "bed mesh: the probe touches the whole bed"),
+                "screws": ("AUTO_SCREWS_TILT_ADJUST", "bed tilt: probes the screw corners and says how far to turn each")}
+RAW_NEVER = re.compile(r"^(SAVE_CONFIG|FIRMWARE_RESTART|RESTART|FORCE_MOVE|SET_KINEMATIC_POSITION|SET_STEPPER_ENABLE|STEPPER_BUZZ|"
+                       r"Z_ENDSTOP_CALIBRATE|Z_OFFSET_APPLY|M500|M502)\b", re.I)
+
+
+def control(req):
+    """One printer action from the page or Claude, with the same rules for both. Returns (status, dict).
+    Idle only (light and part fan excepted); moves need the printer homed and keep Z VIEW_GAP over the tallest thing."""
+    act = str(req.get("action", ""))
+    def st():
+        with moonraker("GET", "/printer/objects/query?print_stats=state&toolhead=homed_axes,position", timeout=5) as r:
+            return json.load(r)["result"]["status"]
+    def g(cmd, timeout=60):
+        moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=timeout).read()
+    s = st()
+    busy = s["print_stats"]["state"] in ("printing", "paused")
+    if act == "fan":
+        fan, pct = str(req.get("fan", "part")), float(req.get("percent", -1))
+        if fan not in FANS or not 0 <= pct <= 100:
+            return 400, {"error": "fan is part, cavity, exhaust or circulation; percent 0 to 100"}
+        if busy and fan != "part":
+            return 409, {"error": "a job is running; only the part fan can change mid-print"}
+        g(f"M106 S{round(pct * 2.55)}" if fan == "part" else f"SET_FAN_SPEED FAN={FANS[fan]} SPEED={pct / 100:.2f}")
+        return 200, {"done": f"{fan} fan {pct:.0f}%"}
+    if busy:
+        return 409, {"error": "a job is running; that waits until it ends"}
+    if act == "heat":
+        h, c = str(req.get("heater")), float(req.get("celsius", -1))
+        top = 110 if h == "bed" else 300
+        if h not in HEATERS or not 0 <= c <= top:
+            return 400, {"error": f"heater is T0 to T3 or bed; {h} takes 0 to {top} C"}
+        g(f"SET_HEATER_TEMPERATURE HEATER={HEATERS[h]} TARGET={c:g}")
+        return 200, {"done": f"{h} {'off' if not c else f'to {c:g} C'}"}
+    if act == "move":
+        if s["toolhead"].get("homed_axes") != "xyz":
+            return 409, {"error": "not homed: bring the bed into view (it homes safely) or home first"}
+        pos = dict(zip("xyz", s["toolhead"]["position"][:3]))
+        want = {}
+        for ax in "xyz":
+            if req.get(ax) is not None:
+                want[ax] = float(req[ax]) + (pos[ax] if req.get("relative") else 0)
+        if not want:
+            return 400, {"error": "give x, y and/or z"}
+        for ax in ("x", "y"):
+            if ax in want and not LIMITS[ax][0] <= want[ax] <= LIMITS[ax][1]:
+                return 400, {"error": f"{ax.upper()} stays between {LIMITS[ax][0]:g} and {LIMITS[ax][1]:g} mm"}
+        if "z" in want:
+            tall = req.get("tallest_mm")
+            if tall is None:
+                try:
+                    with moonraker("GET", "/server/history/list?limit=1&order=desc", timeout=5) as r:
+                        tall = json.load(r)["result"]["jobs"][0].get("metadata", {}).get("object_height")
+                except (OSError, ValueError, KeyError, IndexError):
+                    tall = None
+            if tall is None:
+                return 400, {"error": "say how tall the tallest thing on the plate is (tallest_mm) before raising the bed"}
+            low = max(5.0, float(tall) + VIEW_GAP)
+            if not low <= want["z"] <= 275:
+                return 400, {"error": f"Z stays between {low:g} and 275 mm: the nozzle keeps {VIEW_GAP} mm over {float(tall):g} mm on the plate"}
+        g("G90")
+        g("G1 " + " ".join(f"{ax.upper()}{v:.2f}" for ax, v in want.items()) + f" F{int(float(req.get('speed', 50)) * 60)}")
+        return 200, {"done": "moved to " + ", ".join(f"{ax.upper()} {v:.1f}" for ax, v in want.items())}
+    if act == "calibrate":
+        k = str(req.get("which", ""))
+        if k not in CALIBRATIONS:
+            return 400, {"error": "which is " + ", ".join(CALIBRATIONS)}
+        if req.get("nothing_in_the_way") is not True:
+            return 400, {"error": "calibration moves the head and bed: confirm the plate is clear (nothing_in_the_way)"}
+        if s["toolhead"].get("homed_axes") != "xyz":
+            g("G28", timeout=180)
+        g(CALIBRATIONS[k][0], timeout=900)
+        return 200, {"done": f"{CALIBRATIONS[k][1]}: finished; the result is in the console"}
+    if act == "gcode":
+        cmd = str(req.get("command", "")).strip()
+        if not cmd or "\n" in cmd or len(cmd) > 200:
+            return 400, {"error": "one command, under 200 characters"}
+        if RAW_NEVER.match(cmd):
+            return 400, {"error": "that rewrites the printer's setup or forces a motor: do it on the printer itself"}
+        g(cmd, timeout=600)
+        return 200, {"done": f"sent {cmd}"}
+    return 400, {"error": "action is heat, move, fan, calibrate or gcode"}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -1403,6 +1492,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if speed and not 50 <= int(speed.group(1)) <= 150:
                 return "speed is 50 to 150 percent"
             pause_at = re.fullmatch(r"SET_PAUSE_AT_LAYER (LAYER=\d{1,4}|ENABLE=0)", script.strip().upper())   # never MACRO=: it would run any command
+            if RAW_NEVER.match(script.strip()):
+                return "that rewrites the printer's setup or forces a motor: do it on the printer itself"
             if script.strip().upper().startswith("SET_PAUSE_AT_LAYER") and not pause_at:
                 return "pause at layer takes LAYER=<number> or ENABLE=0 only"
             if not (script.upper().startswith("SET_LED ") or speed or pause_at) and self.printer_busy():   # light, speed and pause-at-layer are fine mid-print
@@ -1707,6 +1798,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, {"result": res})
             except SystemExit as e:
                 return self.send(409, {"error": str(e.code)})
+        if p == "/api/control" and self.command == "POST":   # the Printer tab's panel and Claude's tools: one set of rules
+            try:
+                req = json.loads(self.body() or b"{}")
+                code, out = control(req if isinstance(req, dict) else {})
+            except (ValueError, TypeError) as e:
+                return self.send(400, {"error": str(e)})
+            except OSError as e:
+                return self.send(502, {"error": f"printer: {e}"})
+            if code == 200:
+                record(out["done"], req.get("action", ""), who=actor(self))
+            return self.send(code, out)
         if p == "/api/view-bed" and self.command == "POST":   # bed up to the camera, gap kept above the tallest thing on it
             try:
                 req = json.loads(self.body() or b"{}")

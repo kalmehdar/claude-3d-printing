@@ -215,6 +215,16 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 #pushHide{color:var(--dim)}
 /* Printer tab */
 .ctrls{display:flex;flex-wrap:wrap;gap:6px}
+.sub{margin:14px 0 6px;font-size:12.5px;color:var(--dim)}
+.jog{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.jog .pad{display:grid;grid-template-columns:repeat(3,52px);gap:6px}
+.jog .pad .btn,.jog .zcol .btn{min-height:44px;justify-content:center}
+.jog .zcol{display:flex;flex-direction:column;gap:6px}
+.jog .steps{display:flex;gap:4px}
+.jog .steps .btn[aria-pressed="true"]{background:var(--accent,#5e6ad2);color:#fff}
+pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;line-height:1.45;white-space:pre-wrap;margin:0}
+.spark{display:grid;grid-template-columns:120px 1fr 64px;gap:8px;align-items:center;font-size:12.5px;margin:4px 0}
+.spark svg{width:100%;height:28px}
 .mesh{display:grid;gap:2px;margin:4px 0 10px}
 .mesh i{display:grid;place-items:center;aspect-ratio:1.4;border-radius:3px;font:500 10.5px ui-monospace,Menlo,monospace;color:#fff;font-style:normal}
 .tchart{width:100%;height:150px;display:block}
@@ -384,17 +394,39 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <section id="tab-printer" hidden>
       <div class="grid now">
         <div class="grid" style="align-content:start">
-          <div class="card"><h2>Controls</h2>
+          <div class="card"><h2>Controls <a class="note" href="http://192.168.1.237/" target="_blank" rel="noopener" style="float:right;font-weight:400">Fluidd ↗</a></h2>
             <div class="ctrls">
               <button class="btn" data-ctl="light">Light on or off</button>
               <button class="btn" data-ctl="heaters">Heaters off</button>
               <button class="btn" data-ctl="home">Home</button>
               <button class="btn" data-ctl="motors">Motors off</button>
+              <button class="btn" data-ctl="view">Bed into view</button>
             </div>
-            <p class="note" style="margin:10px 0 0">While a print runs, only the light works: Workshop refuses anything that moves, heats or feeds. Load and unload are on each head in Now.</p></div>
+            <div class="sub">Move <span class="note">(idle and homed; the bed never comes closer than 20 mm over the last print)</span></div>
+            <div class="jog">
+              <div class="pad"><span></span><button class="btn" data-jog="y,1" aria-label="Head back">Y+</button><span></span>
+                <button class="btn" data-jog="x,-1" aria-label="Head left">X−</button><button class="btn" data-jog="home" aria-label="Home">⌂</button><button class="btn" data-jog="x,1" aria-label="Head right">X+</button>
+                <span></span><button class="btn" data-jog="y,-1" aria-label="Head forward">Y−</button><span></span></div>
+              <div class="zcol"><button class="btn" data-jog="z,-1" aria-label="Bed up">Bed up</button><button class="btn" data-jog="z,1" aria-label="Bed down">Bed down</button></div>
+              <div class="steps" role="group" aria-label="Step size"></div>
+            </div>
+            <div class="sub">Heat</div>
+            <div class="ctrls"><select id="hHeater" aria-label="Heater"><option>T0</option><option>T1</option><option>T2</option><option>T3</option><option value="bed">Bed</option></select>
+              <input id="hTemp" type="number" inputmode="numeric" min="0" max="300" placeholder="°C" aria-label="Temperature" style="width:80px">
+              <button class="btn" id="hSet">Set</button><button class="btn" id="hOff">Off</button>
+              <button class="btn sm ghost" data-preset="245">PETG 245</button><button class="btn sm ghost" data-preset="220">PLA 220</button><button class="btn sm ghost" data-preset="80" data-bed="1">Bed 80</button></div>
+            <div class="sub">Fans</div>
+            <div class="ctrls" id="fanRow"></div>
+            <p class="note" style="margin:10px 0 0">While a print runs, only the light and the part fan work: Workshop refuses anything that moves, heats or feeds. Load and unload are on each head in Now.</p></div>
+          <div class="card"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
+            <p class="note" style="margin:10px 0 0">Each one homes first if needed, moves the head and bed, and writes its result in the console below. The plate must be clear.</p></div>
+          <div class="card"><h2>Console</h2><pre id="conLog" class="console" aria-live="polite">Loading...</pre>
+            <form id="conForm" class="ctrls" style="margin-top:8px"><input id="conIn" placeholder="One G-code command, e.g. M114" aria-label="G-code command" autocomplete="off" spellcheck="false" style="flex:1;min-width:160px"><button class="btn">Send</button></form></div>
           <div class="card"><h2>Bed mesh</h2><div id="meshBox" class="note">Loading...</div></div>
         </div>
         <div class="grid" style="align-content:start">
+          <div class="card"><h2>Live</h2><div id="liveBox" class="note">Collecting readings: the charts fill while this page is open.</div></div>
+          <div class="card"><h2>Watch</h2><div class="ctrls"><button class="btn" id="wCam">Live camera</button><button class="btn" id="wScreen">Printer screen</button><button class="btn" id="wLapse">Timelapses</button></div></div>
           <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
           <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
         </div>
@@ -610,12 +642,12 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO"];
+const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
     const was = S.status?.print_stats?.filename;
-    S.status = r.status; $("#conn").className = "dot on"; render();
+    S.status = r.status; $("#conn").className = "dot on"; render(); sampleLive(r.status);
     if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
     const st = S.status?.print_stats?.state;
@@ -1438,6 +1470,7 @@ const CTL = {heaters: ["TURN_OFF_HEATERS", "Heaters off"], home: ["G28", "Homing
 $("#tab-printer").addEventListener("click", e => { const b = e.target.closest("[data-ctl]"); if (!b) return;
   const k = b.dataset.ctl;
   if (k === "light") return $("#lightBtn").click();
+  if (k === "view") return $("#viewBed").click();
   const [cmd, word] = CTL[k];
   if (k === "home") return confirmSheet("Home the printer?", "The head moves to its corners and back. Check nothing is in its way.", "Home", async () => { await gcode(cmd); toast(word); });
   (async () => { try { await gcode(cmd); toast(word); } catch (err) { toast(err.message, true); } })();
@@ -1572,6 +1605,60 @@ function stateChanged(from, to, file) {
   if (window.Notification && isSecureContext && Notification.permission === "granted") new Notification("Workshop", {body: text, tag: "workshop"});
   toast(text);
 }
+
+/* ---------- full control: jog, heat, fans, calibrate, console, live charts, watch ---------- */
+let jogStep = 10;
+$(".jog .steps").innerHTML = [1, 10, 50].map(n => `<button class="btn sm" data-step="${n}" aria-pressed="${n === jogStep}">${n} mm</button>`).join("");
+const ctl = async (body, ok) => { try { const r = await post("/api/control", body); toast(ok || r.done); poll(); return r; } catch (e) { toast(e.message, true); } };
+$(".jog").addEventListener("click", e => {
+  const st = e.target.closest("[data-step]");
+  if (st) { jogStep = +st.dataset.step; $(".jog .steps").querySelectorAll("[data-step]").forEach(b => b.setAttribute("aria-pressed", +b.dataset.step === jogStep)); return; }
+  const b = e.target.closest("[data-jog]"); if (!b) return;
+  if (b.dataset.jog === "home") return confirmSheet("Home the printer?", "The head moves to its corner and the bed goes down first, away from the head.", "Home", () => gcode("G28"));
+  const [ax, dir] = b.dataset.jog.split(",");
+  ctl({action: "move", relative: true, [ax]: jogStep * +dir});
+});
+$("#hSet").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, celsius: +$("#hTemp").value});
+$("#hOff").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, celsius: 0});
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => { if (b.dataset.bed) $("#hHeater").value = "bed"; $("#hTemp").value = b.dataset.preset; });
+const FAN_NAMES = {part: "Part", cavity: "Cavity", exhaust: "Exhaust", circulation: "Circulation"};
+$("#fanRow").innerHTML = Object.entries(FAN_NAMES).map(([k, n]) => `<span class="note" style="align-self:center;min-width:76px">${n}</span>` + [0, 50, 100].map(p => `<button class="btn sm" data-fan="${k}" data-pct="${p}">${p}%</button>`).join("")).join('<span style="flex-basis:100%"></span>');
+$("#fanRow").addEventListener("click", e => { const b = e.target.closest("[data-fan]"); if (b) ctl({action: "fan", fan: b.dataset.fan, percent: +b.dataset.pct}); });
+const CAL = {shaper: ["Input shaping", "The head shakes in X and Y for a few minutes to measure vibration."], offsets: ["Head offsets", "Each head touches the calibration point so the four line up."],
+             mesh: ["Bed mesh", "The probe touches the whole bed."], screws: ["Bed tilt", "Probes the screw corners and says how far to turn each."]};
+$("#calBtns").innerHTML = Object.entries(CAL).map(([k, [n]]) => `<button class="btn" data-cal="${k}">${n}</button>`).join("");
+$("#calBtns").addEventListener("click", e => { const b = e.target.closest("[data-cal]"); if (!b) return; const [n, what] = CAL[b.dataset.cal];
+  confirmSheet(n + "?", what + " Take everything off the plate first. It runs to the end; watch the console.", "Start " + n.toLowerCase(), () => ctl({action: "calibrate", which: b.dataset.cal, nothing_in_the_way: true}, n + " finished: see the console")); });
+$("#wCam").onclick = () => (S.info || {}).live_camera ? window.open(S.info.live_camera, "_blank") : $("#camFull").click();
+$("#wScreen").onclick = () => (S.info || {}).printer_screen ? $("#screenBtn").click() : toast("The printer's screen isn't available", true);
+$("#wLapse").onclick = () => { go("history"); setTimeout(() => $("#tlCard").scrollIntoView({behavior: "smooth"}), 200); };
+// console: the printer's own messages, newest last; one command at a time through the guard
+let conSeen = 0;
+async function loadConsole() {
+  let r; try { r = await api(M("/server/gcode_store?count=80")); } catch (e) { return; }
+  const rows = (r.gcode_store || r.result?.gcode_store || []).filter(g => !/^B:|^T\d|^ok$/.test(g.message));
+  const el = $("#conLog"), atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent = rows.map(g => (g.type === "command" ? "> " : "") + g.message).join("\n") || "Nothing yet.";
+  if (atEnd || !conSeen) el.scrollTop = el.scrollHeight; conSeen = 1;
+}
+$("#conForm").onsubmit = async e => { e.preventDefault(); const c = $("#conIn").value.trim(); if (!c) return;
+  try { await post("/api/control", {action: "gcode", command: c}); $("#conIn").value = ""; loadConsole(); } catch (err) { toast(err.message, true); } };
+// live charts: readings sampled with each poll while the page is open (the firmware's exporter has no printer data)
+const LIVE = {}, LIVE_MAX = 240;
+const LIVE_KEYS = [["Chamber °C", s => s["temperature_sensor cavity"]?.temperature], ["Bed °C", s => s.heater_bed?.temperature],
+  ["Part fan %", s => (s.fan?.speed ?? 0) * 100], ["Cavity fan %", s => (s["fan_generic cavity_fan"]?.speed ?? 0) * 100],
+  ["Exhaust fan %", s => (s["fan_generic exhaust_fan"]?.speed ?? 0) * 100], ["Current A", s => s["adc_current_sensor I_AD"]?.current]];
+function sampleLive(s) {
+  for (const [k, f] of LIVE_KEYS) { const v = f(s); if (v == null || isNaN(v)) continue; (LIVE[k] = LIVE[k] || []).push(+v); if (LIVE[k].length > LIVE_MAX) LIVE[k].shift(); }
+  if (tab !== "printer") return;
+  const rows = Object.entries(LIVE).filter(([, a]) => a.length > 1);
+  if (!rows.length) return;
+  $("#liveBox").innerHTML = rows.map(([k, a]) => { const lo = Math.min(...a), hi = Math.max(...a), span = hi - lo || 1;
+    const pts = a.map((v, i) => `${(i / (LIVE_MAX - 1) * 300).toFixed(1)},${(26 - (v - lo) / span * 24).toFixed(1)}`).join(" ");
+    return `<div class="spark"><span>${k}</span><svg viewBox="0 0 300 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--accent,#5e6ad2)" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${pts}"/></svg><b>${a.at(-1).toFixed(k.includes("°") ? 0 : 1)}</b></div>`; }).join("")
+    + `<p class="note" style="margin:6px 0 0">The last ${Math.round(Math.min(...rows.map(([, a]) => a.length)) * 2.5 / 60)} min while this page was open.</p>`;
+}
+setInterval(() => { if (!document.hidden && tab === "printer") loadConsole(); }, 3000);
 
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;

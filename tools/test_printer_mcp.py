@@ -282,6 +282,40 @@ for bad in (_H("POST", "workshop.almehdar.co.uk", "https://evil.example"), _H("P
             _H("POST", "workshop.almehdar.co.uk", "https://workshop.almehdar.co.uk", xw=None), _H("GET", "rebind.example")):
     assert not bad.allowed(), bad.headers
 workshop.CFG["allow_hosts"] = _saved_hosts
+# control(): the page's panel and Claude share these rules; no real command is ever sent here
+def _ctl_mr(state="standby", homed="xyz", pos=(100, 100, 60), height=40):
+    sent = []
+    class R:
+        def __init__(self, b): self.b = b
+        def read(self): return self.b
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    def m(method, path, **k):
+        if "print_stats" in path:
+            return R(json.dumps({"result": {"status": {"print_stats": {"state": state}, "toolhead": {"homed_axes": homed, "position": [*pos, 0]}}}}).encode())
+        if "history" in path:
+            return R(json.dumps({"result": {"jobs": [{"metadata": {"object_height": height}}]}}).encode())
+        sent.append(urllib.parse.unquote(path.split("script=", 1)[1]))
+        return R(b"{}")
+    return m, sent
+_saved_mr = workshop.moonraker
+workshop.moonraker, sent = _ctl_mr()
+assert workshop.control({"action": "heat", "heater": "T2", "celsius": 245})[0] == 200 and sent[-1] == "SET_HEATER_TEMPERATURE HEATER=extruder2 TARGET=245"
+assert workshop.control({"action": "heat", "heater": "bed", "celsius": 120})[0] == 400
+workshop.moonraker, sent = _ctl_mr(pos=(100, 100, 65))
+code, out = workshop.control({"action": "move", "relative": True, "z": -10})   # 55 < 40 + 20: refused
+assert code == 400 and not sent, (code, out, sent)
+assert workshop.control({"action": "move", "relative": True, "x": 10})[0] == 200 and sent[-1].startswith("G1 X110.00"), sent
+assert workshop.control({"action": "move", "x": 300})[0] == 400
+assert workshop.control({"action": "gcode", "command": "SAVE_CONFIG"})[0] == 400
+assert workshop.control({"action": "calibrate", "which": "shaper"})[0] == 400, "needs nothing_in_the_way"
+workshop.moonraker, sent = _ctl_mr(homed="")
+assert workshop.control({"action": "move", "x": 10})[0] == 409
+workshop.moonraker, sent = _ctl_mr(state="printing")
+assert workshop.control({"action": "heat", "heater": "T0", "celsius": 200})[0] == 409 and not sent
+assert workshop.control({"action": "fan", "fan": "part", "percent": 50})[0] == 200 and sent == ["M106 S127"], sent
+assert workshop.control({"action": "fan", "fan": "cavity", "percent": 50})[0] == 409
+workshop.moonraker = _saved_mr
 # API keys: env first, then the files in order; a file others can read is skipped
 with tempfile.TemporaryDirectory() as d:
     workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")
