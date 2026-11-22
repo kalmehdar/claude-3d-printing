@@ -1444,8 +1444,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def body(self):
         if not hasattr(self, "_body"):   # read once: guard() looks at it, proxy() forwards it
-            n = int(self.headers.get("Content-Length") or 0)
-            self._body = self.rfile.read(n) if n else None
+            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+                # Caddy sometimes forwards an https request body in chunks with no Content-Length (22 Nov 2026); unread,
+                # it stayed in the connection and was taken for the next request ("Unsupported method '{...}POST'")
+                parts = []
+                while True:
+                    size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
+                    if size == 0:
+                        while self.rfile.readline() not in (b"\r\n", b"\n", b""):   # trailers, then the blank line
+                            pass
+                        break
+                    parts.append(self.rfile.read(size)); self.rfile.readline()
+                self._body = b"".join(parts) or None
+            else:
+                n = int(self.headers.get("Content-Length") or 0)
+                self._body = self.rfile.read(n) if n else None
         return self._body
 
     def proxy(self, path, timeout=30):

@@ -52,3 +52,10 @@ open(key, "w").write("ANTHROPIC_API_KEY=test-key-not-real\n")   # put-key writes
 if os.name == "nt":
     assert w.api_keys() == ["test-key-not-real"], "put-key's NAME=value line was not read"
 print("workshop guard checks passed")
+
+# a chunked body (Caddy over https, 22 Nov 2026) is read in full and the next request stays intact behind it
+import io as _io
+class _B: body = workshop.Handler.body
+_b = _B(); _b.headers = {"Transfer-Encoding": "chunked"}; _b.rfile = _io.BytesIO(b'7\r\n{"a": 1\r\n1\r\n}\r\n0\r\n\r\nGET / HTTP/1.1\r\n')
+assert _b.body() == b'{"a": 1}' and _b.rfile.read() == b"GET / HTTP/1.1\r\n"
+print("chunked body check passed")
