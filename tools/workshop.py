@@ -1838,20 +1838,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if why:
                 return self.send(409, {"error": why})
             if self.command == "POST" and path.startswith("/server/job_queue/start"):
-                record("started the queue", "", who=actor(self))
-                # start one job: hold the queue straight after, so every later job needs its own bed check
-                self.proxy(path)
+                # start ONE job and never let the queue run, so every later job needs its own bed check. Starting the queue
+                # and pausing it straight after started nothing (22 Nov 2026: Moonraker loads the job after the pause
+                # lands): take the first job off the queue and start that file directly; the queue stays held throughout.
                 try:
-                    moonraker("POST", "/server/job_queue/pause", timeout=10).read()
-                except OSError as e:   # the queue would start the next job onto this one's part: say so loudly
-                    record("could not hold the queue after starting it", str(e), who="Workshop")
-                    try:
-                        import printer
-                        printer.push("Queue not held", "The next queued job would start when this one ends, onto the finished "
-                                     "part. Hold the queue in Workshop.", "bad", click=CFG.get("url"))
-                    except Exception:
-                        pass
-                return
+                    with moonraker("GET", "/server/job_queue/status", timeout=10) as r:
+                        jobs = json.load(r)["result"]["queued_jobs"]
+                    if not jobs:
+                        return self.send(409, {"error": "the queue is empty"})
+                    job = jobs[0]
+                    moonraker("DELETE", "/server/job_queue/job?job_ids=" + urllib.parse.quote(job["job_id"]), timeout=10).read()
+                    moonraker("POST", "/printer/print/start?filename=" + urllib.parse.quote(job["filename"]), timeout=30).read()
+                except (OSError, ValueError, KeyError) as e:
+                    return self.send(502, {"error": f"could not start the next job: {e}"})
+                record("started the next queued job", job["filename"], who=actor(self))
+                return self.send(200, {"result": "ok", "started": job["filename"]})
             what = self.describe(path)
             if what:
                 record(what[0], what[1], who=actor(self))
