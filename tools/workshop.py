@@ -1409,10 +1409,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             r = e
         except OSError as e:
             return self.send(502, {"error": f"printer unreachable: {e}"})
-        data = r.read()
+        ctype = r.headers.get("Content-Type", "application/octet-stream")
         # a 206 without Content-Range is refused by iPhone Safari: the timelapse would neither play nor download (22 Nov)
         keep = {k: r.headers[k] for k in ("Content-Range", "Accept-Ranges", "Content-Disposition") if r.headers.get(k)}
-        self.send(r.status, data, r.headers.get("Content-Type", "application/octet-stream"), keep)
+        if ctype.startswith(("video/", "image/", "application/octet-stream")) and r.headers.get("Content-Length"):
+            # stream big files as they arrive: the printer sends ~1.4 MB/s, so buffering a 58 MB timelapse kept Safari
+            # waiting 40 s for the first byte and it gave up
+            self.send_response(r.status)
+            for k, v in {"Content-Type": ctype, "Content-Length": r.headers["Content-Length"], "Cache-Control": "no-store", **keep}.items():
+                self.send_header(k, v)
+            self.end_headers()
+            try:
+                shutil.copyfileobj(r, self.wfile, 256 * 1024)
+            except (BrokenPipeError, ConnectionResetError):   # the viewer seeked or closed the video
+                pass
+            return
+        self.send(r.status, r.read(), ctype, keep)
 
     def allowed(self):
         """Refuse requests another web page could make: the Host must be an IP address, localhost or an --allow-host name
