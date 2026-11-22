@@ -805,7 +805,8 @@ async function setFilament(i) {
     } catch (e) { toast(e.message, true); }
   };
 }
-async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ } }
+async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ }
+  try { S.plate = (await api("/api/plate")).plate; } catch (e) { /* older Workshop: no plate switch */ } }
 async function loadSpools() { try { S.spools = await api("/api/spools"); } catch (e) { /* the head cards just leave grams out */ } }
 async function newSpool(i) {
   const tc = (S.status || {}).print_task_config || {};
@@ -1378,11 +1379,14 @@ function renderBanner() {
     else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
+    if (S.plate) sub = (sub ? sub + " " : "") + (S.plate === "smooth" ? "Smooth plate on: PETG needs a thin layer of glue stick first." : "Textured plate on.");
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
   const takeOff = S.bed && S.bed.state === "part waiting" && ps.state !== "printing" && ps.state !== "paused";
+  const idle = ps.state !== "printing" && ps.state !== "paused", other = S.plate === "smooth" ? "textured" : "smooth";
   if (!text && !sub) { b.hidden = true; return; }
-  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}`;
+  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}${idle && S.plate ? `<button class="btn sm" id="plateSw">I put the ${other} plate on</button>` : ""}`;
+  if (idle && S.plate) $("#plateSw").onclick = async () => { try { S.plate = (await post("/api/plate", {plate: other})).plate; toast(`The ${S.plate} plate is on`); render(); } catch (e) { toast(e.message, true); } };
   if (takeOff) $("#tookOff").onclick = async () => { try { S.bed = await post("/api/bed"); toast("Bed marked clear"); render(); } catch (e) { toast(e.message, true); } };
 }
 /* ---------- layer photos (saved by printer.py watch) ---------- */
