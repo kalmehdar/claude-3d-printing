@@ -1602,13 +1602,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except (OSError, ValueError):
                 pass
             return self.send(200, {"reports": rows})
+        if p.startswith("/api/claude-usage"):   # the weekly email's spend count: photo checks and doctor reports in the last N days
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            since, tok = time.time() - 86400 * min(31, int(q.get("days", ["7"])[0] or 7)), {"checks": 0, "input_tokens": 0, "output_tokens": 0}
+            logs = [PHOTO_LOG] + [os.path.join(DOCTOR, f) for f in (os.listdir(DOCTOR) if os.path.isdir(DOCTOR) else [])]
+            for path in logs:
+                try:
+                    lines = open(path, encoding="utf-8").read().splitlines() if path == PHOTO_LOG else [open(path, encoding="utf-8").read().replace("\n", " ")]
+                except OSError:
+                    continue
+                for x in lines:
+                    try:
+                        d = json.loads(x)
+                    except ValueError:
+                        continue
+                    if (d.get("t") or 0) >= since and d.get("usage"):
+                        tok["checks"] += 1
+                        tok["input_tokens"] += d["usage"].get("input_tokens") or 0
+                        tok["output_tokens"] += d["usage"].get("output_tokens") or 0
+            return self.send(200, {"model": PHOTO_MODEL, **tok})
         if p == "/api/photo-checks":   # the photo watch's recent verdicts, newest first (no photos, no keys)
             rows = []
             try:
                 for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-30:][::-1]:
                     try:
                         d = json.loads(x)
-                        rows.append({k: d.get(k) for k in ("t", "file", "layer", "verdict", "problem", "confidence", "reason", "error", "second_look", "final", "quality", "flaws", "advice")})
+                        rows.append({k: d.get(k) for k in ("t", "file", "layer", "verdict", "problem", "confidence", "reason", "error", "second_look", "final", "quality", "flaws", "advice", "usage")})
                     except ValueError:
                         pass
             except OSError:
