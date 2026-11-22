@@ -102,9 +102,9 @@ PRESETS = {
                  "seam_slope_type": "external", "seam_slope_conditional": "1",
                  "seam_slope_inner_walls": "1", "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                  "wall_sequence": "inner-outer-inner wall",
-                 # ironing 40% flow at 40 mm/s: a widely upvoted tip (dozens of filaments, "almost like glass"), up from Orca's
-                 # cautious 10% / 30. ponytail: not yet proved on the U1; check the ironing test (10% against 40%) before trusting it.
-                 "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "40%"},
+                 # ironing 20% flow at 40 mm/s: best of 10/20/30/40% on one plate of SUNLU PETG, 22 Nov (Khalid's pick; still faint
+                 # lines and some pits, filament not yet dried). ponytail: retest 20-25% and finer spacing once the PETG is dry.
+                 "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "20%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
     # grip: fuzzy skin on the outside, for handles and anything held (the default is too coarse to look good; 10 Ways to Hide
@@ -122,7 +122,7 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
                 "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
                 "smooth": "the smoothest walls: quality's clean outside on 0.12 mm layers, so layer lines are about 40% smaller (slower)",
-                "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
+                "polished": "quality plus ironed flat tops (20% flow, the best of our test) (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)",
                 "grip": "a gentle fuzzy skin outside, for handles and things you hold; hides layer lines (not for faces that must fit)",
