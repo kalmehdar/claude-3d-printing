@@ -343,6 +343,7 @@ def watch_alerts():
             scan_alerts()
         except Exception as e:   # this thread also takes the photos and timelapses: it must never die
             print("alert scan failed:", e, flush=True)
+        remember_z()   # the bed's last known Z, so it can come up to the camera later without homing
         try:   # a photo per layer while printing, whoever started the job (the page's Layer photos card)
             s = printer.status()
             if prev and s["state"] != prev:
@@ -1307,6 +1308,36 @@ def view_height(tallest=None, last_height=None):
     return round(min(250.0, max(25.0, h + VIEW_GAP)), 1)
 
 
+LAST_Z = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "last-z.json")
+
+
+def remember_z(z=None):
+    """Keep the bed's last known Z (from the printer while Z is homed, or a move Workshop just made). With the motors off
+    the bed can only sink (Z grows), never rise, so the true Z is at or past this: a safe start for raising it without
+    homing (Khalid, 22 Nov 2026). Unknown if someone winds the bed up by hand while the motors are off."""
+    if z is None:
+        try:
+            with moonraker("GET", "/printer/objects/query?toolhead=homed_axes,position", timeout=5) as r:
+                th = json.load(r)["result"]["status"]["toolhead"]
+        except (OSError, ValueError, KeyError):
+            return
+        if "z" not in th.get("homed_axes", ""):
+            return
+        z = th["position"][2]
+    try:
+        os.makedirs(os.path.dirname(LAST_Z), exist_ok=True)
+        json.dump({"z": round(float(z), 2), "t": time.time()}, open(LAST_Z, "w"))
+    except OSError:
+        pass
+
+
+def known_z():
+    try:
+        return float(json.load(open(LAST_Z))["z"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def view_bed(tallest=None):
     """Bring the bed up to the camera (Khalid, 22 Nov 2026: Claude must always be able to see the plate). The U1 homes Z
     DOWN (endstop at 275 mm, the bottom), so homing moves the bed away from the nozzle and cannot crush a part; then the
@@ -1326,10 +1357,17 @@ def view_bed(tallest=None):
         raise ValueError("no last print to size the gap from: say how tall the tallest thing on the plate is")
     z = view_height(tallest, last)
     homed = "z" in st["toolhead"].get("homed_axes", "")
+    k = known_z()
+    if not homed and k is not None and z < k:   # raise only, from a Z the bed is at or below: no homing, Z only
+        for cmd in (f"SET_KINEMATIC_POSITION Z={k}", "G90", f"G1 Z{z} F600", "M400", "M84"):
+            moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
+        remember_z(z)
+        return {"z": z, "homed": False}
     if not homed:
         moonraker("POST", "/printer/gcode/script?script=G28", timeout=180).read()
     for cmd in ("G90", f"G1 Z{z} F900"):
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
+    remember_z(z)
     return {"z": z, "homed": not homed}
 
 
@@ -1363,6 +1401,7 @@ def lift_after_print(file, wait=120):
     z = view_height(float(h))
     for cmd in ("SET_KINEMATIC_POSITION Z=200", "G90", f"G1 Z{z} F600", "M400", "M84"):
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
+    remember_z(z)
     record(f"bed up to the camera at Z{z} without homing", file, who="photo watch")
     return z
 
