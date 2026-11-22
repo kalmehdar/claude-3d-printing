@@ -187,7 +187,8 @@ with tempfile.TemporaryDirectory() as d:
     pauses, pushes = [], []
     class _R:
         def read(self): return b"{}"
-    workshop.moonraker = lambda method, path, **k: (pauses.append(path), _R())[1]
+    # only the pause command counts as a pause (the watch also reads the plate's parts list, 22 Nov)
+    workshop.moonraker = lambda method, path, **k: (pauses.append(path) if "/print/pause" in path else None, _R())[1]
     workshop.record = lambda *a, **k: None
     printer.push = lambda *a, **k: pushes.append(a)
     real_doctor = workshop.print_doctor
@@ -195,7 +196,7 @@ with tempfile.TemporaryDirectory() as d:
     photo = os.path.join(d, "x-layer50.jpg"); open(photo, "wb").write(b"jpg")
     def verdicts(*vs):
         it = iter(vs)
-        workshop.look_at_photo = lambda jpg, layer, plan=None, prompt=None, schema=None: dict(next(it))
+        workshop.look_at_photo = lambda jpg, layer, plan=None, prompt=None, schema=None, before=None: dict(next(it))
     bad = {"verdict": "pause", "problem": "spaghetti", "confidence": 0.95, "reason": "tangles"}
     ok = {"verdict": "ok", "problem": "none", "confidence": 0.9, "reason": "fine"}
     verdicts(bad, ok); workshop.photo_watch("a.gcode", 50, photo)
@@ -270,12 +271,18 @@ with tempfile.TemporaryDirectory() as d:
 # who may press buttons: same-origin only, http on the LAN or https behind Caddy; another site, a wrong host or no header refused
 class _H:
     allowed = workshop.Handler.allowed
-    def __init__(self, command, host, origin=None, xw="1"):
-        self.command = command
-        self.headers = {k: v for k, v in (("Host", host), ("Origin", origin), ("X-Workshop", xw)) if v is not None}
+    def __init__(self, command, host, origin=None, xw="1", path="/api/x", ctype=None):
+        self.command, self.path = command, path
+        self.headers = {k: v for k, v in (("Host", host), ("Origin", origin), ("X-Workshop", xw), ("Content-Type", ctype)) if v is not None}
 _saved_hosts = workshop.CFG.get("allow_hosts")
 workshop.CFG["allow_hosts"] = ["workshop.almehdar.co.uk"]
 assert _H("POST", "workshop.almehdar.co.uk", "https://workshop.almehdar.co.uk").allowed()
+# /mcp (22 Nov): an MCP client's JSON gets in without X-Workshop; a web page (Origin) or a form/plain-text post never does
+assert _H("POST", "workshop.almehdar.co.uk", xw=None, path="/mcp", ctype="application/json").allowed()
+assert _H("POST", "192.168.1.225:8090", xw=None, path="/mcp?user=Mohamed", ctype="application/json").allowed()
+assert not _H("POST", "workshop.almehdar.co.uk", "https://evil.example", xw=None, path="/mcp", ctype="application/json").allowed()
+assert not _H("POST", "workshop.almehdar.co.uk", xw=None, path="/mcp", ctype="text/plain").allowed()
+assert not _H("POST", "evil.example", xw=None, path="/mcp", ctype="application/json").allowed()   # DNS rebinding
 assert _H("POST", "192.168.1.225:8090", "http://192.168.1.225:8090").allowed()
 assert _H("GET", "workshop.almehdar.co.uk").allowed()
 for bad in (_H("POST", "workshop.almehdar.co.uk", "https://evil.example"), _H("POST", "evil.example", "https://evil.example"),

@@ -1473,6 +1473,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.send(r.status, r.read(), ctype, keep)
 
+    def mcp(self):
+        """The printer tools as an MCP server over HTTP (Streamable HTTP, stateless, JSON replies), so anyone's Claude
+        (Claude Code, the desktop app) can add one address instead of installing printer_mcp.py (Khalid, 22 Nov 2026).
+        The same 41 tools and the same safety checks: each call goes back through this server's own pages. The caller's
+        name comes from the X-Workshop-User header or ?user= and every action is logged under it."""
+        if self.command == "GET":
+            return self.send(405, {"error": "POST JSON-RPC to /mcp"}, "application/json", {"Allow": "POST, DELETE"})
+        if self.command == "DELETE":
+            return self.send(200, {})
+        import printer_mcp
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        who = re.sub(r"[^\w .'-]", "", self.headers.get("X-Workshop-User") or (q.get("user") or [""])[0])[:24].strip() or "someone"
+        printer_mcp.URL = f"http://127.0.0.1:{self.server.server_address[1]}"
+        printer_mcp._who.user = who
+        try:
+            msgs = json.loads(self.body() or b"null")
+        except ValueError:
+            return self.send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}})
+        batch = isinstance(msgs, list)
+        replies = []
+        for m in (msgs if batch else [msgs]):
+            if not isinstance(m, dict):
+                continue
+            try:
+                res = printer_mcp.handle(m)
+                if m.get("id") is not None:
+                    replies.append({"jsonrpc": "2.0", "id": m["id"], "result": res})
+            except LookupError as e:
+                replies.append({"jsonrpc": "2.0", "id": m.get("id"), "error": {"code": -32601, "message": f"unknown method {e}"}})
+        printer_mcp._who.user = None
+        if not replies:
+            return self.send(202, b"", "application/json")
+        return self.send(200, replies if batch else replies[0], "application/json")
+
     def allowed(self):
         """Refuse requests another web page could make: the Host must be an IP address, localhost or an --allow-host name
         (stops DNS rebinding), and anything but GET must carry the page's X-Workshop header and a same-origin Origin
@@ -1485,6 +1519,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             host_ok = host in ("localhost", *CFG["allow_hosts"])
         if not host_ok:
             return False
+        if urllib.parse.urlparse(self.path).path == "/mcp":
+            # MCP clients (Claude Code, the desktop app) send no X-Workshop header. A web page cannot reach /mcp either:
+            # it must send JSON, which forces a CORS preflight this server never grants, and any Origin is refused.
+            return self.command in ("GET", "DELETE") or ((self.headers.get("Content-Type") or "").startswith("application/json")
+                                                         and not self.headers.get("Origin"))
         if self.command != "GET":
             origin = self.headers.get("Origin")
             host_hdr = self.headers.get("Host", "")   # behind Caddy (workshop.almehdar.co.uk) the page is https
@@ -1616,7 +1655,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                    "icons": [{"src": "/icon-180.png", "sizes": "180x180", "type": "image/png"},
                                              {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]},
                              "application/manifest+json")
-        if p in ("/", "/index.html"):
+        if urllib.parse.urlparse(p).path == "/mcp":
+            return self.mcp()
+        if urllib.parse.urlparse(p).path in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8",
                              {"Cache-Control": "no-cache"})   # an updated page shows on the next load, not a cached copy
         if p.startswith("/moonraker/"):

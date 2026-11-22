@@ -14,6 +14,7 @@ Speaks MCP over stdio (JSON-RPC, one message per line). Standard library only; P
 """
 import base64
 import json
+import threading
 import os
 import re
 import sys
@@ -24,12 +25,13 @@ import urllib.request
 
 URL = os.environ.get("WORKSHOP_URL", "http://127.0.0.1:8090").rstrip("/")
 USER = os.environ.get("WORKSHOP_USER", "someone")
+_who = threading.local()   # Workshop's /mcp sets the caller per request (many people at once); stdio uses USER
 VERSION = "1.0.0"
 
 
 def http(method, path, body=None, raw=False, timeout=60):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"X-Workshop": "1", "X-Workshop-User": USER}
+    headers = {"X-Workshop": "1", "X-Workshop-User": getattr(_who, "user", None) or USER}
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
