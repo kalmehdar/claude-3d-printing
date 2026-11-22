@@ -1657,6 +1657,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return None
 
     def route(self):
+        # one handler serves every request on a kept-alive connection (Caddy reuses them): forget the last request's
+        # body, or the next request reads it as its own (22 Nov 2026: replies shifted one request behind)
+        self.__dict__.pop("_body", None)
         p = self.path
         if not self.allowed():
             return self.send(403, {"error": "refused: open Workshop by its address, not from another site"})

@@ -55,7 +55,12 @@ print("workshop guard checks passed")
 
 # a chunked body (Caddy over https, 22 Nov 2026) is read in full and the next request stays intact behind it
 import io as _io
-class _B: body = workshop.Handler.body
+class _B: body = w.Handler.body
 _b = _B(); _b.headers = {"Transfer-Encoding": "chunked"}; _b.rfile = _io.BytesIO(b'7\r\n{"a": 1\r\n1\r\n}\r\n0\r\n\r\nGET / HTTP/1.1\r\n')
 assert _b.body() == b'{"a": 1}' and _b.rfile.read() == b"GET / HTTP/1.1\r\n"
 print("chunked body check passed")
+
+# each request on a kept-alive connection reads its own body, never the previous one's (22 Nov 2026)
+import inspect as _inspect
+assert 'self.__dict__.pop("_body", None)' in _inspect.getsource(w.Handler.route), "route() must forget the last body first"
+print("fresh body per request check passed")
