@@ -190,10 +190,12 @@ with tempfile.TemporaryDirectory() as d:
     workshop.moonraker = lambda method, path, **k: (pauses.append(path), _R())[1]
     workshop.record = lambda *a, **k: None
     printer.push = lambda *a, **k: pushes.append(a)
+    real_doctor = workshop.print_doctor
+    doctored = []; workshop.print_doctor = lambda f, why, *a, **k: doctored.append(why)   # never a real API call in a test
     photo = os.path.join(d, "x-layer50.jpg"); open(photo, "wb").write(b"jpg")
     def verdicts(*vs):
         it = iter(vs)
-        workshop.look_at_photo = lambda jpg, layer, plan=None: dict(next(it))
+        workshop.look_at_photo = lambda jpg, layer, plan=None, prompt=None, schema=None: dict(next(it))
     bad = {"verdict": "pause", "problem": "spaghetti", "confidence": 0.95, "reason": "tangles"}
     ok = {"verdict": "ok", "problem": "none", "confidence": 0.9, "reason": "fine"}
     verdicts(bad, ok); workshop.photo_watch("a.gcode", 50, photo)
@@ -203,14 +205,16 @@ with tempfile.TemporaryDirectory() as d:
     verdicts({**bad, "confidence": 0.6}); workshop.photo_watch("a.gcode", 50, photo)
     assert not pauses, "unsure never pauses"
     verdicts(bad, bad); workshop.photo_watch("a.gcode", 50, photo)
-    assert pauses == ["/printer/print/pause"] and pushes, (pauses, pushes)
+    assert pauses == ["/printer/print/pause"] and pushes and doctored, (pauses, pushes, doctored)
     assert len(open(workshop.PHOTO_LOG).read().splitlines()) == 6
     # finished-print look: logs a final row, pushes, never pauses or moves anything; an API failure is logged, not raised
     workshop.api_key = lambda: "k"; pauses.clear(); pushes.clear()
+    doctored.clear()
     workshop.look_at_photo = lambda jpg, layer, plan=None, prompt=None, schema=None: (prompt and schema is workshop.FINISH_SCHEMA and
         {"quality": "flaws", "flaws": ["stringing"], "reason": "hairs", "advice": "dry it"})
     row = workshop.finish_look("a.gcode", wait=0)
     assert row["final"] and row["quality"] == "flaws" and pushes and not pauses, (row, pushes)
+    assert doctored and "flaws" in doctored[0], "a flawed finish calls the print doctor"
     def boom(*a, **k): raise OSError("HTTP 529")
     workshop.look_at_photo = boom
     assert "error" in workshop.finish_look("a.gcode", wait=0)
@@ -218,7 +222,7 @@ with tempfile.TemporaryDirectory() as d:
     for run, n in (("a-7", 300), ("a-12", 9), ("a-12", 120), ("a", 999), ("a-0000A", 5)): open(os.path.join(fr, run, f"x-layer{n}.jpg"), "w").close()
     assert workshop.last_layer_photo("a.gcode", fr).endswith(os.path.join("a-12", "x-layer120.jpg")), "newest run (hex 12 > A), highest layer"
     assert workshop.last_layer_photo("b.gcode", fr) is None
-    assert workshop.checked_block("a.gcode") == 2, "final rows carry no layer, so they never count as a layer check"
+    assert workshop.checked_block("a.gcode") == 50 // workshop.PHOTO_EVERY, "final rows carry no layer, so they never count as a layer check"
 # bed into view: gap above the tallest thing, clamped; refuses mid-print; homes only when the motors are off
 assert workshop.view_height(None, 50) == 70 and workshop.view_height(None, 2) == 25 and workshop.view_height(240 - 15, None) == 245
 assert workshop.view_height(None, None) == 25
@@ -246,6 +250,23 @@ workshop.moonraker, sent = fake_mr("printing", "xyz")
 try: workshop.view_bed(); raise AssertionError("moved mid-print")
 except PermissionError: pass
 assert not [c for c in sent if c.startswith("G")]
+# print doctor: photos and the slicer's settings go to Claude; the report is saved; it never changes anything
+with tempfile.TemporaryDirectory() as d:
+    workshop.DOCTOR, workshop.PHOTO_LOG = os.path.join(d, "doctor"), os.path.join(d, "checks.jsonl")
+    open(workshop.PHOTO_LOG, "w").write('{"file": "s.gcode", "layer": 120, "verdict": "ok", "reason": "fine"}\n')
+    saved = (workshop.api_key, workshop.record, printer.push, workshop.last_layer_photo, workshop.ask_claude, printer.fetch, workshop.DOCTOR, workshop.PHOTO_LOG)
+    workshop.api_key = lambda: "k"; workshop.record = lambda *a, **k: None; printer.push = lambda *a, **k: None
+    run = os.path.join(d, "s-0000B"); os.makedirs(run)
+    for n in (5, 10, 15): open(os.path.join(run, f"x-layer{n}.jpg"), "wb").write(b"jpg")
+    workshop.last_layer_photo = lambda f, frames=None: os.path.join(run, "x-layer15.jpg")
+    printer.fetch = lambda path, tail=None, timeout=30: b"G1 X1\n; retraction_speed = 30\n; nozzle_temperature = 250\n; post_process = rm -rf\n"
+    sent = []
+    workshop.ask_claude = lambda content, schema, effort="low", max_tokens=4000: (sent.append(content), {"diagnosis": "strings", "causes": ["hot"], "changes": [{"setting": "nozzle_temperature", "now": "250", "suggested": "245", "why": "less ooze"}], "next_step": "retraction tower"})[1]
+    r = real_doctor("s.gcode", "the photo watch paused it")
+    text = sent[0][-1]["text"]
+    assert r["diagnosis"] == "strings" and len(sent[0]) == 4 and "retraction_speed = 30" in text and "post_process" not in text, text
+    assert os.listdir(workshop.DOCTOR) and "layer 120: ok" in text
+    (workshop.api_key, workshop.record, printer.push, workshop.last_layer_photo, workshop.ask_claude, printer.fetch, workshop.DOCTOR, workshop.PHOTO_LOG) = saved
 # API keys: env first, then the files in order; a file others can read is skipped
 with tempfile.TemporaryDirectory() as d:
     workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")
@@ -259,7 +280,7 @@ with tempfile.TemporaryDirectory() as d:
 with tempfile.TemporaryDirectory() as d:
     workshop.PHOTO_LOG = os.path.join(d, "c.jsonl")
     open(workshop.PHOTO_LOG, "w").write('{"file": "a.gcode", "layer": 318}\n{"file": "b.gcode", "layer": 40}\n')
-    assert workshop.checked_block("a.gcode") == 12 and workshop.checked_block("b.gcode") == 1 and workshop.checked_block("c.gcode") == -1
+    assert workshop.checked_block("a.gcode") == 318 // workshop.PHOTO_EVERY and workshop.checked_block("b.gcode") == 40 // workshop.PHOTO_EVERY and workshop.checked_block("c.gcode") == -1
 # Workshop guard, offline (never test a guard with a real command): speed 50-150 and the light pass mid-print, motion doesn't
 class _G:
     command = "POST"

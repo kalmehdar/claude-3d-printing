@@ -325,7 +325,8 @@ def watch_alerts():
     import threading
     printer.load_conf()
     last, was, pruned, prev = None, None, 0, None
-    checked, watcher = {}, None   # photo watch: last 25-layer block checked per file, the running check
+    checked, watcher = {}, None   # photo watch: last block checked per file, the running check
+    head, head_check = None, False   # a check at the first layer after each head change (ooze, missed starts)
     while True:
         try:
             scan_alerts()
@@ -336,6 +337,9 @@ def watch_alerts():
             if prev and s["state"] != prev:
                 alert_change(prev, s, was)
             prev = s["state"]
+            if s["state"] == "printing" and s.get("active_head") and head and s["active_head"] != head:
+                head_check = True
+            head = s.get("active_head") if s["state"] == "printing" else None
             if s["state"] == "printing" and s["layer"] and (s["file"], s["layer"]) != last:
                 f = printer.layer_photo(s["file"], s["layer"].split("/")[0])
                 last = (s["file"], s["layer"])
@@ -344,11 +348,12 @@ def watch_alerts():
                 if s["file"] not in checked:
                     checked[s["file"]] = checked_block(s["file"])
                 due = (n == 2 and checked[s["file"]] < 0) or (n > 2 and n // PHOTO_EVERY > checked[s["file"]])
-                if due and api_key() and not (watcher and watcher.is_alive()):
+                if (due or head_check) and api_key() and not (watcher and watcher.is_alive()):
                     first = checked[s["file"]] < 0   # the first look at this print carries the first-layer plan, whatever layer it lands on
-                    checked[s["file"]] = n // PHOTO_EVERY
-                    watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f, first), daemon=True)
+                    checked[s["file"]] = max(checked[s["file"]], n // PHOTO_EVERY)
+                    watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f, first, head_check and not due), daemon=True)
                     watcher.start()
+                    head_check = False
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
@@ -416,6 +421,9 @@ def alert_change(prev, s, folder=None):
         printer.push(*msg, click=CFG.get("url"))
         if s["state"] in ("complete", "cancelled", "error"):   # a part (or what's left of one) now sits on the bed
             bed("part waiting", who="", file=s.get("file") or "")
+        if s["state"] in ("error", "cancelled") and s.get("file"):   # what went wrong, while the photos are fresh
+            import threading
+            threading.Thread(target=print_doctor, args=(s["file"], "the print " + ("stopped with an error: " + (s.get("message") or "") if s["state"] == "error" else "was cancelled")), daemon=True).start()
         if s["state"] == "complete":   # Claude looks at what came out (Khalid, 22 Nov: Claude does the jobs without being asked)
             import threading
             threading.Thread(target=finish_look, args=(s.get("file") or "",), daemon=True).start()
@@ -504,7 +512,7 @@ def calibration(entry=None, who="?"):
 API_KEY_FILE = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "anthropic-key")
 PHOTO_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "photo-checks.jsonl")
 PHOTO_MODEL = "claude-opus-5-5"
-PHOTO_EVERY = 25          # layers between checks, after the first-layer check at layer 2
+PHOTO_EVERY = 10          # layers between checks, after the first-layer check at layer 2 (25 until 22 Nov: Khalid, use the credit)
 PAUSE_ON = {"spaghetti", "detached", "nozzle_blob"}   # clear failures only; cosmetic faults never pause a print
 PHOTO_PROMPT = """This is a photo from the camera inside a Snapmaker U1 3D printer, taken during a print at layer {layer}.
 The camera sits low at the front, at bed level: it sees the build plate edge-on and the white tool head above it. Glare,
@@ -541,11 +549,45 @@ def api_key():
     return (api_keys() or [None])[0]
 
 
+HEAD_CHANGE_TEXT = """
+A tool head change happened just before this photo. Also look for a blob or string of the previous colour left on the part,
+or a line that did not start; only a clear failure counts, as above."""
 FIRST_LAYER_TEXT = """
 The second picture is a top-down drawing of what the slicer planned for the first layer (blue lines, front edge at the
 bottom, 50 mm grid). Compare it with the photo: is there plastic on the plate where the plan has it, and has anything
 been dragged, lifted or left out? A first layer is thin and the camera sees it edge-on, so only call detached when a part
 or line has clearly lifted, moved or is missing; anything you cannot see clearly is ok with lower confidence."""
+
+
+def ask_claude(content, schema, effort="low", max_tokens=4000):
+    """One Claude API call with structured output; returns the parsed JSON plus usage. Next key on 401/403/429/529.
+    Raises OSError (no answer) or ValueError (no verdict)."""
+    keys = api_keys()
+    if not keys:
+        raise ValueError("no API key")
+    body = {"model": PHOTO_MODEL, "max_tokens": max_tokens, "fallbacks": "default",
+            "output_config": {"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+            "messages": [{"role": "user", "content": content}]}
+    res, last = None, None
+    for n, key in enumerate(keys, 1):
+        req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
+            "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2026-10-21",
+            "anthropic-beta": "server-side-fallback-2026-07-01"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                res = json.load(r)
+            break
+        except urllib.error.HTTPError as e:   # never echo the request: it carries the key
+            last = f"Claude API HTTP {e.code} on key {n}"
+            if e.code not in (401, 403, 429, 529):
+                break
+    if res is None:
+        raise OSError(last or "Claude API: no answer")
+    if res.get("stop_reason") != "end_turn":
+        raise ValueError(f"no answer (stop_reason {res.get('stop_reason')})")
+    v = json.loads(next(b["text"] for b in res["content"] if b.get("type") == "text"))
+    v["usage"] = {k: res.get("usage", {}).get(k) for k in ("input_tokens", "output_tokens")}
+    return v
 
 
 def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None):
@@ -638,12 +680,89 @@ def finish_look(file, wait=20):
         row.update(v)
         flaws = ", ".join(f.replace("_", " ") for f in v["flaws"])
         record(f"looked at the finished print: {v['quality']}" + (f" ({flaws})" if flaws else ""), file, who="photo watch")
+        if v["quality"] != "good":
+            print_doctor(file, f"the finished part looked {v['quality']}" + (f" ({flaws})" if flaws else "") + f": {v['reason']}")
         printer.push(f"Claude's look: {v['quality']}" + (f", {flaws}" if flaws else ""), f"{os.path.basename(file or '')}. {v['reason']} {v['advice']}".strip(),
                      {"good": "good", "flaws": "warn", "failed": "bad"}[v["quality"]], click=CFG.get("url"))
     except (OSError, ValueError, KeyError, StopIteration) as e:
         row["error"] = "finished-print look: " + str(e)[:180]
     with open(PHOTO_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
+    return row
+
+
+DOCTOR = os.path.join(os.path.dirname(PHOTO_LOG), "doctor")
+DOCTOR_KEYS = ("layer_height", "nozzle_temperature", "bed_temperature", "outer_wall_speed", "inner_wall_speed", "travel_speed",
+               "retraction_length", "retraction_speed", "z_hop", "z_hop_types", "wipe", "reduce_crossing_wall", "wall_loops",
+               "sparse_infill_density", "sparse_infill_pattern", "prime_volume", "fan_max_speed", "fan_min_speed",
+               "slow_down_layer_time", "enable_support", "brim_type", "filament_type", "filament_max_volumetric_speed",
+               "pressure_advance", "seam_position", "first_layer_height", "first_layer_speed")
+DOCTOR_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["diagnosis", "causes", "changes", "next_step"],
+                 "properties": {"diagnosis": {"type": "string"},
+                                "causes": {"type": "array", "items": {"type": "string"}},
+                                "changes": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                            "required": ["setting", "now", "suggested", "why"],
+                                            "properties": {"setting": {"type": "string"}, "now": {"type": "string"},
+                                                           "suggested": {"type": "string"}, "why": {"type": "string"}}}},
+                                "next_step": {"type": "string"}}}
+DOCTOR_PROMPT = """You are diagnosing a 3D print on a Snapmaker U1 (four tool heads, PETG and PLA, OrcaSlicer). What happened: {reason}.
+The pictures are the print's layer photos in order, oldest first, from a low camera at bed level (glare, the dark textured
+plate and parked heads are normal). Below are the slicer settings it used and the photo watch's notes.
+
+Say plainly what went wrong and why, list the likely causes most likely first, and suggest at most four slicer setting
+changes using the exact setting names given (now and suggested values). Only suggest a change the evidence supports; if the
+photos do not show the fault clearly, say so and suggest a check instead. next_step is one sentence: what to print or check
+next.
+
+Slicer settings:
+{settings}
+
+Photo watch notes (newest last):
+{notes}"""
+
+
+def print_doctor(file, reason, photos=8):
+    """After a pause, failure or flawed finish: Claude reads the print's layer photos and its slicer settings and suggests
+    what to change. Saved to ~/.config/claude-3d-printing/doctor/, in the activity feed and on the phone. Read-only: it
+    changes no setting and touches nothing on the printer. Returns the report, or None."""
+    import base64
+    import printer
+    if not api_key() or not file:
+        return None
+    shots = []
+    last = last_layer_photo(file)
+    if last:
+        folder = os.path.dirname(last)
+        layered = sorted(((int(m.group(1)), os.path.join(folder, f)) for f in os.listdir(folder)
+                          if (m := re.search(r"-layer(\d+)\.jpg$", f))))
+        step = max(1, len(layered) // photos)
+        shots = [p for _, p in layered[::step]][-photos:]
+    try:
+        tail = printer.fetch("/server/files/gcodes/" + urllib.parse.quote(file), tail=120_000).decode("utf-8", "replace")
+        settings = "\n".join(l[2:] for l in tail.splitlines() if l.startswith("; ") and l[2:].split(" = ")[0] in DOCTOR_KEYS)
+    except OSError as e:
+        settings = f"(could not read the G-code: {e})"
+    notes = []
+    try:
+        for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-60:]:
+            d = json.loads(x)
+            if d.get("file") == file and (d.get("reason") or d.get("error")):
+                notes.append(f'layer {d.get("layer")}: {d.get("verdict") or d.get("quality") or "error"} {d.get("problem") or ""} {d.get("reason") or d.get("error")}'.strip())
+    except (OSError, ValueError):
+        pass
+    content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(p, "rb").read()).decode()}} for p in shots]
+    content.append({"type": "text", "text": DOCTOR_PROMPT.format(reason=reason, settings=settings or "(none found)", notes="\n".join(notes[-12:]) or "(none)")})
+    row = {"t": time.time(), "file": file, "reason": reason, "photos": [os.path.basename(p) for p in shots]}
+    try:
+        row.update(ask_claude(content, DOCTOR_SCHEMA, effort="medium"))
+        record("print doctor: " + row["diagnosis"][:120], file, who="Claude")
+        printer.push("Print doctor: " + os.path.basename(file), row["diagnosis"][:300] + (" Try: " + "; ".join(f'{c["setting"]} {c["now"]} to {c["suggested"]}' for c in row["changes"][:3]) if row["changes"] else ""),
+                     "warn", click=CFG.get("url"))
+    except (OSError, ValueError, KeyError, StopIteration) as e:
+        row["error"] = str(e)[:200]
+    os.makedirs(DOCTOR, exist_ok=True)
+    with open(os.path.join(DOCTOR, time.strftime("%Y%m%d-%H%M%S-") + safe_name(os.path.basename(file)) + ".json"), "w", encoding="utf-8") as f:
+        json.dump(row, f, indent=1)
     return row
 
 
@@ -663,7 +782,7 @@ def checked_block(file):
     return best
 
 
-def photo_watch(file, layer, photo, first=None):
+def photo_watch(file, layer, photo, first=None, head_change=False):
     """Check a layer photo; pause only on a clear failure that a second, fresh photo confirms. Logs every check."""
     import printer
     def log(row):
@@ -677,8 +796,8 @@ def photo_watch(file, layer, photo, first=None):
         except Exception as e:
             log({"error": "no first-layer plan: " + str(e)[:150]})
     try:
-        v = look_at_photo(photo, layer, plan)
-        log({"photo": photo, "first_layer": bool(plan), **v})
+        v = look_at_photo(photo, layer, plan, prompt=PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "") + (HEAD_CHANGE_TEXT if head_change else ""))
+        log({"photo": photo, "first_layer": bool(plan), "head_change": head_change, **v})
         if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= 0.85):
             return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
@@ -695,6 +814,7 @@ def photo_watch(file, layer, photo, first=None):
         record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
         printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
+        print_doctor(file, f"the photo watch paused it at layer {layer}: {what}")
     except (OSError, ValueError, KeyError, StopIteration) as e:
         log({"error": str(e)[:200]})
 
@@ -1473,6 +1593,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(200, accuracy(json.load(r)["result"]["jobs"]))
             except (OSError, ValueError, KeyError) as e:
                 return self.send(502, {"error": str(e)})
+        if p == "/api/doctor":   # the print doctor's reports, newest first
+            rows = []
+            try:
+                for f in sorted(os.listdir(DOCTOR), reverse=True)[:10]:
+                    rows.append(json.load(open(os.path.join(DOCTOR, f), encoding="utf-8")))
+            except (OSError, ValueError):
+                pass
+            return self.send(200, {"reports": rows})
         if p == "/api/photo-checks":   # the photo watch's recent verdicts, newest first (no photos, no keys)
             rows = []
             try:

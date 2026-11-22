@@ -355,6 +355,18 @@ HEATERS = {"T0": "extruder", "T1": "extruder1", "T2": "extruder2", "T3": "extrud
 MAX_C = {"bed": 110}   # nozzles 300 (the U1's hot ends); the bed 110
 
 
+def t_doctor(_):
+    r = http("GET", "/api/doctor")["reports"]
+    if not r:
+        return "No print doctor reports yet: it runs by itself after a pause, a failure or a flawed finish."
+    out = []
+    for x in r[:5]:
+        when = time.strftime("%d %b %H:%M", time.localtime(x["t"]))
+        out.append(f'{when} {x["file"]}: {x.get("diagnosis") or x.get("error")}' + "".join(f'\n  - {c["setting"]}: {c["now"]} -> {c["suggested"]} ({c["why"]})' for c in x.get("changes", []))
+                   + (f'\n  Next: {x["next_step"]}' if x.get("next_step") else ""))
+    return "\n\n".join(out)
+
+
 def t_heat(a):
     """Set one heater's target (0 turns it off). Workshop refuses it while a print runs."""
     h, c = str(a.get("heater")), float(a.get("celsius", -1))
@@ -545,6 +557,7 @@ TOOLS = [
       "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
+    ("printer_doctor", "The print doctor's latest reports: after a pause, a failure or a flawed finish, Claude reads the layer photos and slicer settings and suggests setting changes. Read them before re-slicing a print that went wrong.", {}, t_doctor),
     ("printer_heat", "Set a heater's target temperature (T0 to T3 up to 300 C, the bed up to 110 C; 0 turns it off). Not while a print runs.",
      {"heater": {"type": "string", "enum": list(HEATERS)}, "celsius": {"type": "number", "minimum": 0, "maximum": 300}}, t_heat, ["heater", "celsius"]),
     ("printer_move", "Move the head (x 0-271, y 0-335) and the bed (z: 0 is at the nozzle, 275 the bottom) to absolute positions. Homed only, not while printing. The bed never comes closer than 20 mm over the tallest thing on the plate (last print's height, or tallest_mm). Check the camera first.",

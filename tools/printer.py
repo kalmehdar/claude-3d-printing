@@ -199,7 +199,7 @@ def state():
 def status():
     names = call("/printer/objects/list")["objects"]
     heads = [o for o in names if o == "extruder" or (o.startswith("extruder") and o[8:].isdigit())]
-    s = query("print_stats", "display_status", "heater_bed", "webhooks", *heads,
+    s = query("print_stats", "display_status", "heater_bed", "webhooks", "toolhead", *heads,
               *(["print_task_config"] if "print_task_config" in names else []))
     ps, ds = s["print_stats"], s.get("display_status", {})
     info, p = ps.get("info") or {}, ds.get("progress") or 0
@@ -209,7 +209,8 @@ def status():
            "printing_min": round(ps.get("print_duration", 0) / 60, 1),
            "filament_used_m": round(ps.get("filament_used", 0) / 1000, 2),
            "bed": f'{s["heater_bed"]["temperature"]:.0f}/{s["heater_bed"]["target"]:.0f}',
-           "heads": {h: f'{s[h]["temperature"]:.0f}/{s[h]["target"]:.0f} {s[h].get("state", "")}'.strip() for h in heads}}
+           "heads": {h: f'{s[h]["temperature"]:.0f}/{s[h]["target"]:.0f} {s[h].get("state", "")}'.strip() for h in heads},
+           "active_head": (s.get("toolhead") or {}).get("extruder")}
     if ps["state"] == "printing" and p > 0.02:
         left = ps["print_duration"] * (1 - p) / p
         out["left_min"] = round(left / 60)
