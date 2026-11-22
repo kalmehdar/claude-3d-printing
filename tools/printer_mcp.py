@@ -295,6 +295,77 @@ def t_light(a):
     return "Light " + ("on." if a.get("on", True) else "off.")
 
 
+def t_health(_):
+    h = http("GET", "/api/health")
+    m = h["mesh"]
+    names = {"heater_bed": "bed", "extruder": "T0", "extruder1": "T1", "extruder2": "T2", "extruder3": "T3", "temperature_sensor cavity": "chamber"}
+    temps = ", ".join(f'{names.get(k, k)} {round(v["temperatures"][-1])}' + (f'/{round(v["targets"][-1])}' if v.get("targets") and v["targets"][-1] else "")
+                      for k, v in h["temps"].items() if v.get("temperatures"))
+    mesh = f'bed mesh spread {m["range"]} mm ({m["min"]} to {m["max"]}): {m["verdict"]}' if m.get("rows") else "no bed mesh yet"
+    return f"Temperatures now (C): {temps}.\n{mesh}."
+
+
+def t_spools(_):
+    r = http("GET", "/api/spoolman")
+    if not r["spools"]:
+        return r.get("note") or "No spools in Spoolman."
+    return "\n".join(f'{x["head"] or "#" + str(x["id"])}: {x["name"]}, {x["left_g"]} g left, {x["used_g"]} g used' + (" - REORDER" if x["low"] else "")
+                     for x in r["spools"])
+
+
+def t_costs(_):
+    c = http("GET", "/api/costs")
+    lines = [f'{k}: {v["prints"]} prints, {v["grams"]} g, £{v["cost"]:.2f}' for k, v in sorted(c["months"].items(), reverse=True)]
+    lines += [f'{k}: {v["prints"]} prints, {v["grams"]} g, £{v["cost"]:.2f}' for k, v in sorted(c["people"].items(), key=lambda kv: -kv[1]["grams"])]
+    return "\n".join(lines) or "No finished prints with filament yet."
+
+
+def t_plan(_):
+    p = http("GET", "/api/plan")
+    if not p["jobs"]:
+        return f'Nothing queued.' + (f' The printer is busy until about {p["busy_until"][11:16]}.' if p.get("busy_until") else "")
+    out = [f'{j["file"]}: {j["start"][11:16]} to {j["end"][11:16]}' + (" - starts in the quiet hours, the queue holds it" if j["quiet_start"] else "") for j in p["jobs"]]
+    return "\n".join(out) + f'\nQuiet hours {p["quiet"][0]:02d}:00 to {p["quiet"][1]:02d}:00: no new start; a running print may finish.'
+
+
+def t_upload_model(a):
+    path = os.path.expanduser(a["path"])
+    if not path.lower().endswith((".stl", ".3mf")) or not os.path.isfile(path):
+        raise ValueError("give the path of an .stl or .3mf file on this computer")
+    params = urllib.parse.urlencode({"name": os.path.basename(path), "colour": (a.get("colour") or "888888").lstrip("#"),
+                                     "preset": a.get("preset") or "lean", "queue": "1" if a.get("queue") else "0"})
+    req = urllib.request.Request(URL + "/api/upload-model?" + params, data=open(path, "rb").read(), method="POST",
+                                 headers={"X-Workshop": "1", "X-Workshop-User": USER, "Content-Type": "application/octet-stream"})
+    try:
+        with urllib.request.urlopen(req, timeout=900) as r:
+            d = json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError((json.loads(e.read() or b"{}") or {}).get("error") or f"Workshop said HTTP {e.code}")
+    return (f'{d["file"]} is on the printer: {d["time"]}, {d["total_g"]} g, preset {d["preset"]}' + (", queued" if d.get("queued") else "")
+            + (f'. {d["queue_note"]}' if d.get("queue_note") else "") + ". Nothing starts until a person says the bed is clear.")
+
+
+CONTROLS = {"heaters_off": ("TURN_OFF_HEATERS", "Heaters off."), "motors_off": ("M84", "Motors off."), "home": ("G28", "Homed.")}
+
+
+def t_control(a):
+    act = a.get("action")
+    if act not in CONTROLS:
+        raise ValueError("action is heaters_off, motors_off or home")
+    if act == "home" and a.get("nothing_in_the_way") is not True:
+        raise ValueError("home moves the head: ask the person whether anything is in its way, then pass nothing_in_the_way=true")
+    cmd, done = CONTROLS[act]
+    mr("POST", "/printer/gcode/script?script=" + q(cmd))   # Workshop refuses these while a job runs
+    return done
+
+
+def t_screen(_):
+    png = http("GET", "/screen.jpg?t=" + str(time.time()), raw=True, timeout=20)
+    kind = "image/png" if png[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+    return [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": kind},
+            {"type": "text", "text": "The printer's own touchscreen right now (view only)."}]
+
+
 def t_history(a):
     jobs = mr("GET", f'/server/history/list?limit={int(a.get("count") or 10)}&order=desc')["jobs"]
     return "\n".join(f'{time.strftime("%Y-%m-%d %H:%M", time.localtime(j["start_time"]))}  {j["status"]:<10} '
@@ -355,6 +426,16 @@ TOOLS = [
     ("printer_cancel_part", "Stop printing ONE part and keep the rest going (EXCLUDE_OBJECT). Ask first: show printer_parts with mark set to it and wait for the person's yes. Workshop refuses the last part left (that is the whole print, a person's own cancel).",
      {"name": {"type": "string", "description": "the part's name from printer_parts"}, "person_said_yes": {"type": "boolean", "description": "true only after the person saw the marked picture and said yes"}}, t_cancel_part,
      ["name", "person_said_yes"]),
+    ("printer_health", "Printer health: every heater's temperature and target now, and the last bed mesh (spread and whether the bed is flat enough).", {}, t_health),
+    ("printer_spools", "The spools in Spoolman, head by head: grams left, used, and which need reordering (under 200 g).", {}, t_spools),
+    ("printer_costs", "Filament and cost per month and per person who started the prints, from the printer's own measure.", {}, t_costs),
+    ("printer_plan", "The queue as a plan: when each job would start and finish after the current print, and any that would start in the quiet hours (03:00 to 08:00, when no new print starts).", {}, t_plan),
+    ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. Never starts a print.",
+     {"path": {"type": "string", "description": "the .stl or .3mf file on this computer"}, "colour": {"type": "string", "description": "hex colour of the loaded filament to use, e.g. 1c1c1c (STL only)"},
+      "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"}}, t_upload_model, ["path"]),
+    ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
+     {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
+    ("printer_screen", "A picture of what the printer's own touchscreen shows right now.", {}, t_screen),
     ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
      {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),
     ("printer_light", "Turn the chamber light on or off.", {"on": {"type": "boolean"}}, t_light),

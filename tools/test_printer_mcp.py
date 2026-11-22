@@ -343,6 +343,22 @@ with tempfile.TemporaryDirectory() as d:
     code, _ = workshop.slice_upload("../../evil name.stl", b"solid x", {"colour": "1c1c1c", "preset": "lean"})
     assert code == 200 and os.path.dirname(seen[-1][1][0][1]) == d and seen[-1][1][0][2] == "#1c1c1c", seen[-1]
     workshop.slice_parts = _sp
+# the Claude app's controls: home needs the person's word that nothing is in the way; unknown actions and files refused
+import printer_mcp as _pm
+_sent = []
+_pm.mr = lambda m, path, **k: _sent.append(path)
+for _bad in ({"action": "home"}, {"action": "dance"}):
+    try:
+        _pm.t_control(_bad); raise AssertionError(_bad)
+    except ValueError:
+        pass
+assert not _sent
+assert _pm.t_control({"action": "home", "nothing_in_the_way": True}) == "Homed." and _sent == ["/printer/gcode/script?script=G28"], _sent
+for _bad in ({"path": "/etc/passwd"}, {"path": "/nope/part.stl"}):
+    try:
+        _pm.t_upload_model(_bad); raise AssertionError(_bad)
+    except ValueError:
+        pass
 # the page's own script must parse (a stray // once cut a one-line function in half and the whole page stopped)
 import re as _re, shutil as _sh
 if _sh.which("node"):

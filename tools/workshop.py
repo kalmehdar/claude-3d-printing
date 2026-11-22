@@ -1201,6 +1201,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if what:
                 record(what[0], what[1], who=actor(self))
             return self.proxy(path, timeout=600 if ("upload" in path or "gcode/script" in path) else 30)
+        if p.startswith("/screen.jpg"):   # the printer's touchscreen as a still (Extended Firmware lists it as a webcam)
+            try:
+                cams = _get("/server/webcams/list", timeout=5)["webcams"]
+                snap = next((c.get("snapshot_url") for c in cams if c.get("service") == "iframe" and "/screen" in (c.get("stream_url") or "")), None)
+                if not snap:
+                    return self.send(404, {"error": "this printer has no remote screen"})
+                url = snap if snap.startswith("http") else f"http://{CFG['printer']}{snap}"
+                with urllib.request.urlopen(url, timeout=10) as r:
+                    return self.send(200, r.read(), r.headers.get("Content-Type", "image/jpeg"))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"screen: {e}"})
         if p.startswith("/cam.jpg"):
             import printer
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
