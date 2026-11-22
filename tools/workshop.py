@@ -1526,6 +1526,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.send(r.status, r.read(), ctype, keep)
 
+    MCP_LOCAL_ONLY = ("printer_upload_model",)   # 22 Nov 2026 review: over HTTP it read files on alm-01
+
     def mcp(self):
         """The printer tools as an MCP server over HTTP (Streamable HTTP, stateless, JSON replies), so anyone's Claude
         (Claude Code, the desktop app) can add one address instead of installing printer_mcp.py (Khalid, 22 Nov 2026).
@@ -1550,7 +1552,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not isinstance(m, dict):
                 continue
             try:
-                res = printer_mcp.handle(m)
+                name = (m.get("params") or {}).get("name") if m.get("method") == "tools/call" else None
+                if name in self.MCP_LOCAL_ONLY:   # it reads a path on the computer running the tools: over HTTP that is alm-01, not the caller's
+                    res = {"content": [{"type": "text", "text": f"{name} reads a file on your own computer, so it only works in the "
+                                                                "local printer_mcp.py. Over /mcp, put the model in the family designs "
+                                                                "or slice it with printer_slice."}], "isError": True}
+                else:
+                    res = printer_mcp.handle(m)
+                    if m.get("method") == "tools/list":
+                        res = dict(res, tools=[t for t in res["tools"] if t["name"] not in self.MCP_LOCAL_ONLY])
                 if m.get("id") is not None:
                     replies.append({"jsonrpc": "2.0", "id": m["id"], "result": res})
             except LookupError as e:
