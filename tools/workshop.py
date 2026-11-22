@@ -1673,6 +1673,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                              "application/manifest+json")
         if urllib.parse.urlparse(p).path == "/mcp":
             return self.mcp()
+        if urllib.parse.urlparse(p).path == "/next":   # the watch-first test copy (22 Nov 2026), until Khalid says yes
+            return self.send(200, open(os.path.join(TOOLS, "workshop-next.html"), "rb").read(), "text/html; charset=utf-8",
+                             {"Cache-Control": "no-cache"})
         if urllib.parse.urlparse(p).path in ("/", "/index.html"):
             return self.send(200, open(os.path.join(TOOLS, "workshop.html"), "rb").read(), "text/html; charset=utf-8",
                              {"Cache-Control": "no-cache"})   # an updated page shows on the next load, not a cached copy
