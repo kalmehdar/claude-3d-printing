@@ -95,6 +95,19 @@ The person can follow the same printer on `python tools/workshop.py --printer <a
 
 **Tool changers (Snapmaker U1, Prusa XL).** Each head keeps its own colour, so the `low-waste` preset's small prime tower is usually enough; check the first print for colour bleed. Group colours so the most-used one prints from the head with the freshest filament.
 
+## Habits that save prints (from experienced makers, Nov 2026)
+
+- **Dry PETG before it matters.** Damp PETG strings, blobs and fails, and a UK room sits at 40 to 50% humidity. Strings on a
+  print that was fine before: dry the spool first (a filament dryer, about 65 C for PETG, 4 to 6 hours), then touch settings.
+- **Let the plate cool, then flex it.** Pulling PETG or a long thin part off a warm plate warps it; a cool part pops off.
+- **Never touch the print surface.** Finger oil is the commonest first-layer failure; wash the plate with washing-up liquid
+  and water, dry it, and hold it by the edges. A scraper goes in at the shallowest angle that works, or the PEI scratches.
+- **Orientation first, settings second.** The face on the plate takes the plate's texture; the best-looking face goes down
+  on a smooth plate, or up with ironing (`polished`). Layer lines hide best on curves facing sideways, not on flat tops.
+- **Don't rush PETG.** Faster profiles cost more in failures than they save; `lean` and `quality` keep slow outer walls.
+- **To hide layer lines:** orientation, a filled filament (PETG-CF hides them best), `grip` for held parts, and for a show
+  finish sand, prime and paint. A smaller nozzle helps but costs a lot of time.
+
 ## Done means
 
 Exported parts within the bed, the audit at 0 to fix, the bench rebuilt and looked at, and every FIT number either measured or listed for the person to measure. When Claude ran the print: the bed seen empty before the start, the first layers looked at, and the real time and metres logged.

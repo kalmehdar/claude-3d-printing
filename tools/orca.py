@@ -89,6 +89,9 @@ PRESETS = {
                  "ironing_type": "top", "ironing_speed": "40", "ironing_flow": "40%"},
     # multi-colour on a tool changer: each head keeps its own colour, so most of the default purge is waste
     "low-waste": {"prime_volume": "20", "prime_tower_width": "20", "wipe_tower_no_sparse_layers": "1"},
+    # grip: fuzzy skin on the outside, for handles and anything held (the default is too coarse to look good; 10 Ways to Hide
+    # Layer Lines, Nov 2026). ponytail: 0.2 mm thickness and 0.4 mm point distance are a common gentle start, not tested on the U1.
+    "grip": {"fuzzy_skin": "external", "fuzzy_skin_thickness": "0.2", "fuzzy_skin_point_distance": "0.4", "wall_loops": "3"},
 }
 PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
@@ -97,7 +100,8 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
                 "polished": "quality plus ironed flat tops (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
-                "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)"}
+                "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)",
+                "grip": "a gentle fuzzy skin outside, for handles and things you hold; hides layer lines (not for faces that must fit)"}
 
 
 def find(env, patterns):
