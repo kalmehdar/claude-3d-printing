@@ -9,6 +9,8 @@ The loop: **ask, model, export, audit, preview, hand over, and print it** when C
 
 The tools ship with this skill: `tools/` sits two folders above this skill's base directory (the plugin root, or the repo root in a clone). Use that path in every command below; if the skill was copied on its own without `tools/`, clone github.com/kalmehdar/claude-3d-printing and use its `tools/`.
 
+First time on a machine: `python tools/c3dp.py doctor` says what is missing (OpenSCAD, OrcaSlicer, Blender, measured fits, printer setups). In the Claude desktop app, with no terminal, the `design` MCP server (`tools/design_mcp.py`) gives the same steps as tools: `design_save`, `design_look`, `design_export`, `design_slice`, `design_fit`, `design_project`.
+
 ## 1. Ask (one message, then stop)
 
 - The printer and its bed size, the nozzle, how many colours it can print and the material. Skip what the user already said.
@@ -18,7 +20,7 @@ The tools ship with this skill: `tools/` sits two folders above this skill's bas
 
 ## 2. Model (OpenSCAD, one file)
 
-- Every size a named variable at the top, `$fn = 48`, comments saying what each number is.
+- Every size a named variable at the top, `$fn = 48`, comments saying what each number is. Sizes that change between prints also get named sets in `model.json` (`tools/param_sets.py`), so OpenSCAD's Customizer offers them.
 - One `part` variable selects a colour, and the first line lists them: `// parts: body label accent`. Add `part = "all"` for a preview with `color()` on each part.
 - Labels are printed in, never stuck on: a 0.6 mm pocket in the body, the same text clipped to the part as the second colour, printed face down (so mirror the text on a bottom face).
 - Same-colour shapes that touch only along an edge or a corner make non-manifold meshes: overlap them by 0.01 mm.
@@ -40,7 +42,7 @@ One binary STL per part, each checked against the bed. Set `OPENSCAD` if it is n
 blender --background --factory-startup --python tools/mesh_audit.py -- stl --bed 256
 ```
 
-It must end `0 file(s) need a fix`. A solid body should be `1` piece; lettering is many by design. A large thin-area number on a solid part means look at that spot in the slicer. No Blender: say the audit was skipped, never that the mesh is fine.
+It must end `0 file(s) need a fix`. A `check <file>: ... above the plate` line means a piece hangs in the air (the slicer reports "empty first layer"): fix it in the model before slicing. A solid body should be `1` piece; lettering is many by design. A large thin-area number on a solid part means look at that spot in the slicer. A `check` note is printability, not a fault: an overhang over 100 mm2 (fix in the model first: a 45 degree chamfer, a teardrop hole, or turn the part; supports last) or a bridge over 15 mm (turn it so the span is shorter, or add a rib under it). Fix it before slicing when the fix is cheap, and say which you left. No Blender: say the audit was skipped, never that the mesh is fine.
 
 ## 5. Preview: the Print Bench
 
