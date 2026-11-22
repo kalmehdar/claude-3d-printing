@@ -1547,8 +1547,9 @@ function camSet(mode) {
     // The printer serves very few live viewers. When it is full its page says "max clients reached" (behind Caddy it is
     // same-origin, so readable): fall back to stills for this viewer instead of a red error loop (22 Nov).
     let looks = 0; const busy = setInterval(() => {
-      let t = ""; try { t = f.contentDocument?.body?.innerText || ""; } catch (e) { clearInterval(busy); return; }
-      if (/max clients/i.test(t)) { clearInterval(busy); camSet("stills"); try { localStorage.setItem("workshop-cam", "video"); } catch (e) {}
+      let t = "", v = null; try { t = f.contentDocument?.body?.innerText || ""; v = f.contentDocument?.querySelector("video"); } catch (e) { clearInterval(busy); return; }
+      if (v && v.readyState >= 2) { clearInterval(busy); return; }   // playing: leave it
+      if (/max clients|retrying in|SessionDescription/i.test(t)) { clearInterval(busy); camSet("stills"); try { localStorage.setItem("workshop-cam", "video"); } catch (e) {}
         toast("Live video is busy (the printer allows only a few viewers at once), so this shows a photo every 2 seconds."); }
       if (++looks > 10 || !document.contains(f)) clearInterval(busy);
     }, 1500);
