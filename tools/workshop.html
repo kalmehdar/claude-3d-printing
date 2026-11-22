@@ -210,6 +210,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 @media (max-width:520px){.jkv{grid-template-columns:repeat(2,minmax(0,1fr))} .jspeed{margin-left:0}}
 .hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.hstat{display:none}}
+@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .cam .camtools{left:8px;right:8px;flex-wrap:wrap;justify-content:flex-end} .cam .camtools .btn{min-height:34px;padding:0 10px;font-size:12.5px}}   /* phone: one header row, camera buttons that fit */
 .pushrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:12.5px}
 #pushHide{color:var(--dim)}
 /* Printer tab */
@@ -1255,8 +1256,25 @@ function renderWizard(r) {
 $("#calWizard").addEventListener("click", e => {
   const q = e.target.closest("[data-calq]"), rec = e.target.closest("[data-calrec]");
   if (q) addToQueue(q.dataset.calq);
+  if (rec && rec.dataset.calrec === "temperature" && towerBands()) return pickBand();
   if (rec) { $("#calTest").value = rec.dataset.calrec; $("#calVal").focus(); }
 });
+// the temperature tower's bands, from the newest cal-temp-<filament>-<hot>-<cool> file: hottest at the bottom, 5 °C a band (Orca's tower)
+function towerBands() {
+  const f = (S.files || []).map(x => x.path).find(p => /^cal-temp-[a-z]+-\d{3}-\d{3}/i.test(p)); if (!f) return null;
+  const [, hot, cool] = f.match(/-(\d{3})-(\d{3})/).map(Number), out = [];
+  for (let t = Math.min(hot, cool); t <= Math.max(hot, cool); t += 5) out.push(t);   // top of the tower first
+  return {file: f, bands: out};
+}
+function pickBand() {
+  const {file, bands} = towerBands();
+  const body = openSheet("Which band of the tower?", `<div class="two"><div><img src="/cam.jpg?t=${Date.now()}" alt="The printer right now" style="width:100%;border-radius:10px"></div>
+      <div><p class="note" style="margin-top:0">From ${esc(file)}. Pick the band with clean overhangs, the least stringing and no blobs. Top of the tower is the coolest.</p>
+      <div class="list">${bands.map((t, i) => `<button class="btn" data-band="${t}" style="width:100%;justify-content:space-between;margin-bottom:6px"><span>${i === 0 ? "Top" : i === bands.length - 1 ? "Bottom" : "Band " + (bands.length - i)}</span><b>${t} °C</b></button>`).join("")}</div></div></div>`);
+  body.addEventListener("click", e => { const b = e.target.closest("[data-band]"); if (!b) return;
+    $("#calTest").value = "temperature"; $("#calVal").value = b.dataset.band; closeSheet(); $("#calSave").focus();
+    toast(`${b.dataset.band} °C filled in: press Record to save it with a photo`); });
+}
 async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
   if (!S.files || !S.files.length) { try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); } catch (e) {} }
@@ -1343,9 +1361,10 @@ function showFrame() {
 }
 async function loadPhotoWatch() {
   let r; try { r = await api("/api/photo-checks"); } catch (e) { return; }
-  const el = $("#pwInfo"), c = r.checks.find(x => x.verdict || x.error);
+  const el = $("#pwInfo"), c = r.checks.find(x => x.verdict || x.error || x.quality);
   el.hidden = !r.enabled; if (!r.enabled) return;
   el.textContent = !c ? `Claude checks a photo at layer 2 and every ${r.every} layers.`
+    : c.final && c.quality ? `Claude looked at the finished ${runName(c.file || "print")} at ${clock(new Date(c.t * 1000))}: ${c.quality}${c.flaws.length ? " (" + c.flaws.join(", ").replace(/_/g, " ") + ")" : ""}. ${c.reason} ${c.advice}`
     : c.error ? `Claude's last photo check failed (${c.error}); it tries again at the next check.`
     : `Claude checked layer ${c.layer} at ${clock(new Date(c.t * 1000))}: ${c.verdict === "ok" ? "looks fine" : "PAUSED, " + c.problem.replace("_", " ")}. ${c.reason || ""}`;
 }
@@ -1504,6 +1523,7 @@ async function loadLast() {
   let h, t = [];
   try { h = await api(M("/server/history/list?limit=3&order=desc")); } catch (e) { return; }
   try { t = await api("/api/timelapses"); } catch (e) {}
+  let looks = []; try { looks = (await api("/api/photo-checks")).checks.filter(x => x.final && x.quality); } catch (e) {}
   const j = (h.result || h).jobs.find(x => x.status !== "in_progress");
   const st = S.status?.print_stats?.state;
   $("#lastCard").hidden = !j || st === "printing" || st === "paused"; if (!j) return;
@@ -1516,6 +1536,7 @@ async function loadLast() {
   $("#lastBox").innerHTML = (tl ? `<video controls preload="metadata" playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px" ${tl.cover ? `poster="${url(tl.cover)}"` : ""} src="${url(tl.file)}"></video>` : "")
     + pkv([["Print", esc(stem)], ["Result", (WORD[j.status] || esc(j.status)) + (j.end_time ? " " + day(j.end_time) : "")],
       ["Printing time", took ? hm(took) + vs : ""], ["Start to finish", j.total_duration ? hm(j.total_duration) : ""],
+      ["Claude's look", (lk => lk ? `${lk.quality}${lk.flaws.length ? " (" + lk.flaws.join(", ").replace(/_/g, " ") + ")" : ""}: ${esc(lk.reason)} ${esc(lk.advice)}` : "")(looks.find(x => x.file === j.filename))],
       ["Filament", grams ? Math.round(grams) + " g" + (cost(grams, m.filament_type) ? " (" + cost(grams, m.filament_type) + ")" : "") : ""]]);
 }
 

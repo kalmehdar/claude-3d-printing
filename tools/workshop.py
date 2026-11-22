@@ -415,6 +415,9 @@ def alert_change(prev, s, folder=None):
         printer.push(*msg, click=CFG.get("url"))
         if s["state"] in ("complete", "cancelled", "error"):   # a part (or what's left of one) now sits on the bed
             bed("part waiting", who="", file=s.get("file") or "")
+        if s["state"] == "complete":   # Claude looks at what came out (Khalid, 22 Nov: Claude does the jobs without being asked)
+            import threading
+            threading.Thread(target=finish_look, args=(s.get("file") or "",), daemon=True).start()
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
             try:
                 with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
@@ -544,19 +547,20 @@ been dragged, lifted or left out? A first layer is thin and the camera sees it e
 or line has clearly lifted, moved or is missing; anything you cannot see clearly is ok with lower confidence."""
 
 
-def look_at_photo(jpg, layer, plan=None):
+def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None):
     """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError.
-    plan: PNG bytes of the first layer's planned paths (the first-layer check), sent as a second picture."""
+    plan: PNG bytes of the first layer's planned paths (the first-layer check), sent as a second picture.
+    prompt and schema replace the in-print check (the finished-print look uses its own)."""
     import base64
     keys = api_keys()
     if not keys:
         raise ValueError("no API key")
     body = {"model": PHOTO_MODEL, "max_tokens": 2000, "fallbacks": "default",
-            "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": PHOTO_SCHEMA}},
+            "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema or PHOTO_SCHEMA}},
             "messages": [{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
                 *([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(plan).decode()}}] if plan else []),
-                {"type": "text", "text": PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "")}]}]}
+                {"type": "text", "text": prompt or PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "")}]}]}
     res, last = None, None
     for n, key in enumerate(keys, 1):   # the next key only when this one is refused, rate-limited or the API is overloaded
         req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST", headers={
@@ -578,6 +582,68 @@ def look_at_photo(jpg, layer, plan=None):
     v = json.loads(text)
     v["usage"] = {k: res.get("usage", {}).get(k) for k in ("input_tokens", "output_tokens")}
     return v
+
+
+FINISH_PROMPT = """This photo is from the camera inside a Snapmaker U1 3D printer, taken at the last layer of the print {file}, as it finished.
+The camera sits low at the front, at bed level, so it sees the part from the side; glare, the dark textured plate, parked
+tool heads and the white tool head are normal. Judge only what you can see of the finished part:
+- quality: good (nothing wrong you can see), flaws (it finished but shows faults) or failed (spaghetti, a fallen or
+  half-printed part, a large mess)
+- flaws: any of stringing, warping (corners lifted), layer_shift, blobs, poor_bridging (sagging overhangs or bridges),
+  incomplete, other; empty when good
+- reason: one or two plain sentences on what you see
+- advice: one sentence on what to change next time (a slicer setting, a check, or nothing)
+When the view is unclear, say good and say so in the reason."""
+FINISH_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["quality", "flaws", "reason", "advice"],
+                 "properties": {"quality": {"type": "string", "enum": ["good", "flaws", "failed"]},
+                                "flaws": {"type": "array", "items": {"type": "string", "enum": ["stringing", "warping", "layer_shift", "blobs",
+                                                                                                "poor_bridging", "incomplete", "other"]}},
+                                "reason": {"type": "string"}, "advice": {"type": "string"}}}
+
+
+def last_layer_photo(file, frames=None):
+    """The highest-layer photo of this file's newest print run (<stem>-<job id>), taken while the part was still in view:
+    after a print the U1 drops the bed, so a fresh photo misses the part. None when there is none."""
+    import printer
+    root = frames or printer.FRAMES
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.splitext(os.path.basename(file or "job"))[0]).lstrip(".") or "job"
+    try:
+        runs = [d for d in os.listdir(root) if re.fullmatch(re.escape(stem) + r"-\d+", d)]
+    except OSError:
+        return None
+    for d in sorted(runs, key=lambda d: int(d.rsplit("-", 1)[1]), reverse=True):
+        shots = [(int(m.group(1)), f) for f in os.listdir(os.path.join(root, d)) if (m := re.search(r"-layer(\d+)\.jpg$", f))]
+        if shots:
+            return os.path.join(root, d, max(shots)[1])
+    return None
+
+
+def finish_look(file, wait=20):
+    """After a print finishes: one fresh photo, Claude's verdict on the part, logged beside the photo checks, in the activity
+    feed and on the phone. Read-only: it never moves, heats or starts anything."""
+    import printer
+    if not api_key():
+        return None
+    time.sleep(wait)   # the last layer's photo lands first
+    photo = last_layer_photo(file)
+    row = {"t": time.time(), "file": file, "final": True, "photo": photo}
+    try:
+        if not photo:   # no layer photos for this run: a fresh one, which may miss the part once the bed has dropped
+            folder = os.path.join(os.path.dirname(PHOTO_LOG), "finished")
+            os.makedirs(folder, exist_ok=True)
+            photo = row["photo"] = os.path.join(folder, time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w.-]", "_", os.path.basename(file or "print")) + ".jpg")
+            printer.snap(photo)
+        v = look_at_photo(photo, None, prompt=FINISH_PROMPT.format(file=os.path.basename(file or "the print")), schema=FINISH_SCHEMA)
+        row.update(v)
+        flaws = ", ".join(f.replace("_", " ") for f in v["flaws"])
+        record(f"looked at the finished print: {v['quality']}" + (f" ({flaws})" if flaws else ""), file, who="photo watch")
+        printer.push(f"Claude's look: {v['quality']}" + (f", {flaws}" if flaws else ""), f"{os.path.basename(file or '')}. {v['reason']} {v['advice']}".strip(),
+                     {"good": "good", "flaws": "warn", "failed": "bad"}[v["quality"]], click=CFG.get("url"))
+    except (OSError, ValueError, KeyError, StopIteration) as e:
+        row["error"] = "finished-print look: " + str(e)[:180]
+    with open(PHOTO_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+    return row
 
 
 def checked_block(file):
@@ -1372,7 +1438,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-30:][::-1]:
                     try:
                         d = json.loads(x)
-                        rows.append({k: d.get(k) for k in ("t", "file", "layer", "verdict", "problem", "confidence", "reason", "error", "second_look")})
+                        rows.append({k: d.get(k) for k in ("t", "file", "layer", "verdict", "problem", "confidence", "reason", "error", "second_look", "final", "quality", "flaws", "advice")})
                     except ValueError:
                         pass
             except OSError:

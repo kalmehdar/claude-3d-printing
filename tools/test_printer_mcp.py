@@ -204,6 +204,20 @@ with tempfile.TemporaryDirectory() as d:
     verdicts(bad, bad); workshop.photo_watch("a.gcode", 50, photo)
     assert pauses == ["/printer/print/pause"] and pushes, (pauses, pushes)
     assert len(open(workshop.PHOTO_LOG).read().splitlines()) == 6
+    # finished-print look: logs a final row, pushes, never pauses or moves anything; an API failure is logged, not raised
+    workshop.api_key = lambda: "k"; pauses.clear(); pushes.clear()
+    workshop.look_at_photo = lambda jpg, layer, plan=None, prompt=None, schema=None: (prompt and schema is workshop.FINISH_SCHEMA and
+        {"quality": "flaws", "flaws": ["stringing"], "reason": "hairs", "advice": "dry it"})
+    row = workshop.finish_look("a.gcode", wait=0)
+    assert row["final"] and row["quality"] == "flaws" and pushes and not pauses, (row, pushes)
+    def boom(*a, **k): raise OSError("HTTP 529")
+    workshop.look_at_photo = boom
+    assert "error" in workshop.finish_look("a.gcode", wait=0)
+    fr = os.path.join(d, "frames"); os.makedirs(os.path.join(fr, "a-7")); os.makedirs(os.path.join(fr, "a-12")); os.makedirs(os.path.join(fr, "a"))
+    for run, n in (("a-7", 300), ("a-12", 9), ("a-12", 120), ("a", 999)): open(os.path.join(fr, run, f"x-layer{n}.jpg"), "w").close()
+    assert workshop.last_layer_photo("a.gcode", fr).endswith(os.path.join("a-12", "x-layer120.jpg")), "newest run, highest layer"
+    assert workshop.last_layer_photo("b.gcode", fr) is None
+    assert workshop.checked_block("a.gcode") == 2, "final rows carry no layer, so they never count as a layer check"
 # API keys: env first, then the files in order; a file others can read is skipped
 with tempfile.TemporaryDirectory() as d:
     workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")
