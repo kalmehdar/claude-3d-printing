@@ -88,7 +88,7 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .slot.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .swatch{width:26px;height:26px;border-radius:50%;margin:0 auto 6px;border:1px solid rgba(255,255,255,.18)}
 .slot b{display:block;font-size:12.5px;font-weight:500} .slot span{display:block;font-size:11.5px;color:var(--dim);overflow-wrap:anywhere;line-height:1.35}
-@media (hover:none){.slot .btn.sm,.camtools .btn.sm,#jobActions .btn{min-height:40px;padding:0 12px}}   /* fingers, not a mouse */
+@media (hover:none){.btn,.btn.sm{min-height:44px;padding:0 14px}}   /* fingers, not a mouse: 44 px everywhere (22 Nov audit) */
 .temps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
 .temp{background:var(--panel2);border-radius:var(--r2);padding:7px 10px}
 .temp span{display:block;color:var(--faint);font-size:11.5px} .temp b{font-weight:500;font-variant-numeric:tabular-nums}
@@ -184,6 +184,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .ghead b{color:var(--faint);font-weight:500}
 @media (max-width:640px){
   .issue{grid-template-columns:16px minmax(0,1fr) auto;padding:8px 14px;row-gap:4px}
+  .issue .acts{grid-column:1/-1;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line: full file names, every button kept */
   .issue .id{display:none}
   .issue .ttl{flex-wrap:wrap;row-gap:2px}
   .issue .ttl small{flex-basis:100%;white-space:normal}
@@ -270,7 +271,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
   .app{grid-template-columns:minmax(0,1fr)}   /* 1fr let a wide card push the page past a phone (22 Nov audit) */
   nav.side{position:fixed;bottom:0;left:0;right:0;top:auto;height:calc(var(--tab) + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);flex-direction:row;border-right:0;border-top:1px solid var(--line);background:rgba(13,14,16,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:20;gap:0}
   .brand,.jump,.navlabel,.sidefoot,.tabbtn .key{display:none}
-  .tabbtn{flex-direction:column;gap:3px;font-size:10.5px;height:auto;padding:6px 2px;justify-content:center;min-height:52px;position:relative}
+  .tabbtn{flex-direction:column;gap:3px;font-size:10.5px;height:auto;padding:6px 2px;justify-content:center;min-height:52px;position:relative;flex:1 1 0;min-width:0}   /* six equal tabs fit 375 px (History was cut off) */
   .tabbtn:hover{background:none}
   .tabbtn[aria-current=page]{background:none;color:var(--text)}
   .tabbtn svg{width:20px;height:20px}
