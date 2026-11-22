@@ -1662,6 +1662,8 @@ setInterval(() => { if (!document.hidden && tab === "printer") loadConsole(); },
 
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;
+  if (location.protocol === "https:") for (const k of ["live_camera", "printer_screen"])   // behind Caddy: the same https name serves /webcam and /screen
+    if (i[k] && i[k].startsWith("http:")) { const u = new URL(i[k]); i[k] = u.pathname + u.search; }
   let pushDone = false; try { pushDone = localStorage.getItem("workshop-push-done") === "1"; } catch (e) {}
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
   S.boot = i.boot;
