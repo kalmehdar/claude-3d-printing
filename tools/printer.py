@@ -8,7 +8,6 @@
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
     python printer.py pause | resume | cancel
     python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
-    python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
     python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
     python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
@@ -20,6 +19,10 @@
     python printer.py timelapse [FOLDER]          a short video from a print's layer photos (default the newest print; needs ffmpeg)
     python printer.py log [FILE]                  add finished jobs not yet in FILE (a markdown print log; default "log_file" in printer.json)
     python printer.py notify "Title" ["text"] [--level good|warn|bad]   phone push (ntfy) and/or Discord, whichever is set up
+    python printer.py backup FOLDER               copy the printer's own setup (printer.cfg, moonraker.conf, Extended Firmware configs,
+                                                  calibration data) into FOLDER; only changed files are rewritten, so git shows what moved
+    python printer.py logcheck [MB]               restarts, MCU shutdowns, timer and heater faults in the last MB (default 3) of klippy.log;
+                                                  exits 1 when it finds a fault
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
 The camera: whatever Moonraker lists (stock U1: /server/files/camera/monitor.jpg; Extended Firmware: /webcam/snapshot.jpg), or --camera PATH|URL.
@@ -111,6 +114,77 @@ def call(path, method="GET", body=None, timeout=15, raw=False):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = r.read()
     return data if raw else json.loads(data).get("result")
+
+
+def fetch(path, tail=None, timeout=30):
+    """Raw bytes of a printer file; tail=N asks for only its last N bytes (HTTP Range)."""
+    req = urllib.request.Request(BASE + path, headers={"Range": f"bytes=-{tail}"} if tail else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+# ---------- config backup and log check (Extended Firmware or stock; read-only, through Moonraker's file API) ----------
+BACKUP_FILES = ("printer.cfg", "printer_v2.cfg", "moonraker.conf", "gui_config.json")   # not fluidd.cfg: stock macros with an author's email
+BACKUP_DIRS = ("extended/", "snapmaker/", "persistent/")
+# left out: the stock factory copies and dated backups (vendor files), the serial number and the cloud agent's identity
+BACKUP_SKIP = re.compile(r"(^|/)(agent\.json|product_info\.json|[^/]*secret[^/]*)$|^factory|^printer-\d|^\.")
+
+
+def backup(folder):
+    """Copy the printer's own setup into folder, keeping its paths. Only files whose bytes changed are rewritten.
+    Returns {"changed": [...], "same": n, "skipped": [...]}."""
+    out = {"changed": [], "same": 0, "skipped": []}
+    for f in call("/server/files/list?root=config"):
+        p = f["path"]
+        if not (p in BACKUP_FILES or p.startswith(BACKUP_DIRS)) or BACKUP_SKIP.search(p) or f.get("size", 0) > 2_000_000:
+            out["skipped"].append(p)
+            continue
+        data = fetch("/server/files/config/" + "/".join(urllib.parse.quote(x) for x in p.split("/")))
+        dest = os.path.join(folder, *p.split("/"))
+        try:
+            same = open(dest, "rb").read() == data
+        except OSError:
+            same = False
+        if same:
+            out["same"] += 1
+            continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as w:
+            w.write(data)
+        out["changed"].append(p)
+    return out
+
+
+LOG_EVENTS = [   # (name, pattern, serious): serious ones make logcheck exit 1 and are worth a phone push
+    ("restart", r"^Start printer at ", False),
+    ("mcu shutdown", r"MCU '[^']+' shutdown|Transition to shutdown state", True),
+    ("lost communication", r"Lost communication with MCU", True),
+    ("timer too close", r"Timer too close", True),
+    ("heater fault", r"not heating at expected rate|ADC out of range|Heater \S+ not heating", True),
+    ("internal error", r"Internal error|Traceback \(most recent call last\)", True),
+]
+
+
+def scan_log(lines):
+    """Count klippy.log events. Each gets its count, its last line and the restart it happened after."""
+    found, since = {}, None
+    for line in lines:
+        line = line.rstrip("\n")
+        for name, pat, serious in LOG_EVENTS:
+            if re.search(pat, line):
+                if name == "restart":
+                    since = line[len("Start printer at "):].strip()
+                e = found.setdefault(name, {"count": 0, "serious": serious})
+                e["count"] += 1
+                e["last"], e["after_restart"] = line[:200], since
+    return found
+
+
+def logcheck(mb=3):
+    files = {f["path"]: f for f in call("/server/files/list?root=logs")}
+    path = "klippylogs/klippy.log" if "klippylogs/klippy.log" in files else "klippy.log"
+    text = fetch("/server/files/logs/" + path, tail=int(mb * 1_000_000)).decode("utf-8", "replace")
+    return path, scan_log(text.splitlines()[1:])   # the first line of a tail is usually cut in half
 
 
 def query(*objs):
@@ -625,6 +699,20 @@ def main():
 
     if c == "status":
         print(json.dumps(status(), indent=1))
+    elif c == "backup":
+        if not x:
+            sys.exit("say where: printer.py backup FOLDER")
+        r = backup(x[0])
+        print(f'{len(r["changed"])} changed, {r["same"]} unchanged, {len(r["skipped"])} left out')
+        for p in r["changed"]:
+            print("  changed:", p)
+    elif c == "logcheck":
+        path, found = logcheck(float(x[0]) if x else 3)
+        if not found:
+            print(f"{path}: nothing to report")
+        for name, e in sorted(found.items(), key=lambda kv: (not kv[1]["serious"], kv[0])):
+            print(f'{"FAULT" if e["serious"] else "note "} {name}: {e["count"]}x, last after the restart at {e["after_restart"] or "?"}: {e["last"]}')
+        sys.exit(1 if any(e["serious"] for e in found.values()) else 0)
     elif c == "snap":
         print(snap(x[0] if x else "printer-snap.jpg"))
     elif c == "files":

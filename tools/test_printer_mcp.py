@@ -321,4 +321,14 @@ for args in ({"name": "B"}, {"name": "B", "person_said_yes": "yes"}):
         pass
 assert not _calls
 assert printer_mcp.t_cancel_part({"name": "B", "person_said_yes": True}).startswith("Cancelled B") and _calls == [("POST", "/api/parts", {"name": "B"})], _calls
+# printer.py logcheck: events counted, each tied to the restart before it; backup leaves out serial, agent and factory copies
+f = printer.scan_log(["Start printer at Fri Nov 21 23:36:03 2026 (1.0 2.0)", "Stats 10.0: gcodein=0",
+                      "MCU 'mcu' shutdown: Timer too close", "Start printer at Sat Nov 22 00:10:00 2026 (3.0 4.0)", "ok"])
+assert f["restart"]["count"] == 2 and not f["restart"]["serious"], f
+assert f["mcu shutdown"]["after_restart"].startswith("Fri Nov 21") and f["timer too close"]["serious"], f
+assert printer.scan_log(["Stats 1.0: all fine"]) == {}
+for path, left_out in (("persistent/agent.json", True), ("snapmaker/product_info.json", True), ("factory_v2.cfg", True),
+                       ("printer-20261120_135204.cfg", True), (".moonraker.conf.bkp", True), ("printer.cfg", False),
+                       ("snapmaker/input_shaper.json", False), ("extended/moonraker/02_internal_camera.cfg", False)):
+    assert bool(printer.BACKUP_SKIP.search(path)) == left_out, path
 print("printer_mcp.py checks passed")
