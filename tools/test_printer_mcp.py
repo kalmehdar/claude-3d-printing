@@ -214,9 +214,9 @@ with tempfile.TemporaryDirectory() as d:
     def boom(*a, **k): raise OSError("HTTP 529")
     workshop.look_at_photo = boom
     assert "error" in workshop.finish_look("a.gcode", wait=0)
-    fr = os.path.join(d, "frames"); os.makedirs(os.path.join(fr, "a-7")); os.makedirs(os.path.join(fr, "a-12")); os.makedirs(os.path.join(fr, "a"))
-    for run, n in (("a-7", 300), ("a-12", 9), ("a-12", 120), ("a", 999)): open(os.path.join(fr, run, f"x-layer{n}.jpg"), "w").close()
-    assert workshop.last_layer_photo("a.gcode", fr).endswith(os.path.join("a-12", "x-layer120.jpg")), "newest run, highest layer"
+    fr = os.path.join(d, "frames"); os.makedirs(os.path.join(fr, "a-7")); os.makedirs(os.path.join(fr, "a-12")); os.makedirs(os.path.join(fr, "a")); os.makedirs(os.path.join(fr, "a-0000A"))
+    for run, n in (("a-7", 300), ("a-12", 9), ("a-12", 120), ("a", 999), ("a-0000A", 5)): open(os.path.join(fr, run, f"x-layer{n}.jpg"), "w").close()
+    assert workshop.last_layer_photo("a.gcode", fr).endswith(os.path.join("a-12", "x-layer120.jpg")), "newest run (hex 12 > A), highest layer"
     assert workshop.last_layer_photo("b.gcode", fr) is None
     assert workshop.checked_block("a.gcode") == 2, "final rows carry no layer, so they never count as a layer check"
 # bed into view: gap above the tallest thing, clamped; refuses mid-print; homes only when the motors are off

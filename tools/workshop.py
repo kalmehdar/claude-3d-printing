@@ -609,10 +609,10 @@ def last_layer_photo(file, frames=None):
     root = frames or printer.FRAMES
     stem = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.splitext(os.path.basename(file or "job"))[0]).lstrip(".") or "job"
     try:
-        runs = [d for d in os.listdir(root) if re.fullmatch(re.escape(stem) + r"-\d+", d)]
+        runs = [d for d in os.listdir(root) if re.fullmatch(re.escape(stem) + r"-[0-9A-Fa-f]+", d)]   # Moonraker job ids are hex (00000A)
     except OSError:
         return None
-    for d in sorted(runs, key=lambda d: int(d.rsplit("-", 1)[1]), reverse=True):
+    for d in sorted(runs, key=lambda d: int(d.rsplit("-", 1)[1], 16), reverse=True):
         shots = [(int(m.group(1)), f) for f in os.listdir(os.path.join(root, d)) if (m := re.search(r"-layer(\d+)\.jpg$", f))]
         if shots:
             return os.path.join(root, d, max(shots)[1])
