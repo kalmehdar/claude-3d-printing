@@ -96,14 +96,28 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .btn.sm{height:26px;padding:0 8px;font-size:12.5px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .btn svg{width:14px;height:14px}
-.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
-.slot{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r2);padding:10px 8px;text-align:center;min-width:0}
-.slot.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-.swatch{width:26px;height:26px;border-radius:50%;margin:0 auto 6px;border:1px solid rgba(255,255,255,.18)}
-.slot b{display:block;font-size:12.5px;font-weight:500} .slot span{display:block;font-size:11.5px;color:var(--dim);overflow-wrap:anywhere;line-height:1.35}
+.chead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.chead h2{margin:0}
+.temps{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}.temps b{color:var(--text);font-weight:500}
+.slots{display:grid;gap:1px;margin:0 -8px}
+.slot{position:relative;display:grid;grid-template-columns:12px minmax(0,1fr) auto 52px;align-items:center;gap:2px 12px;padding:8px;border-radius:var(--r2);min-width:0}
+.slot:hover,.slot:focus-within{background:var(--hover)}
+.slot.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--accent)}
+.swatch{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.38)}
+.hname{min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hname b{font-weight:600;margin-right:4px}
+.hname small{display:block;font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis}.hname small .state{display:inline;margin-left:6px}
+.htemp{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right}.htemp.hot{color:var(--text)}.htemp small{color:var(--faint)}
+.hg{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right}.hg.warn{color:var(--warn)}
+.hacts{grid-column:2/-1;display:none;gap:4px;flex-wrap:wrap;padding-top:4px}
+.slot:hover .hacts,.slot:focus-within .hacts{display:flex}
+@media (hover:none){.hacts{display:flex}}
+
+
+
+
+
 @media (hover:none){.btn,.btn.sm{min-height:44px;padding:0 14px}}   /* fingers, not a mouse: 44 px everywhere (22 Nov audit) */
-.temps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
-.temp{background:var(--panel2);border-radius:var(--r2);padding:7px 10px}
+
+
 .temp span{display:block;color:var(--faint);font-size:11.5px} .temp b{font-weight:500;font-variant-numeric:tabular-nums}
 /* lists are one bordered box with hairline rows, not a stack of cards */
 .list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel)}
@@ -174,7 +188,7 @@ input[type=range]{accent-color:var(--accent)}
 .alert b{display:block;font-size:13px;font-weight:500}.alert span{font-size:12px;color:var(--dim)}
 .act{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px}
 .act time{color:var(--faint);font-variant-numeric:tabular-nums}
-.slot .state{font-size:11px;font-weight:500;margin-top:2px}
+.slot .state{font-size:11px;font-weight:500}
 .slot .state.in{color:var(--ok)}.slot .state.parked{color:var(--warn)}.slot .state.empty{color:var(--faint)}
 textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:9px 11px;resize:vertical;min-height:72px}
 .job.running{border-color:var(--info)}.job .q{font-weight:500}.job .a{white-space:pre-wrap;margin-top:6px}
@@ -300,7 +314,6 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
   .job{grid-template-columns:1fr;justify-items:center;text-align:center}
   .row{grid-template-columns:40px 1fr}
   .row .acts{grid-column:1/-1;justify-content:flex-start}
-  .slots{grid-template-columns:repeat(2,1fr)}
   .top h1::before{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -350,7 +363,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
           <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
         </div>
         <div class="grid" style="align-content:start">
-          <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
+          <div class="card"><div class="chead"><h2>Heads</h2><span class="temps" id="temps"></span></div><div class="slots" id="slots"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
           <div class="card" id="partsCard" hidden><h2>Parts on the bed</h2>
             <img id="partsMap" alt="The bed from above with each part's outline" style="width:100%;max-width:320px;border-radius:8px;display:block;margin:0 auto 10px;background:#121316">
@@ -755,8 +768,14 @@ function render() {
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
     const fs = feedState(i), loaded = fs ? fs.cls !== "empty" : (!tc.filament_exist || tc.filament_exist[i]);
     const canUnload = !active && (fs ? fs.cls === "in" : loaded && tc.filament_exist) && !(tc.filament_soft || [])[i];
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${(sp => sp ? `<span class="state${sp.start_g - sp.used_g < (S.spools.low_g || 200) ? " warn" : ""}" title="${esc(sp.spool)}">about ${Math.max(0, Math.round(sp.start_g - sp.used_g))} g left</span>` : "")(((S.spools || {}).heads || {})["T" + i])}${fs ? `<span class="state ${fs.cls}">${esc(fs.word)}</span>` : ""}<div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button><button class="btn sm ghost" data-newspool="${i}">New spool</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}${!active && fs && fs.cls === "parked" ? `<button class="btn sm ghost" data-load="${i}">Load</button>` : ""}</div></div>`; }).join("");
-  $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
+    const sp = ((S.spools || {}).heads || {})["T" + i], left = sp ? Math.max(0, Math.round(sp.start_g - sp.used_g)) : null;
+    const acts = `${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button><button class="btn sm ghost" data-newspool="${i}">New spool</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}${!active && fs && fs.cls === "parked" ? `<button class="btn sm ghost" data-load="${i}">Load</button>` : ""}`;
+    return `<div class="slot${on ? " active" : ""}"><span class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></span>
+      <div class="hname"><b>T${i}</b> ${loaded ? esc((tc.filament_type || [])[i] || "?") : "Empty"}<small>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : ""}${fs ? `<span class="state ${fs.cls}">${esc(fs.word)}</span>` : ""}</small></div>
+      <span class="htemp${on ? " hot" : ""}">${Math.round(e.temperature || 0)}°<small>${e.target ? " / " + Math.round(e.target) + "°" : ""}</small></span>
+      <span class="hg${sp && left < (S.spools.low_g || 200) ? " warn" : ""}" title="${sp ? esc(sp.spool) : ""}">${sp ? left + " g" : ""}</span>
+      ${acts ? `<div class="hacts">${acts}</div>` : ""}</div>`; }).join("");
+  $("#temps").innerHTML = `Bed <b>${Math.round(s.heater_bed.temperature)}°</b>${s.heater_bed.target ? " / " + Math.round(s.heater_bed.target) + "°" : ""}`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
   renderBanner();
@@ -765,8 +784,8 @@ function render() {
   const nm = next && (S.meta[next.filename] || {});
   $("#nextUp").innerHTML = next ? `<div class="list">${issueHtml({icon: "queued", id: "Q-1", title: esc(next.filename),
       meta: [nm.estimated_time ? hm(nm.estimated_time) : "", nm.filament_weight_total ? Math.round(nm.filament_weight_total) + " g" : "",
-             `<i class="mini" style="background-image:url('${thumbUrl(next.filename, nm)}')"></i>`],
-      acts: `<button class="btn sm" onclick="go('queue')">Queue</button>`})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
+             thumbUrl(next.filename, nm) ? `<i class="mini" style="background-image:url('${thumbUrl(next.filename, nm)}')"></i>` : ""],
+      acts: ""})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
     : `Nothing queued. <a href="#designs" onclick="go('designs');return false">Pick a design</a> or <a href="#files" onclick="go('files');return false">a file</a>.`;
 }
 $("#jobActions").addEventListener("click", async e => {
@@ -1494,7 +1513,8 @@ $("#frJob").onchange = () => openPhotos($("#frJob").value);
 $("#frPlay").onclick = () => { openSheet(runName(FR.job), `<video src="${esc(FR.video)}" controls autoplay playsinline muted loop style="width:100%;border-radius:12px;background:#000"></video>`); };
 async function loadAlerts() {
   try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
-  const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only
+  const ps = S.status?.print_stats, since = ps && (ps.state === "printing" || ps.state === "paused") ? Date.now() / 1000 - (ps.total_duration || 0) : 0;
+  const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600 && a.t >= since).slice(0, 3);   // the last hour, and only this print's while one runs
   $("#alertsCard").hidden = !recent.length;
   $("#alerts").innerHTML = recent.map(a => `<div class="alert"><b>${esc(a.text)}</b><span>${clock(new Date(a.t * 1000))}${a.advice ? " · " + esc(a.advice) : ""}</span></div>`).join("");
 }
