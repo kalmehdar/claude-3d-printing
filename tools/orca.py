@@ -78,9 +78,9 @@ PRESETS = {
     # sleeve, X9 cradle): about standard's time, 11-30% less filament. The tool changer's prime at each head change was the
     # biggest waste (45 mm3 a change; flushing does nothing on separate nozzles); lightning infill only holds up the tops,
     # so lean is for covers, labels, cases and decorative parts, not brackets or anything that takes a load (use strong).
-    # ponytail: prime 15 mm3 is not yet proved on a print; check the first multi-colour print for gaps after head changes.
+    # prime 20 mm3 (Khalid, 22 Nov: 20 by default, 45 when white sits beside other colours; Workshop raises it for pale parts).
     "lean": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100", "wall_generator": "arachne",
-             "precise_outer_wall": "1", "seam_position": "back", "prime_volume": "15",
+             "precise_outer_wall": "1", "seam_position": "back", "prime_volume": "20",
              "sparse_infill_pattern": "lightning", "sparse_infill_density": "10%"},
     "polished": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
                  "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",

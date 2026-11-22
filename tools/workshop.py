@@ -152,6 +152,13 @@ def slice_upload(name, data, req):
     return slice_parts(d, [(stem, path, "#" + str(colour).lstrip("#"))], req)
 
 
+def pale(colour):
+    """White, cream, light grey: the colours a short prime stains."""
+    import make_3mf
+    r, g, b = make_3mf.rgb(colour)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 200
+
+
 def slice_parts(d, parts, req):
     import make_3mf
     import orca
@@ -169,6 +176,10 @@ def slice_parts(d, parts, req):
     # only the plain settings the page offers: anything else could reach OrcaSlicer keys such as post_process
     sets = [s for s in (req.get("set") or []) if isinstance(s, str) and "=" in s
             and s.split("=", 1)[0] in SLICE_SETS and re.fullmatch(SLICE_SETS[s.split("=", 1)[0]], s.split("=", 1)[1])]
+    # prime 20 mm3 a head change by default (Khalid, 22 Nov); 45 when a pale part shares the plate with another colour,
+    # where a short prime leaves specks of the last colour (one maker's ~50 tests, not yet proved on the U1)
+    if len({c.lower() for _, _, c in parts}) > 1 and any(pale(c) for _, _, c in parts):
+        sets.append("prime-volume=45")
     if preset_bad(req.get("preset")):
         return 400, {"error": "unknown preset"}
     out = tempfile.mkdtemp(prefix="workshop-")
