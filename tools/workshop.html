@@ -1681,6 +1681,7 @@ setInterval(() => { if (!document.hidden && tab === "printer") loadConsole(); },
 api("/api/info").then(i => { S.info = i;
   if (location.protocol === "https:") for (const k of ["live_camera", "printer_screen"])   // behind Caddy: the same https name serves /webcam and /screen
     if (i[k] && i[k].startsWith("http:")) { const u = new URL(i[k]); i[k] = u.pathname + u.search; }
+  if (location.protocol === "https:" && i.live_relay) i.live_camera = i.live_relay;   // the relay serves many viewers; the printer itself serves one
   let pushDone = false; try { pushDone = localStorage.getItem("workshop-push-done") === "1"; } catch (e) {}
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
   S.boot = i.boot;

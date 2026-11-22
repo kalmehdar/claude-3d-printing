@@ -1692,7 +1692,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 pass
             conf = printer_conf()
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
-            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "printer_screen": screen, "push": push, "boot": BOOT,
+            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "live_relay": CFG.get("live_relay"), "printer_screen": screen, "push": push, "boot": BOOT,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
         m = re.fullmatch(r"/calibration-photo/([\w-]+\.jpg)", p)
         if m:
@@ -1960,6 +1960,8 @@ def main():
     ap.add_argument("--profile", default="u1", help="tools/orca.py printer setup for slicing")
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--allow-host", action="append", default=[], help="a host name the page may be opened by (IP addresses and localhost always work)")
+    ap.add_argument("--live-relay", help="same-origin path of a live-video relay page (e.g. go2rtc behind Caddy: /relay/stream.html?src=u1); "
+                    "pages opened by the https name use it instead of the printer's own WebRTC, which serves one viewer")
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--register", help="a filament register (markdown table with Material and a price per kg in pounds) for print costs")
     ap.add_argument("--config-backup", help="a folder (e.g. almehdar's printer/u1-config) the printer's setup is copied into once a day while idle")
@@ -1971,7 +1973,7 @@ def main():
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
     CFG.update(config_backup=a.config_backup and os.path.expanduser(a.config_backup), print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
-               profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
+               profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], live_relay=a.live_relay, bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only
         threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
