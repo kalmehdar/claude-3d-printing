@@ -60,7 +60,26 @@ _b = _B(); _b.headers = {"Transfer-Encoding": "chunked"}; _b.rfile = _io.BytesIO
 assert _b.body() == b'{"a": 1}' and _b.rfile.read() == b"GET / HTTP/1.1\r\n"
 print("chunked body check passed")
 
-# each request on a kept-alive connection reads its own body, never the previous one's (22 Nov 2026)
-import inspect as _inspect
-assert 'self.__dict__.pop("_body", None)' in _inspect.getsource(w.Handler.route), "route() must forget the last body first"
-print("fresh body per request check passed")
+# On a real socket (22 Nov 2026 review, P0): a refused POST whose body hides a second request must get one answer and a
+# closed connection, never a second answer for the smuggled request; and a kept-alive pair each read their own body.
+import socket as _socket, threading as _threading, http.server as _hs
+_srv = _hs.ThreadingHTTPServer(("127.0.0.1", 0), w.Handler); _port = _srv.server_address[1]
+_threading.Thread(target=_srv.serve_forever, daemon=True).start()
+w.CFG.setdefault("allow_hosts", [])
+def _talk(raw):
+    c = _socket.create_connection(("127.0.0.1", _port), timeout=5); c.sendall(raw); out = b""
+    try:
+        while True:
+            d = c.recv(65536)
+            if not d: break
+            out += d
+    except _socket.timeout:
+        pass
+    c.close(); return out
+_inner = b"POST /api/bed HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Workshop: 1\r\nContent-Length: 0\r\n\r\n"
+_out = _talk(b"POST /api/control HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n" % len(_inner) + _inner)
+assert _out.count(b"HTTP/1.") == 1 and b" 403 " in _out.split(b"\r\n", 1)[0], _out[:300]
+_out = _talk(b"GET /api/does-not-exist HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: %d\r\n\r\n" % len(_inner) + _inner)
+assert _out.count(b"HTTP/1.") == 1, "a body left unread must not become the next request"
+_srv.shutdown()
+print("smuggled request check passed")

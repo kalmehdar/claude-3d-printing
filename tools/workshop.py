@@ -356,18 +356,20 @@ def watch_alerts():
                 last = (s["file"], s["layer"])
                 was = os.path.dirname(f)
                 n = int(s["layer"].split("/")[0] or 0)
-                if s["file"] not in checked:
-                    checked[s["file"]] = checked_block(s["file"])
-                due = (n == 2 and checked[s["file"]] < 0) or (n > 2 and n // PHOTO_EVERY > checked[s["file"]])
+                run = os.path.dirname(f)
+                if run not in checked:
+                    checked[run] = checked_block(s["file"], run)
+                due = (n == 2 and checked[run] < 0) or (n > 2 and n // PHOTO_EVERY > checked[run])
                 if (due or head_check) and api_key() and not (watcher and watcher.is_alive()):
-                    first = checked[s["file"]] < 0   # the first look at this print carries the first-layer plan, whatever layer it lands on
-                    checked[s["file"]] = max(checked[s["file"]], n // PHOTO_EVERY)
+                    first = checked[run] < 0   # the first look at this print carries the first-layer plan, whatever layer it lands on
+                    checked[run] = max(checked[run], n // PHOTO_EVERY)
                     watcher = threading.Thread(target=photo_watch, args=(s["file"], n, f, first, head_check and not due), daemon=True)
                     watcher.start()
                     head_check = False
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
+                checked.pop(was, None); _LAST_OK.pop(was, None); head_check = False   # the run is over: nothing carries into the next
                 was = None
         except Exception as e:
             print("layer photo failed:", e, flush=True)
@@ -809,14 +811,15 @@ def print_doctor(file, reason, photos=8):
     return row
 
 
-def checked_block(file):
-    """The highest 25-layer block already checked for this file, from the log, so a Workshop restart does not check again."""
+def checked_block(file, run=None):
+    """The highest block already checked for this print run, from the log, so a Workshop restart does not check again.
+    run: the run's photo folder; a reprint of the same file is a new run and starts fresh (22 Nov 2026 review)."""
     best = -1
     try:
         for x in open(PHOTO_LOG, encoding="utf-8").read().splitlines()[-200:]:
             try:
                 d = json.loads(x)
-                if d.get("file") == file and d.get("layer") is not None:
+                if d.get("file") == file and d.get("layer") is not None and (run is None or os.path.dirname(d.get("photo") or "") == run):
                     best = max(best, int(d["layer"]) // PHOTO_EVERY)
             except (ValueError, TypeError):
                 pass
@@ -825,7 +828,7 @@ def checked_block(file):
     return best
 
 
-_LAST_OK = {}   # file -> (photo, layer) the watch last passed: the "before" picture for its next look
+_LAST_OK = {}   # run folder -> (photo, layer) the watch last passed: the "before" picture for its next look
 
 
 def photo_watch(file, layer, photo, first=None, head_change=False):
@@ -841,7 +844,7 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
             plan = layer1_png(file)
         except Exception as e:
             log({"error": "no first-layer plan: " + str(e)[:150]})
-    before = _LAST_OK.get(file)
+    before = _LAST_OK.get(os.path.dirname(photo))   # this run only: a reprint never compares with the last run
     extra = BEFORE_TEXT.format(before=before[1]) if before else ""
     try:
         names = [o["name"] for o in parts()["objects"]]
@@ -856,7 +859,7 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         sure = 0.8 if before else 0.85   # a change against a frame that passed is firmer evidence than one photo alone
         if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= sure):
             if v["verdict"] == "ok" and v["problem"] == "none":
-                _LAST_OK[file] = (photo, layer)
+                _LAST_OK[os.path.dirname(photo)] = (photo, layer)
             return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
@@ -1386,7 +1389,13 @@ def control(req):
                     tall = None
             if tall is None:
                 return 400, {"error": "say how tall the tallest thing on the plate is (tallest_mm) before raising the bed"}
-            low = max(5.0, float(tall) + VIEW_GAP)
+            try:
+                tall = float(tall)
+            except (TypeError, ValueError):
+                tall = float("nan")
+            if not 0 <= tall <= 230:   # a negative or NaN height took the 20 mm gap away (22 Nov 2026 review)
+                return 400, {"error": "the tallest thing on the plate is 0 to 230 mm"}
+            low = max(5.0, tall + VIEW_GAP)
             if not low <= want["z"] <= 275:
                 return 400, {"error": f"Z stays between {low:g} and 275 mm: the nozzle keeps {VIEW_GAP} mm over {float(tall):g} mm on the plate"}
         g("G90")
@@ -1404,13 +1413,38 @@ def control(req):
         return 200, {"done": f"{CALIBRATIONS[k][1]}: finished; the result is in the console"}
     if act == "gcode":
         cmd = str(req.get("command", "")).strip()
-        if not cmd or "\n" in cmd or len(cmd) > 200:
+        if not cmd or "\n" in cmd or "\r" in cmd or len(cmd) > 200:
             return 400, {"error": "one command, under 200 characters"}
+        if re.match(r"N\d", cmd, re.I):   # Klipper skips a leading line number, which hid SAVE_CONFIG from RAW_NEVER
+            return 400, {"error": "no line numbers: send the command itself"}
         if RAW_NEVER.match(cmd):
             return 400, {"error": "that rewrites the printer's setup or forces a motor: do it on the printer itself"}
         g(cmd, timeout=600)
         return 200, {"done": f"sent {cmd}"}
     return 400, {"error": "action is heat, move, fan, calibrate or gcode"}
+
+
+# What the pages and the MCP may reach on the printer through /moonraker/ (22 Nov 2026 review, P1: every other path,
+# firmware_restart, machine/reboot, config uploads, went straight through, mid-print too). Method, path prefix.
+PROXY_OK = {
+    "GET": ("/printer/objects/query", "/server/job_queue/status", "/server/history/list", "/server/history/totals",
+            "/server/files/list", "/server/files/metadata", "/server/files/gcodes/", "/server/files/timelapse/", "/server/gcode_store"),
+    "POST": ("/printer/print/start", "/printer/print/pause", "/printer/print/resume", "/printer/print/cancel",
+             "/printer/gcode/script", "/server/job_queue/job", "/server/job_queue/start", "/server/job_queue/pause",
+             "/server/files/upload"),
+    "DELETE": ("/server/files/gcodes/", "/server/job_queue/job"),
+}
+
+
+def proxy_allowed(method, path):
+    u = urllib.parse.urlparse(path)
+    if ".." in urllib.parse.unquote(u.path) or not any(u.path == x or (x.endswith("/") and u.path.startswith(x)) or u.path.startswith(x + "?")
+                                                         for x in PROXY_OK.get(method, ())):
+        return False
+    root = urllib.parse.parse_qs(u.query).get("root", ["gcodes"])
+    if u.path in ("/server/files/list", "/server/files/upload"):   # never the printer's config folder
+        return root in (["gcodes"], ["timelapse"]) if u.path.endswith("list") else root == ["gcodes"]
+    return True
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -1421,6 +1455,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
 
     def send(self, code, body, ctype="application/json", extra=None):
+        # A request refused before its body was read (403, oversize, 404) left that body on the kept-alive connection,
+        # where it was parsed as the next request and could pass allowed() (22 Nov 2026 review, P0). Close instead.
+        declared = int(self.headers.get("Content-Length") or 0) > 0 or "chunked" in (self.headers.get("Transfer-Encoding") or "").lower()
+        if declared and not hasattr(self, "_body"):
+            self.close_connection = True
+            extra = dict(extra or {}, Connection="close")
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         elif isinstance(body, str):
@@ -1617,7 +1657,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")) and bed().get("state") == "part waiting":
             return "the last print is still on the bed: mark it clear first (Took it off in Workshop, or tell Claude it is clear)"
         if self.command == "POST" and p.startswith("/printer/gcode/script"):
-            script = urllib.parse.unquote_plus(p.split("script=", 1)[-1]) if "script=" in p else ""
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(p).query, keep_blank_values=True)
+            if len(qs.get("script", [])) != 1 or set(qs) - {"script"}:
+                return "one G-code command, as ?script=... and nothing else"   # ?xscript=&script= slipped past (review P1)
+            script = qs["script"][0]
+            if re.match(r"\s*N\d", script, re.I):
+                return "no line numbers: send the command itself"   # Klipper skips a leading N1, which hid SAVE_CONFIG
             if "\n" in script or "\r" in script:
                 return "one G-code command at a time"
             speed = re.fullmatch(r"M220 S(\d{1,3})", script.strip().upper())
@@ -1681,6 +1726,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                              {"Cache-Control": "no-cache"})   # an updated page shows on the next load, not a cached copy
         if p.startswith("/moonraker/"):
             path = p[len("/moonraker"):]
+            if not proxy_allowed(self.command, path):
+                return self.send(403, {"error": "not available through Workshop: use the printer itself for that"})
             why = self.guard(path)
             if why:
                 return self.send(409, {"error": why})

@@ -286,6 +286,34 @@ def stats(gcode_text):
     return {"time": t.group(1).strip(), "grams": grams, "total_g": round(sum(grams), 1), "changes": int(c.group(1)) if c else 0}
 
 
+UNSAFE_KEYS = ("post_process",)   # a slicer setting that runs a program on the slicing computer
+
+
+def safe_3mf(path, tmp):
+    """A copy of a 3MF with every post-processing command taken out. A 3MF's own settings win over ours when OrcaSlicer
+    loads it, so a downloaded or uploaded project could carry 'post_process' and run a program on the slicing computer
+    (22 Nov 2026 review, P1). Shapes, colours and per-part settings are kept."""
+    import zipfile
+    dst = os.path.join(tmp, "safe-" + os.path.basename(path))
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.lower().endswith((".config", ".json")):
+                text = data.decode("utf-8", "replace")
+                try:   # project settings are JSON
+                    d = json.loads(text)
+                    if isinstance(d, dict):
+                        for k in UNSAFE_KEYS:
+                            d.pop(k, None)
+                        text = json.dumps(d, indent=1)
+                except ValueError:   # model settings are XML: drop the metadata lines that set them
+                    for k in UNSAFE_KEYS:
+                        text = re.sub(r'<metadata[^>]*key="%s"[^>]*/>\s*' % k, "", text)
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    return dst
+
+
 def slice_(models, printer, preset="standard", material="", sets=(), out=None, timeout=900):
     """Slice; returns the summary dict (also written to out/summary.json)."""
     out = os.path.abspath(out or tempfile.mkdtemp(prefix="orca-"))
@@ -297,6 +325,7 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         for m in models:
             if not os.path.exists(m):
                 sys.exit(f"no such model: {m}")
+        models = [safe_3mf(m, tmp) if m.lower().endswith(".3mf") else m for m in models]
         machine = json.load(open(os.path.join(folder, "machine.json"), encoding="utf-8"))
         process = json.load(open(os.path.join(folder, "process.json"), encoding="utf-8"))
         fils = pick_materials(folder, material, max(slots_in(m) for m in models))

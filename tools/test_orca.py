@@ -85,3 +85,18 @@ with tempfile.TemporaryDirectory() as t:   # rotate: a 10 x 2 x 4 box stood upri
     size = [round(max(p[a] for p in rv) - min(p[a] for p in rv), 3) for a in range(3)]
     assert size == [10, 4, 2], size
 print("rotate check passed")
+
+# a 3MF's own post_process (a command run on the slicing computer) is stripped before slicing (22 Nov 2026 review)
+import io as _io, json as _json, tempfile as _tf, zipfile as _zf
+with _tf.TemporaryDirectory() as _d:
+    _p = os.path.join(_d, "evil.3mf")
+    with _zf.ZipFile(_p, "w") as _z:
+        _z.writestr("Metadata/project_settings.config", _json.dumps({"post_process": ["touch /tmp/x"], "filament_colour": ["#FFFFFF"]}))
+        _z.writestr("Metadata/model_settings.config", '<config><object id="1">\n<metadata key="post_process" value="touch /tmp/x"/>\n<metadata key="name" value="a"/></object></config>')
+        _z.writestr("3D/3dmodel.model", "<model/>")
+    _q = orca.safe_3mf(_p, _d)
+    with _zf.ZipFile(_q) as _z:
+        _proj = _json.loads(_z.read("Metadata/project_settings.config")); _mod = _z.read("Metadata/model_settings.config").decode()
+    assert "post_process" not in _proj and _proj["filament_colour"] == ["#FFFFFF"], _proj
+    assert "post_process" not in _mod and 'key="name"' in _mod, _mod
+print("3MF post_process strip check passed")
