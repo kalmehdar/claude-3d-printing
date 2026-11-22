@@ -100,3 +100,22 @@ with _tf.TemporaryDirectory() as _d:
     assert "post_process" not in _proj and _proj["filament_colour"] == ["#FFFFFF"], _proj
     assert "post_process" not in _mod and 'key="name"' in _mod, _mod
 print("3MF post_process strip check passed")
+
+with tempfile.TemporaryDirectory() as t:   # a 3MF saved for another printer is flattened: components and transforms applied, centred, on z=0
+    import struct
+    import zipfile
+    core = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"'
+    part = (f'<model {core}><resources><object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="5"/><vertex x="10" y="0" z="5"/>'
+            '<vertex x="0" y="20" z="5"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources></model>')
+    root = (f'<model {core}><resources><object id="2" type="model"><components><component p:path="/3D/Objects/a.model" objectid="1" '
+            'transform="2 0 0 0 1 0 0 0 1 100 0 0"/></components></object></resources><build><item objectid="2" transform="1 0 0 0 1 0 0 0 1 0 50 0"/></build></model>')
+    p3 = os.path.join(t, "bambu.3mf")
+    with zipfile.ZipFile(p3, "w") as z:
+        z.writestr("3D/3dmodel.model", root)
+        z.writestr("3D/Objects/a.model", part)
+        z.writestr("Metadata/project_settings.config", '{"printer_model": "Bambu Lab A1"}')
+    assert orca.made_for(p3) == "Bambu Lab A1"
+    b = open(orca.flatten_3mf(p3, t, (135, 135)), "rb").read()
+    assert struct.unpack("<I", b[80:84])[0] == 1
+    v = [struct.unpack("<3f", b[96 + 12 * i:108 + 12 * i]) for i in range(3)]
+    assert [tuple(round(c, 3) for c in p) for p in v] == [(125, 125, 0), (145, 125, 0), (125, 145, 0)], v

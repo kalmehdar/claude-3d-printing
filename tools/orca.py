@@ -315,6 +315,73 @@ def safe_3mf(path, tmp):
     return dst
 
 
+def made_for(path):
+    """The printer a 3MF project was saved for ('' when it does not say)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            text = z.read("Metadata/project_settings.config").decode("utf-8", "replace")
+    except (KeyError, zipfile.BadZipFile, OSError):
+        return ""
+    m = re.search(r'"printer_model"\s*:\s*"([^"]*)"', text)
+    return m.group(1) if m else ""
+
+
+def flatten_3mf(path, tmp, centre):
+    """One binary STL of everything on a 3MF's build plate, laid out as its author placed it, centred on `centre` (x, y)
+    and dropped to z=0. For projects saved for another printer: OrcaSlicer applies their printer settings and fails
+    (22 Nov 2026: two Bambu A1 projects, one 'run found error', one segfault). Colours per part are not kept."""
+    import struct
+    import xml.etree.ElementTree as ET
+    core, prod = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}", "{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}"
+    ident = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+
+    def mat(s):
+        return [float(x) for x in s.split()] if s else ident
+
+    def mul(a, b):   # 3MF transforms are 3x4 row vectors: apply a, then b
+        r = [[a[3 * i + k] for k in range(3)] for i in range(4)]
+        c = [[b[3 * i + k] for k in range(3)] for i in range(4)]
+        return [sum(r[i][k] * c[k][j] for k in range(3)) + (c[3][j] if i == 3 else 0) for i in range(4) for j in range(3)]
+
+    with zipfile.ZipFile(path) as z:
+        docs = {"/" + n: ET.fromstring(z.read(n)) for n in z.namelist() if n.lower().endswith(".model")}
+    tris = []
+
+    def emit(doc, oid, m, depth=0):
+        if depth > 8 or doc not in docs:
+            return
+        o = next((x for x in docs[doc].iter(core + "object") if x.get("id") == oid), None)
+        if o is None:
+            return
+        mesh = o.find(core + "mesh")
+        if mesh is not None:
+            v = []
+            for e in mesh.find(core + "vertices"):
+                x, y, zz = float(e.get("x")), float(e.get("y")), float(e.get("z"))
+                v.append((x * m[0] + y * m[3] + zz * m[6] + m[9], x * m[1] + y * m[4] + zz * m[7] + m[10], x * m[2] + y * m[5] + zz * m[8] + m[11]))
+            tris.extend((v[int(t.get("v1"))], v[int(t.get("v2"))], v[int(t.get("v3"))]) for t in mesh.find(core + "triangles"))
+        comps = o.find(core + "components")
+        for c in (comps if comps is not None else []):
+            emit(c.get(prod + "path") or doc, c.get("objectid"), mul(mat(c.get("transform")), m), depth + 1)
+
+    root = "/3D/3dmodel.model"
+    build = docs[root].find(core + "build") if root in docs else None
+    for item in (build if build is not None else []):
+        emit(root, item.get("objectid"), mat(item.get("transform")))
+    if not tris:
+        sys.exit(f"{os.path.basename(path)}: no shapes on its build plate")
+    pts = [p for t in tris for p in t]
+    dx = centre[0] - (max(p[0] for p in pts) + min(p[0] for p in pts)) / 2
+    dy = centre[1] - (max(p[1] for p in pts) + min(p[1] for p in pts)) / 2
+    dz = -min(p[2] for p in pts)
+    dst = os.path.join(tmp, os.path.splitext(os.path.basename(path))[0] + ".stl")
+    with open(dst, "wb") as f:
+        f.write(b"\0" * 80 + struct.pack("<I", len(tris)))
+        for t in tris:
+            f.write(struct.pack("<3f", 0, 0, 0) + b"".join(struct.pack("<3f", p[0] + dx, p[1] + dy, p[2] + dz) for p in t) + b"\0\0")
+    return dst
+
+
 def slice_(models, printer, preset="standard", material="", sets=(), out=None, timeout=900):
     """Slice; returns the summary dict (also written to out/summary.json)."""
     out = os.path.abspath(out or tempfile.mkdtemp(prefix="orca-"))
@@ -328,6 +395,13 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
                 sys.exit(f"no such model: {m}")
         models = [safe_3mf(m, tmp) if m.lower().endswith(".3mf") else m for m in models]
         machine = json.load(open(os.path.join(folder, "machine.json"), encoding="utf-8"))
+        area = [tuple(float(v) for v in xy.split("x")) for xy in machine.get("printable_area") or ["0x0", "256x256"]]
+        centre = (sum(x for x, _ in area) / len(area), sum(y for _, y in area) / len(area))
+        own = (machine.get("printer_model") or "").lower()
+        for i, m in enumerate(models):
+            if m.lower().endswith(".3mf") and made_for(m) and made_for(m).lower() != own:
+                print(f"{os.path.basename(m)} was saved for {made_for(m)}: slicing its shapes only, in one colour", file=sys.stderr)
+                models[i] = flatten_3mf(m, tmp, centre)
         process = json.load(open(os.path.join(folder, "process.json"), encoding="utf-8"))
         fils = pick_materials(folder, material, max(slots_in(m) for m in models))
         fil_data = [json.load(open(f, encoding="utf-8")) for f in fils]
