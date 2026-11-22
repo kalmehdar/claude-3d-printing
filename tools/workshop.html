@@ -184,12 +184,11 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .ghead b{color:var(--faint);font-weight:500}
 @media (max-width:640px){
   .issue{grid-template-columns:16px minmax(0,1fr) auto;padding:8px 14px;row-gap:4px}
-  .issue .acts{grid-column:1/-1;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line: full file names, every button kept */
   .issue .id{display:none}
   .issue .ttl{flex-wrap:wrap;row-gap:2px}
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
-  .issue .acts{grid-column:3;grid-row:1}
+  .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
