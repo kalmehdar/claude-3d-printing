@@ -368,4 +368,26 @@ if _sh.which("node"):
     _r = subprocess.run(["node", "--check", _f.name], capture_output=True, text=True)
     os.remove(_f.name)
     assert _r.returncode == 0, "workshop.html script does not parse: " + _r.stderr[-300:]
+# Workshop's daily check: idle only, once per 20 h, backup into --config-backup, a push only for a new log fault
+with tempfile.TemporaryDirectory() as d:
+    workshop.DAILY = os.path.join(d, "daily.json")
+    workshop.CFG["config_backup"] = os.path.join(d, "cfg")
+    pushed, backed = [], []
+    printer.backup = lambda folder: (backed.append(folder), {"changed": ["printer.cfg"], "same": 0, "skipped": []})[1]
+    printer.push = lambda *a, **k: pushed.append(a)
+    workshop.record = lambda *a, **k: None
+    st = {"s": "printing"}
+    printer.state = lambda: st["s"]
+    log = {"found": {}}
+    printer.logcheck = lambda mb=3: ("klippy.log", log["found"])
+    assert workshop.daily_printer_check(now=1000.0) is None and not backed   # mid-print: waits
+    st["s"] = "standby"
+    r = workshop.daily_printer_check(now=1000.0)
+    assert r["changed"] == ["printer.cfg"] and backed and not pushed, r
+    assert workshop.daily_printer_check(now=1000.0 + 3600) is None   # within 20 h: no second run
+    log["found"] = {"mcu shutdown": {"count": 1, "serious": True, "last": "MCU 'mcu' shutdown", "after_restart": "x"}}
+    workshop.daily_printer_check(now=1000.0 + 21 * 3600)
+    assert len(pushed) == 1, pushed
+    workshop.daily_printer_check(now=1000.0 + 42 * 3600)
+    assert len(pushed) == 1, "the same fault is not pushed again"
 print("printer_mcp.py checks passed")

@@ -360,6 +360,10 @@ def watch_alerts():
             except Exception as e:
                 print("photo prune failed:", e, flush=True)
             pruned = time.time()
+            try:
+                daily_printer_check()
+            except Exception as e:   # never take the watcher down over a backup
+                print("daily printer check failed:", e, flush=True)
         time.sleep(20)
 
 
@@ -945,6 +949,39 @@ def lan_ip():
         s.close()
 
 
+DAILY = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "daily-check.json")
+
+
+def daily_printer_check(now=None):
+    """Once a day, when the printer is idle: copy its setup into --config-backup (git then shows what changed) and read
+    klippy.log for faults; a phone push only when the log shows a fault since the last check. Returns what it did, or None."""
+    import printer
+    now = now or time.time()
+    try:
+        last = json.load(open(DAILY, encoding="utf-8"))
+    except (OSError, ValueError):
+        last = {}
+    if ("t" in last and now - last["t"] < 20 * 3600) or printer.state() in printer.RUNNING:
+        return None
+    done = {"t": now}
+    if CFG.get("config_backup"):
+        r = printer.backup(CFG["config_backup"])
+        done["changed"] = r["changed"]
+        if r["changed"]:
+            record("printer setup changed", ", ".join(r["changed"][:8]) + (" ..." if len(r["changed"]) > 8 else ""), who="daily check")
+    path, found = printer.logcheck(3)
+    faults = {k: v for k, v in found.items() if v["serious"]}
+    key = sorted((k, v["last"]) for k, v in faults.items())
+    done["faults"] = [list(x) for x in key]
+    if faults and done["faults"] != last.get("faults"):   # the same old fault is not pushed every day
+        record("klippy.log faults", "; ".join(f'{k} {v["count"]}x' for k, v in faults.items()), who="daily check")
+        printer.push("Printer log shows a fault", "; ".join(f'{k} ({v["count"]}x): {v["last"][:90]}' for k, v in faults.items()), "warn",
+                     click=CFG.get("url"))
+    os.makedirs(os.path.dirname(DAILY), exist_ok=True)
+    json.dump(done, open(DAILY, "w", encoding="utf-8"))
+    return done
+
+
 def make_timelapse(folder):
     import printer
     try:
@@ -1456,6 +1493,7 @@ def main():
     ap.add_argument("--allow-host", action="append", default=[], help="a host name the page may be opened by (IP addresses and localhost always work)")
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--register", help="a filament register (markdown table with Material and a price per kg in pounds) for print costs")
+    ap.add_argument("--config-backup", help="a folder (e.g. almehdar's printer/u1-config) the printer's setup is copied into once a day while idle")
     ap.add_argument("--print-log", help="a print register (markdown table starting '| Date |', like registers/prints.md) to add a row to when a print ends")
     ap.add_argument("--preview", action="store_true", help="the page and API only: no watcher (photos, photo watch, print log, spools), so a second copy can be looked at safely")
     ap.add_argument("--verbose", action="store_true")
@@ -1463,7 +1501,7 @@ def main():
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(config_backup=a.config_backup and os.path.expanduser(a.config_backup), print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only
