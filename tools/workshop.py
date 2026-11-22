@@ -42,6 +42,7 @@ REPO = os.path.dirname(TOOLS)
 sys.path.insert(0, TOOLS)
 
 CFG = {}
+BOOT = int(time.time())   # the page reloads itself when this changes (Workshop restarted; an old tab can wedge)
 SERVE = {".stl", ".scad", ".3mf", ".glb", ".json", ".png", ".jpg"}   # what /bench may hand out: design files only
 SLICE_SETS = {"infill": r"\d{1,3}", "walls": r"\d{1,2}", "supports": r"on|off", "brim": r"auto_brim|outer_only|no_brim"}
 SKIP = {"host", "connection", "transfer-encoding", "content-length", "keep-alive", "content-encoding"}
@@ -1265,6 +1266,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(502, {"error": f"camera: {e}"})
         if p == "/api/designs":
             return self.send(200, designs())
+        if p == "/api/boot":   # cheap: the page asks every 30 s and reloads when Workshop restarted
+            return self.send(200, {"boot": BOOT})
         if p == "/api/info":
             import orca
             try:
@@ -1290,7 +1293,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 pass
             conf = printer_conf()
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
-            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "printer_screen": screen, "push": push,
+            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "printer_screen": screen, "push": push, "boot": BOOT,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
         m = re.fullmatch(r"/calibration-photo/([\w-]+\.jpg)", p)
         if m:

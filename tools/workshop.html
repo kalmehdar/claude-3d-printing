@@ -299,7 +299,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <div class="sidefoot">Press <kbd>?</kbd> for shortcuts</div>
   </nav>
   <main>
-    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="hstat" id="hStat"></span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
+    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="hstat" id="hStat"></span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="alertBtn" title="A sound and a pop-up on this computer when a print finishes or pauses">Alerts off</button><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
     <div class="banner" id="banner" hidden></div>
 
     <section id="tab-now">
@@ -320,7 +320,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
             <div class="actions" id="jobActions"></div>
           </div>
           <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button></div></div>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
+          <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
           <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
             <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
@@ -617,6 +618,8 @@ async function poll() {
     if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
     const st = S.status?.print_stats?.state;
+    if (S.lastSt && st !== S.lastSt) stateChanged(S.lastSt, st, S.status.print_stats.filename);
+    S.lastSt = st;
     if ((st === "printing" || st === "paused") && Date.now() - (loadParts.t || 0) > 30000) loadParts();
     else if (st !== "printing" && st !== "paused") $("#partsCard").hidden = true;
   } catch (e) {
@@ -687,7 +690,7 @@ function render() {
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
   $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
-  document.title = (active ? `${p}% · ` : "") + "Workshop";
+  document.title = (ps.state === "paused" ? "Paused · " : active ? `${p}% · ` : ps.state === "complete" ? "Finished · " : "") + "Workshop";
   $("#hStat").textContent = active ? `${(ps.filename || "").replace(/\.gcode$/, "")} · ${p}%${$("#kEnd").textContent !== "-" ? " · ends " + $("#kEnd").textContent.replace("about ", "~") : ""}` : "";
   const acts = [];
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
@@ -1477,16 +1480,78 @@ async function loadPlan() {
   p.jobs.forEach((j, i) => { const row = document.querySelector(`#qList .issue[data-pid="Q-${i + 1}"] .meta`); if (row) row.insertAdjacentHTML("afterbegin", `<span>${t(j.start)} to ${t(j.end)}</span>`); });
 }
 
+/* ---------- camera: live video (WebRTC from the printer) or stills; video can come up white in some browsers and panes ---------- */
+const camPref = () => { try { return localStorage.getItem("workshop-cam") || "video"; } catch (e) { return "video"; } };
+function camSet(mode) {
+  try { localStorage.setItem("workshop-cam", mode); } catch (e) {}
+  const box = $("#camImg") || $("#camVideo"), live = S.info.live_camera;
+  if (mode === "video") {
+    clearInterval(camTimer); camLoop = () => {};
+    const f = document.createElement("iframe"); f.id = "camVideo"; f.src = live; f.title = "Live camera"; f.allow = "autoplay; fullscreen"; f.style.cssText = "width:100%;height:100%;border:0;display:block";
+    box.replaceWith(f); $("#camStamp").textContent = "Live video"; $("#camMode").textContent = "Stills";
+    $("#camFull").onclick = () => window.open(live, "_blank");
+  } else {
+    const img = document.createElement("img"); img.id = "camImg"; img.alt = "Live camera inside the printer";
+    box.replaceWith(img); $("#camMode").textContent = "Video"; $("#camFull").onclick = stillsFull;
+    camLoop = function () { clearInterval(camTimer); if (document.hidden) return; camTick(); camTimer = setInterval(camTick, 2000); }; camLoop();
+  }
+}
+const stillsFull = $("#camFull").onclick;
+$("#camMode").onclick = () => camSet(camPref() === "video" ? "stills" : "video");
+
+/* ---------- last print: real time against the estimate, grams, cost, timelapse ---------- */
+async function loadLast() {
+  let h, t = [];
+  try { h = await api(M("/server/history/list?limit=3&order=desc")); } catch (e) { return; }
+  try { t = await api("/api/timelapses"); } catch (e) {}
+  const j = (h.result || h).jobs.find(x => x.status !== "in_progress");
+  const st = S.status?.print_stats?.state;
+  $("#lastCard").hidden = !j || st === "printing" || st === "paused"; if (!j) return;
+  const m = j.metadata || {}, stem = j.filename.replace(/\.gcode$/, "");
+  const grams = m.filament_weight_total && m.filament_total ? m.filament_weight_total * Math.min(1, j.filament_used / m.filament_total) : null;
+  const est = m.estimated_time, took = j.print_duration;
+  const vs = est && took && j.status === "completed" ? ` (${took > est ? Math.round(100 * (took - est) / est) + "% slower" : Math.round(100 * (est - took) / est) + "% faster"} than the slicer said)` : "";
+  const tl = t.find(v => v.print === stem), url = f => M("/server/files/timelapse/" + f.split("/").map(enc).join("/"));
+  const WORD = {completed: "Finished", cancelled: "Cancelled", error: "Failed", klippy_shutdown: "Printer stopped", interrupted: "Interrupted"};
+  $("#lastBox").innerHTML = (tl ? `<video controls preload="metadata" playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px" ${tl.cover ? `poster="${url(tl.cover)}"` : ""} src="${url(tl.file)}"></video>` : "")
+    + pkv([["Print", esc(stem)], ["Result", (WORD[j.status] || esc(j.status)) + (j.end_time ? " " + day(j.end_time) : "")],
+      ["Printing time", took ? hm(took) + vs : ""], ["Start to finish", j.total_duration ? hm(j.total_duration) : ""],
+      ["Filament", grams ? Math.round(grams) + " g" + (cost(grams, m.filament_type) ? " (" + cost(grams, m.filament_type) + ")" : "") : ""]]);
+}
+
+/* ---------- alerts on this computer: a chime, and a pop-up where the browser allows it (https or localhost only) ---------- */
+const alertsOn = () => { try { return localStorage.getItem("workshop-alerts") === "1"; } catch (e) { return false; } };
+const showAlertBtn = () => { $("#alertBtn").textContent = alertsOn() ? "Alerts on" : "Alerts off"; $("#alertBtn").setAttribute("aria-pressed", alertsOn()); };
+let audio = null;
+function chime() {
+  try { audio = audio || new AudioContext(); const t = audio.currentTime;
+    [660, 880].forEach((f, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = f; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.0001, t + i * 0.18); g.gain.exponentialRampToValueAtTime(0.2, t + i * 0.18 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.18 + 0.3);
+      o.start(t + i * 0.18); o.stop(t + i * 0.18 + 0.32); }); } catch (e) {}
+}
+$("#alertBtn").onclick = async () => {
+  const on = !alertsOn(); try { localStorage.setItem("workshop-alerts", on ? "1" : "0"); } catch (e) {}
+  if (on) { chime(); if (window.Notification && isSecureContext && Notification.permission === "default") await Notification.requestPermission(); }
+  showAlertBtn(); toast(on ? "Alerts on: a chime here when a print finishes or pauses" + (window.Notification && isSecureContext ? "." : ". Pop-ups need the https address; the phone push still covers you.") : "Alerts off on this computer.");
+};
+showAlertBtn();
+function stateChanged(from, to, file) {
+  if (["complete", "cancelled", "error", "standby"].includes(to)) loadLast();
+  if (to === "printing" || to === "paused") $("#lastCard").hidden = true;
+  const said = {paused: "paused", complete: "finished", error: "stopped with an error", cancelled: "was cancelled"}[to];
+  if (!said || !alertsOn()) return;
+  chime();
+  const text = `${(file || "The print").replace(/\.gcode$/, "")} ${said}`;
+  if (window.Notification && isSecureContext && Notification.permission === "granted") new Notification("Workshop", {body: text, tag: "workshop"});
+  toast(text);
+}
+
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;
   let pushDone = false; try { pushDone = localStorage.getItem("workshop-push-done") === "1"; } catch (e) {}
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
-  if (i.live_camera) {   // real video (WebRTC) instead of stills
-    clearInterval(camTimer); camLoop = () => {};
-    const f = document.createElement("iframe"); f.src = i.live_camera; f.title = "Live camera"; f.allow = "autoplay; fullscreen"; f.style.cssText = "width:100%;height:100%;border:0;display:block";
-    $("#camImg").replaceWith(f); $("#camStamp").textContent = "Live video";
-    $("#camFull").onclick = () => window.open(i.live_camera, "_blank");
-  }
+  S.boot = i.boot;
+  if (i.live_camera) { $("#camMode").hidden = false; camSet(camPref()); }
   if (i.printer_screen) {   // the U1's touchscreen, shown read-only: a tap there could start or change a print
     $("#screenBtn").hidden = false;
     $("#screenBtn").onclick = () => openSheet("Printer screen", `<div style="position:relative;aspect-ratio:16/10;border-radius:10px;overflow:hidden;background:#000">
@@ -1499,7 +1564,8 @@ loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAl
 loadSpools(); loadBed(); setInterval(() => { if (!document.hidden) { loadSpools(); loadBed(); } }, 15000);
 loadAccuracy(); loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
 askWho(false);
-camLoop();
+camLoop(); loadLast();
+setInterval(() => api("/api/boot").then(b => { if (S.boot && b.boot !== S.boot) location.reload(); }).catch(() => {}), 30000);   // Workshop restarted: start clean
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");
 addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t in TITLES && t !== tab) go(t); });
 </script>
