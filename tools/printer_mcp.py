@@ -359,6 +359,16 @@ def t_control(a):
     return done
 
 
+def t_view_bed(a):
+    """Bed up to the camera so the plate can be seen; then a picture."""
+    body = {} if a.get("tallest_mm") is None else {"tallest_mm": a["tallest_mm"]}
+    v = http("POST", "/api/view-bed", body, timeout=300)
+    out = t_snapshot({})
+    out.append({"type": "text", "text": f"The bed is at Z {v['z']} mm" + (" (homed first: the motors were off)" if v.get("homed") else "") +
+                ". Z homes downwards on the U1, so homing never pushes the bed into the head."})
+    return out
+
+
 def t_pause_at_layer(a):
     if a.get("off"):
         mr("POST", "/printer/gcode/script?script=" + q("SET_PAUSE_AT_LAYER ENABLE=0"))
@@ -448,6 +458,8 @@ TOOLS = [
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
     ("printer_pause_at_layer", "Make the running print pause itself at a layer, for magnets, nuts or inserts dropped into pockets; or off=true to cancel that.",
      {"layer": {"type": "integer"}, "off": {"type": "boolean"}}, t_pause_at_layer),
+    ("printer_view_bed", "Bring the bed up to the camera so you can see the plate (after a print the bed drops out of view). Idle only. Homes first if the motors are off (Z homes downwards, away from the head), then raises the bed until the head is 20 mm above the tallest thing on the plate, which is the last print's height, or tallest_mm when the person says something taller is there. Returns a picture.",
+     {"tallest_mm": {"type": "number", "minimum": 0, "maximum": 230}}, t_view_bed),
     ("printer_screen", "A picture of what the printer's own touchscreen shows right now.", {}, t_screen),
     ("printer_speed", "Set the print speed override (as on the printer screen), 50 to 150 percent; safe mid-print. Say why and watch the next layers after a big change.",
      {"percent": {"type": "integer", "minimum": 50, "maximum": 150}}, t_speed, ["percent"]),

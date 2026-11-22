@@ -1105,6 +1105,46 @@ def moonraker(method, path, body=None, headers=None, timeout=30):
     return urllib.request.urlopen(req, timeout=timeout)
 
 
+VIEW_GAP = 20   # mm between the nozzle and the top of the tallest thing on the plate when the bed comes up to the camera
+
+
+def view_height(tallest=None, last_height=None):
+    """The Z to raise the bed to so the plate is in the camera's view: the tallest thing on it (said by a person, else the
+    last print's height) plus VIEW_GAP, never below 25 mm and never above 250 (the U1's Z runs 0 at the nozzle to 275 at
+    the bottom). Raises ValueError for a height that does not make sense."""
+    h = tallest if tallest is not None else (last_height or 0)
+    h = float(h)
+    if not 0 <= h <= 230:
+        raise ValueError("the tallest thing on the plate is 0 to 230 mm")
+    return round(min(250.0, max(25.0, h + VIEW_GAP)), 1)
+
+
+def view_bed(tallest=None):
+    """Bring the bed up to the camera (Khalid, 22 Nov 2026: Claude must always be able to see the plate). The U1 homes Z
+    DOWN (endstop at 275 mm, the bottom), so homing moves the bed away from the nozzle and cannot crush a part; then the
+    bed rises to view_height(), which stays VIEW_GAP above the tallest thing on the plate. Idle only; homes first when the
+    printer is not homed (after a print the motors are off). Returns {"z", "homed"}."""
+    with moonraker("GET", "/printer/objects/query?print_stats=state&toolhead=homed_axes", timeout=5) as r:
+        st = json.load(r)["result"]["status"]
+    if st["print_stats"]["state"] in ("printing", "paused"):
+        raise PermissionError("a job is running; the bed is already where the print needs it")
+    last = None
+    try:
+        with moonraker("GET", "/server/history/list?limit=1&order=desc", timeout=5) as r:
+            last = json.load(r)["result"]["jobs"][0].get("metadata", {}).get("object_height")
+    except (OSError, ValueError, KeyError, IndexError):
+        pass
+    if tallest is None and last is None:
+        raise ValueError("no last print to size the gap from: say how tall the tallest thing on the plate is")
+    z = view_height(tallest, last)
+    homed = "z" in st["toolhead"].get("homed_axes", "")
+    if not homed:
+        moonraker("POST", "/printer/gcode/script?script=G28", timeout=180).read()
+    for cmd in ("G90", f"G1 Z{z} F900"):
+        moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
+    return {"z": z, "homed": not homed}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -1518,6 +1558,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, {"result": res})
             except SystemExit as e:
                 return self.send(409, {"error": str(e.code)})
+        if p == "/api/view-bed" and self.command == "POST":   # bed up to the camera, gap kept above the tallest thing on it
+            try:
+                req = json.loads(self.body() or b"{}")
+                tallest = req.get("tallest_mm") if isinstance(req, dict) else None
+                v = view_bed(None if tallest is None else float(tallest))
+            except PermissionError as e:
+                return self.send(409, {"error": str(e)})
+            except (ValueError, TypeError) as e:
+                return self.send(400, {"error": str(e)})
+            except OSError as e:
+                return self.send(502, {"error": f"printer: {e}"})
+            record("brought the bed up to the camera", f"Z {v['z']} mm" + (", homed first" if v["homed"] else ""), who=actor(self))
+            return self.send(200, v)
         if p == "/api/unload" and self.command == "POST":
             try:
                 req = json.loads(self.body() or b"{}")

@@ -321,7 +321,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
             <div class="actions" id="jobActions"></div>
           </div>
           <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
           <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
           <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
             <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
@@ -1516,6 +1516,9 @@ function camSet(mode) {
   }
 }
 const stillsFull = $("#camFull").onclick;
+$("#viewBed").onclick = () => { const st = S.status?.print_stats?.state; if (st === "printing" || st === "paused") return toast("A print is running: the bed is already in view.", true);
+  confirmSheet("Bring the bed into view?", "The printer homes if its motors are off (the bed goes down first, away from the head), then raises the bed so the head stays 20 mm above the last print's height. If something taller is on the plate, take it off first.", "Raise the bed", async () => {
+    const v = await post("/api/view-bed", {}); toast(`Bed at Z ${v.z} mm` + (v.homed ? " (homed first)" : "")); camTick(); }); };
 $("#camMode").onclick = () => camSet(camPref() === "video" ? "stills" : "video");
 
 /* ---------- last print: real time against the estimate, grams, cost, timelapse ---------- */

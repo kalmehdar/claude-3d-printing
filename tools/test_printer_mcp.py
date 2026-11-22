@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SEEN = []   # (method, path, headers) of every request the fake Workshop got
@@ -218,6 +219,33 @@ with tempfile.TemporaryDirectory() as d:
     assert workshop.last_layer_photo("a.gcode", fr).endswith(os.path.join("a-12", "x-layer120.jpg")), "newest run, highest layer"
     assert workshop.last_layer_photo("b.gcode", fr) is None
     assert workshop.checked_block("a.gcode") == 2, "final rows carry no layer, so they never count as a layer check"
+# bed into view: gap above the tallest thing, clamped; refuses mid-print; homes only when the motors are off
+assert workshop.view_height(None, 50) == 70 and workshop.view_height(None, 2) == 25 and workshop.view_height(240 - 15, None) == 245
+assert workshop.view_height(None, None) == 25
+for bad in (-1, 231):
+    try: workshop.view_height(bad); raise AssertionError("bad height accepted")
+    except ValueError: pass
+def fake_mr(state, homed, height=40):
+    sent = []
+    class R:
+        def __init__(self, b): self.b = b
+        def read(self): return self.b
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    def m(method, path, **k):
+        sent.append(urllib.parse.unquote(path.split("script=", 1)[1]) if "script=" in path else path)
+        if "print_stats" in path: return R(json.dumps({"result": {"status": {"print_stats": {"state": state}, "toolhead": {"homed_axes": homed}}}}).encode())
+        if "history" in path: return R(json.dumps({"result": {"jobs": [{"metadata": {"object_height": height}}]}}).encode())
+        return R(b"{}")
+    return m, sent
+workshop.moonraker, sent = fake_mr("complete", "")
+assert workshop.view_bed() == {"z": 60, "homed": True} and [c for c in sent if not c.startswith("/")] == ["G28", "G90", "G1 Z60.0 F900"], sent
+workshop.moonraker, sent = fake_mr("standby", "xyz")
+assert workshop.view_bed(100) == {"z": 120, "homed": False} and "G28" not in sent
+workshop.moonraker, sent = fake_mr("printing", "xyz")
+try: workshop.view_bed(); raise AssertionError("moved mid-print")
+except PermissionError: pass
+assert not [c for c in sent if c.startswith("G")]
 # API keys: env first, then the files in order; a file others can read is skipped
 with tempfile.TemporaryDirectory() as d:
     workshop.API_KEY_FILE = os.path.join(d, "anthropic-key")
