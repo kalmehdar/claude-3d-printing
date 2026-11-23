@@ -153,6 +153,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
 .qcard,.rqcard{margin-bottom:16px}
+#kFil small{display:block;font-size:12px;font-weight:400;color:var(--dim);margin-top:2px}
 @media (max-width:640px){.dtools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"s s v" "b st g";gap:8px}.dtools #dSearch{grid-area:s;min-width:0}#dBench{grid-area:b}#dState{grid-area:st}#dGroup{grid-area:g}.dtools select{min-width:0;width:100%;padding:0 6px}.dtools .seg{grid-area:v;justify-self:stretch}.dtools .seg .btn{flex:1}}
 #fanRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 20px}.fanline{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px}.fanline>span:first-child{color:var(--dim);font-size:13px}
 @media (max-width:640px){#fanRow{grid-template-columns:1fr}}
@@ -372,7 +373,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
               <div><span>Time left</span><b id="kLeft">-</b></div>
               <div><span>Finishes</span><b id="kEnd">-</b></div>
               <div><span>Printing for</span><b id="kDur">-</b></div>
-              <div><span>Filament</span><b id="kFil">-</b></div>
+              <div><span id="kFilL">Filament</span><b id="kFil">-</b></div>
             </div>
             <div class="actions" id="jobActions"></div>
           </div>
@@ -774,7 +775,9 @@ function render() {
   $("#ctlCard").classList.toggle("busy", active); $("#calCard").hidden = active;   // Printer tab: hide what Workshop refuses mid-print
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
-  $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
+  const used = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m used" : "", grams = jm.filament_weight_total ? Math.round(jm.filament_weight_total) + " g" : "";
+  $("#kFilL").textContent = jobCost ? "Cost" : "Filament";   // the print's cost up front: slicer grams at the spool's price (23 Nov)
+  $("#kFil").innerHTML = jobCost ? `${jobCost}<small>${[grams, used].filter(Boolean).join(" · ")}</small>` : esc([used, grams && "of " + grams].filter(Boolean).join(" ") || "-");
   document.title = (ps.state === "paused" ? "Paused · " : active ? `${p}% · ` : ps.state === "complete" ? "Finished · " : "") + "Workshop";
   $("#hStat").textContent = active ? `${(ps.filename || "").replace(/\.gcode$/, "")} · ${p}%${$("#kEnd").textContent !== "-" ? " · ends " + $("#kEnd").textContent.replace("about ", "~") : ""}` : "";
   const acts = [];
