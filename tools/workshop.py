@@ -1517,9 +1517,20 @@ def lift_after_print(file, wait=120):
 GALLERY = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "gallery")
 
 
+def gallery_skipped():
+    """Prints someone asked not to photograph for the gallery (e.g. a personal piece with a name on it)."""
+    try:
+        return set(l.strip() for l in open(os.path.join(GALLERY, "skip.txt"), encoding="utf-8") if l.strip())
+    except OSError:
+        return set()
+
+
 def gallery_snap(file, settle=3):
-    """One photo of a finished part with the bed up at the camera, kept for the History gallery. Read-only on the printer."""
+    """One photo of a finished part with the bed up at the camera, kept for the History gallery. Read-only on the printer.
+    None for a print on the skip list."""
     import printer
+    if os.path.basename(file or "") in gallery_skipped():
+        return None
     time.sleep(settle)   # the bed has just stopped moving
     os.makedirs(GALLERY, exist_ok=True)
     name = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w-]", "_", os.path.splitext(os.path.basename(file or "print"))[0]) + ".jpg"
@@ -2055,7 +2066,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
         if p == "/api/gallery":   # GET the finished-part photos; POST {"photo", "for"} says who a part was for
             try:
-                if self.command == "POST":
+                if self.command == "POST" and isinstance(json.loads(self.body() or b"{}"), dict) and json.loads(self.body() or b"{}").get("skip"):
+                    f = os.path.basename(str(json.loads(self.body())["skip"]))[:200]   # {"skip": "file.gcode"}: no gallery photo of that print
+                    os.makedirs(GALLERY, exist_ok=True)
+                    if f not in gallery_skipped():
+                        open(os.path.join(GALLERY, "skip.txt"), "a", encoding="utf-8").write(f + "\n")
+                    record("no gallery photo for this print", f, who=actor(self))
+                    rows = gallery()
+                elif self.command == "POST":
                     r = json.loads(self.body() or b"{}")
                     rows = gallery(str(r.get("photo", "")), r.get("for"))
                     record(f'tagged a finished part as for {str(r.get("for") or "nobody")[:60]}', str(r.get("photo", "")), who=actor(self))

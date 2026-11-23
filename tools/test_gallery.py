@@ -29,6 +29,9 @@ try:
 except ValueError:
     pass
 
+open(os.path.join(w.GALLERY, "skip.txt"), "w").write("private.gcode\n")   # a print on the skip list gets no photo
+assert w.gallery_snap("prints/private.gcode", settle=0) is None and len(w.gallery()) == 2, w.gallery()
+
 shots = []                                   # a completed print whose bed rose to the camera gets its photo
 w.gallery_snap, w.lift_after_print = (lambda f, **k: shots.append(f)), (lambda f: 45.0)
 w.alert_change("printing", {"state": "complete", "file": "x.gcode", "printing_min": 10, "filament_used_m": 1.0})
