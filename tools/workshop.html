@@ -153,6 +153,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
 .qcard,.rqcard{margin-bottom:16px}
+@media (max-width:640px){.ftools{flex-wrap:nowrap}.ftools input[type=search]{min-width:0}.ftools #fRefresh{flex:none;width:38px;padding:0}.drop{padding:12px 14px;font-size:13px}}
 .qcard .chead,.rqcard .chead{align-items:center;flex-wrap:wrap}.qcard .chead .spacer{flex:1}
 #planNote:empty{display:none}#planNote{margin:0 0 10px}
 .foot{font-size:12px;color:var(--faint);margin:10px 0 0}.chead .foot{margin:0}
@@ -218,6 +219,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .issue .acts{display:flex;gap:4px;opacity:0;transition:opacity .1s}
 .issue:hover .acts,.issue:focus-within .acts{opacity:1}
 @media (hover:none){.issue .acts{opacity:1}}
+@media (hover:hover) and (min-width:641px){.issue{position:relative}.issue .acts{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding-left:16px;background:linear-gradient(90deg,transparent,var(--hover) 16px)}}   /* buttons float over the row on hover, so meta columns line up */
 .ghead{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;background:var(--panel2);font-size:12.5px;font-weight:500;color:var(--text)}
 .ghead .si{width:14px;height:14px}
 .ghead b{color:var(--faint);font-weight:500}
@@ -228,6 +230,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
+  #fCards .issue[data-pid] .acts{display:none}   /* Files on a phone: tap the row, its sheet has every button (23 Nov) */
+  #fCards .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
@@ -417,7 +421,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
     <section id="tab-files" hidden>
       <label class="drop" id="drop">Drop a sliced .gcode to send it, or an <b>.stl</b> or <b>.3mf</b> to slice it here. Or <u>choose a file</u>.
         <input type="file" id="fileIn" accept=".gcode,.gco,.g,.stl,.3mf" hidden multiple></label>
-      <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button>
+      <div class="toolbar ftools"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh" aria-label="Refresh the file list" title="Refresh">↻</button>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-fview="list" aria-pressed="true">List</button><button class="btn sm" data-fview="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="fCards"></div>
     </section>
@@ -551,7 +555,7 @@ const post = (p, body) => api(p, {method: "POST", headers: body ? {"Content-Type
 const gcode = s => post(M("/printer/gcode/script?script=" + enc(s)));
 
 /* ---------- tabs ---------- */
-const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", printer: "Printer", history: "History"};
+const TITLES = {now: "Now", queue: "Queue", files: "Files", designs: "Designs", printer: "Printer", history: "History"};
 let tab = "now";
 function go(t) {
   tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
@@ -953,7 +957,7 @@ async function loadQueue() {
       return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename),
         meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", short(j.time_added),
                `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>`],
-        panel: `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
+        panel: (thumbUrl(j.filename, m) ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
           ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : "") : ""],
           ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
           ["Added", day(j.time_added)]]),
@@ -1004,9 +1008,9 @@ function renderFiles() {
       const head = d !== last ? ghead("", d, list.filter(x => dayLabel(x.modified) === d).length) : ""; last = d;
       const icon = f.path === now ? "progress" : queued.has(f.path) ? "queued" : "waiting";
       const acts = `${fileActs(f.path)}`;
-      return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path), detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
-        meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>`],
-        acts, panel: `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` +
+      return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path.replace(/\.gcode$/i, "")), tip: f.path, detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
+        meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, thumbUrl(f.path, m) ? `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>` : ""],
+        acts, panel: (thumbUrl(f.path, m) ? `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") +
           pkv([["Slicer time", m.estimated_time ? hm(m.estimated_time) : ""], ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (c ? " · " + c : "") : ""],
                ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
                ["Sliced with", esc(m.slicer || "")], ["On the printer", day(f.modified)], ["Size", f.size ? (f.size / 1048576).toFixed(1) + " MB" : ""],
@@ -1016,7 +1020,7 @@ function renderFiles() {
   }
   box.innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
     return `<div class="fcard"><div class="img" style="background-image:url('${thumbUrl(f.path, m)}')"></div><div class="body">
-      <div class="t">${esc(f.path)}</div>
+      <div class="t" title="${esc(f.path)}">${esc(f.path.replace(/\.gcode$/i, ""))}</div>
       <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
       <div class="s">${day(f.modified)}${m.slicer ? " · " + esc(m.slicer) : ""}</div>
       <div class="acts">${fileActs(f.path)}</div>
