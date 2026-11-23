@@ -248,6 +248,9 @@ def t_start(a):
     if not a.get("bed_clear"):
         raise RuntimeError("Not started: the person must say the bed is empty (bed_clear=true), and you should look at "
                            "printer_snapshot first. Ask them.")
+    short = http("GET", "/api/filament-check?file=" + q(a["filename"])).get("short") or []
+    if short and not a.get("filament_ok"):   # a spool that runs out mid-print spoils the part
+        raise RuntimeError("Not started: " + "; ".join(short) + ". Tell the person; start anyway only if they say so (filament_ok=true).")
     http("POST", "/api/bed")   # the person said the bed is empty: Workshop logs it, and its bed check lets the start through
     mr("POST", "/printer/print/start?filename=" + q(a["filename"]))
     return f'Started {a["filename"]}. Watch the first layers with printer_snapshot.'
@@ -557,7 +560,8 @@ TOOLS = [
       "infill": {"type": "integer", "description": "percent"}, "supports": {"type": "boolean"},
       "queue": {"type": "boolean", "description": "also add it to the job queue"}, "allow_substitute": {"type": "boolean"}}, t_slice, ["design"]),
     ("printer_start", "Start printing a file now. Only when the person has said the bed is empty (bed_clear) and printer_snapshot shows an empty plate. The printer also refuses if a head the file uses is not loaded or the file would leave the bed cold.",
-     {"filename": {"type": "string"}, "bed_clear": {"type": "boolean", "description": "true only if the person said the bed is empty"}}, t_start, ["filename", "bed_clear"]),
+     {"filename": {"type": "string"}, "bed_clear": {"type": "boolean", "description": "true only if the person said the bed is empty"},
+      "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
     ("printer_resume", "Resume a paused print.", {}, t_simple("resume")),
     ("printer_cancel", "Cancel the current print (it cannot be resumed). Confirm with the person first unless the print is failing.", {}, t_simple("cancel")),

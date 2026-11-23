@@ -1107,6 +1107,21 @@ def spools(data=None):
         return {}
 
 
+def filament_short(meta, data=None, spare=10):
+    """Heads whose spool, by Workshop's count, has less left than the file needs (plus a spare few grams):
+    ["T1 SUNLU PETG black needs 120 g, about 80 g left", ...]. Heads with no spool recorded are not judged."""
+    data = spools() if data is None else data
+    out = []
+    for i, need in enumerate(meta.get("filament_weight") or []):
+        sp = data.get(f"T{i}")
+        if not need or not sp:
+            continue
+        left = sp["start_g"] - sp.get("used_g", 0)
+        if need + spare > left:
+            out.append(f'T{i} {sp["spool"]} needs {need:.0f} g, about {max(left, 0):.0f} g left')
+    return out
+
+
 def split_use(actual_mm, meta):
     """Grams per head for a finished or stopped print: the printer's measured total, shared out in the slicer's per-head
     proportions (stock firmware reports one total), each head's mm turned to grams with the slicer's own density."""
@@ -1993,6 +2008,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 plate(name, who=actor(self))
                 record(f"put the {name} plate on", "", who=actor(self))
             return self.send(200, plate())
+        if p.startswith("/api/filament-check"):   # before a start: would any spool run out mid-print?
+            f = (urllib.parse.parse_qs(urllib.parse.urlparse(p).query).get("file") or [""])[0]
+            try:
+                meta = _get("/server/files/metadata?filename=" + urllib.parse.quote(f), timeout=10)
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"could not read {f}: {e}"})
+            return self.send(200, {"file": f, "short": filament_short(meta)})
         if p == "/api/spools":
             if self.command == "POST":   # a new spool on a head: {head, spool, grams}
                 try:
