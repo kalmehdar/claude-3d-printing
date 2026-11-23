@@ -44,7 +44,9 @@ sys.path.insert(0, TOOLS)
 CFG = {}
 BOOT = int(time.time())   # the page reloads itself when this changes (Workshop restarted; an old tab can wedge)
 SERVE = {".stl", ".scad", ".3mf", ".glb", ".json", ".png", ".jpg"}   # what /bench may hand out: design files only
-SLICE_SETS = {"infill": r"\d{1,3}", "walls": r"\d{1,2}", "supports": r"on|off", "brim": r"auto_brim|outer_only|no_brim"}
+SLICE_SETS = {"infill": r"\d{1,3}", "walls": r"\d{1,2}", "supports": r"on|off", "brim": r"auto_brim|outer_only|no_brim",
+              "layer": r"0\.(08|12|16|2|20|24|28)", "wall-speed": r"[2-9]\d|1[0-9]\d|200", "wall-accel": r"[5-9]\d\d|[1-9]\d{3}"}
+# layer heights are whole Z steps on the U1 (1/75 mm): every one listed above is
 SKIP = {"host", "connection", "transfer-encoding", "content-length", "keep-alive", "content-encoding"}
 
 
@@ -2319,7 +2321,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(400, {"error": "the file is bigger than 100 MB"})
             data = self.body() or b""
             req = {"preset": q.get("preset") or "lean", "colour": q.get("colour"), "queue": q.get("queue") == "1",
-                   "upload": True, "allow_substitute": q.get("allow_substitute") == "1", "glue": q.get("glue") == "1"}
+                   "upload": True, "allow_substitute": q.get("allow_substitute") == "1", "glue": q.get("glue") == "1",
+                   "set": urllib.parse.parse_qs(urllib.parse.urlparse(p).query).get("set", [])}   # ?set=layer=0.08, filtered by SLICE_SETS
             return self.send(*slice_upload(q.get("name", ""), data, req))
         if p == "/api/slice" and self.command == "POST":
             try:

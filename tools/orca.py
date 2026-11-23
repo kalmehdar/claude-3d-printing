@@ -47,6 +47,8 @@ ALIASES = {
     "brim-width": ("brim_width", "mm"),
     "ironing": ("ironing_type", "no ironing, top, topmost, solid"),
     "seam": ("seam_position", "aligned, nearest, back, random"),
+    "wall-speed": ("outer_wall_speed", "outer wall speed, mm/s (slower can show fewer lines; smooth uses 80)"),
+    "wall-accel": ("outer_wall_acceleration", "outer wall acceleration, mm/s2 (smooth uses 3000)"),
     "nozzle-temp": ("nozzle_temperature", "degrees C, every layer after the first"),
     "bed-temp": ("hot_plate_temp", "degrees C (the profile's plate type decides which key the printer uses)"),
     "prime-tower": ("enable_prime_tower", "on or off (multi-colour prints)"),
