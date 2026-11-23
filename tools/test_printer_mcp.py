@@ -47,6 +47,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
             return self.reply(200, {"low_g": 200, "heads": {}})
         if p.startswith("/api/bed"):
             return self.reply(200, {"state": "printing"})
+        if p.startswith("/api/filament-check"):   # every spool has enough: the start goes ahead
+            return self.reply(200, {"file": "x", "short": []})
         if p.startswith("/api/calibration") and self.command == "POST":
             return self.reply(201, {"test": "temperature", "value": "240", "filament": "SUNLU PETG", "key": "nozzle_temperature", "photo": "/x.jpg"})
         if p.startswith("/api/frames"):
