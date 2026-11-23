@@ -184,6 +184,7 @@ input[type=range]{accent-color:var(--accent)}
 .banner.bad{border-color:rgba(235,93,93,.4)}.banner.bad::before{background:var(--bad)}
 .banner.good::before{background:var(--ok)}
 .banner small{display:block;font-weight:400;color:var(--dim);margin-top:2px}
+.banner{flex-wrap:wrap}.banner>div{flex:1 1 240px;min-width:0}   /* buttons drop under the words when narrow */
 .alert{border-left:2px solid var(--warn);padding:8px 12px;background:transparent}
 .alert b{display:block;font-size:13px;font-weight:500}.alert span{font-size:12px;color:var(--dim)}
 .act{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px}
@@ -237,7 +238,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 @media (max-width:520px){.jkv{grid-template-columns:repeat(2,minmax(0,1fr))} .jspeed{margin-left:0}}
 .hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.hstat{display:none}}
-@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .cam .camtools{left:8px;right:8px;flex-wrap:wrap;justify-content:flex-end} .cam .camtools .btn{min-height:34px;padding:0 10px;font-size:12.5px}}   /* phone: one header row, camera buttons that fit */
+@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .cam>.camtools{left:6px;right:6px;top:6px;gap:4px;overflow-x:auto;flex-wrap:nowrap;justify-content:safe flex-end;scrollbar-width:none} .cam>.camtools .btn{flex:none;min-height:30px;padding:0 6px;font-size:11px}}   /* phone: camera buttons on one slim row   /* phone: one header row, camera buttons that fit */
 .pushrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px;font-size:12px;color:var(--dim)}.pushrow b{color:var(--text);font-weight:500}.pushrow .pacts{display:flex;gap:4px;flex:none}
 #pushHide{color:var(--dim)}
 /* Printer tab */
@@ -747,6 +748,7 @@ function render() {
     left = Math.max(est * k - ps.print_duration, 0) + prep; guess = true; }
   $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
   $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
+  $("#kLeft").parentElement.hidden = $("#kEnd").parentElement.hidden = left == null;   // no dashes once it ends
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
   $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
@@ -1453,8 +1455,8 @@ function renderBanner() {
   else {
     const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
     const waiting = S.bed && S.bed.state === "part waiting";
-    if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${S.bed.file || "A print"} is waiting on the bed` : `Finished ${ps.filename}`;
-      sub = `Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let PETG cool, flex the plate, then tap "I took it off" so the other person knows.`; }
+    if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${(S.bed.file || "A print").replace(/\.gcode$/i, "")} is waiting on the bed` : `Finished ${ps.filename.replace(/\.gcode$/i, "")}`;
+      sub = `Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let it cool, flex the plate, then tap "I took it off" so the other person knows.`; }
     else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
