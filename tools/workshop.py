@@ -1133,7 +1133,7 @@ def maintenance(done=None, who="", jobs=None, now=None):
         os.replace(MAINT + ".part", MAINT)
     rows = []
     for k, (what, unit, every) in MAINT_TASKS.items():
-        since = jobs - data[k]["at_jobs"] if unit == "prints" else int((now - data[k]["t"]) // 86400)
+        since = int(jobs - data[k]["at_jobs"]) if unit == "prints" else int((now - data[k]["t"]) // 86400)   # Moonraker counts jobs as a float
         rows.append({"task": k, "what": what, "unit": unit, "every": every, "since": since, "due": since >= every,
                      "who": data[k]["who"], "t": data[k]["t"]})
     return rows
