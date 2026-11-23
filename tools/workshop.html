@@ -153,6 +153,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
 .qcard,.rqcard{margin-bottom:16px}
+.gal{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}@media (max-width:640px){.gal{grid-template-columns:1fr 1fr}}
 .warnnote{color:var(--warn);border:1px solid rgba(240,191,76,.35);background:rgba(240,191,76,.06);margin-top:10px}
 #kFil small{display:block;font-size:12px;font-weight:400;color:var(--dim);margin-top:2px}
 @media (max-width:640px){.dtools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"s s v" "b st g";gap:8px}.dtools #dSearch{grid-area:s;min-width:0}#dBench{grid-area:b}#dState{grid-area:st}#dGroup{grid-area:g}.dtools select{min-width:0;width:100%;padding:0 6px}.dtools .seg{grid-area:v;justify-self:stretch}.dtools .seg .btn{flex:1}}
@@ -489,6 +490,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
       <div class="list" id="hList" style="margin-bottom:16px"></div>
+      <details class="card fold" id="galCard" hidden style="margin-bottom:16px" open><summary><h2>Finished parts</h2></summary><div class="cards gal" id="galBox"></div></details>
       <details class="card fold" id="tlCard" hidden style="margin-bottom:16px"><summary><h2>Printer timelapses</h2></summary><div id="tlBox"></div></details>
       <details class="card fold" id="costCard" hidden style="margin-bottom:16px"><summary><h2>Filament and cost</h2></summary><div id="costBox"></div></details>
       <details class="card fold" id="accCard" hidden style="margin-bottom:16px"><summary><h2>Slicer against the printer</h2></summary><div class="note" id="accInfo"></div></details>
@@ -1345,7 +1347,7 @@ async function openDesign(key) {
 
 /* ---------- history ---------- */
 async function loadHistory() {
-  loadCosts(); loadTimelapses();
+  loadCosts(); loadTimelapses(); loadGallery();
   try {
     loadCalibration();
     await loadAccuracy();
@@ -1640,6 +1642,17 @@ async function loadPrinter() {
       : `<p class="note" style="margin:0">${esc(r.note || "No spools in Spoolman yet.")} The heads in Now still show Workshop's own count.</p>`;
   }).catch(e => { $("#spoolBox").textContent = "Spoolman did not answer: " + e.message; });
 }
+async function loadGallery() {   // one photo per finished part, taken when the bed lifts to the camera
+  let g; try { g = await api("/api/gallery"); } catch (e) { return; }
+  $("#galCard").hidden = !g.length; if (!g.length) return;
+  $("#galBox").innerHTML = g.map(x => `<div class="fcard"><div class="img" style="background-image:url('/gallery-photo/${enc(x.photo)}');background-size:cover"></div><div class="body">
+      <div class="t" title="${esc(x.file || "")}">${esc((x.file || "").replace(/\.gcode$/i, ""))}</div>
+      <div class="s">${day(x.t)}${x.for ? " · for " + esc(x.for) : ""}</div>
+      <div class="acts"><button class="btn sm" data-galfor="${esc(x.photo)}" data-cur="${esc(x.for || "")}">${x.for ? "Change who" : "Who's it for?"}</button></div></div></div>`).join("");
+}
+$("#galBox").addEventListener("click", async e => { const b = e.target.closest("[data-galfor]"); if (!b) return;
+  const who = prompt("Who was this part for?", b.dataset.cur); if (who === null) return;
+  try { await post("/api/gallery", {photo: b.dataset.galfor, for: who.trim()}); loadGallery(); } catch (err) { toast(err.message, true); } });
 async function loadTimelapses() {
   let t; try { t = await api("/api/timelapses"); } catch (e) { return; }
   $("#tlCard").hidden = !t.length; if (!t.length) return;

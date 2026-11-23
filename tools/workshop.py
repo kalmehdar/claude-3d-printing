@@ -459,9 +459,10 @@ def alert_change(prev, s, folder=None):
             import threading
             def lift_then_look(f=s.get("file") or ""):
                 try:
-                    lift_after_print(f)
+                    if lift_after_print(f):   # the bed is up at the camera: keep a photo of the part for the gallery
+                        gallery_snap(f)
                 except (OSError, ValueError, KeyError) as e:
-                    print("bed lift after the print failed:", e, flush=True)
+                    print("bed lift or gallery photo after the print failed:", e, flush=True)
                 finish_look(f)
             threading.Thread(target=lift_then_look, daemon=True).start()
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
@@ -1498,6 +1499,39 @@ def lift_after_print(file, wait=120):
     return z
 
 
+GALLERY = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "gallery")
+
+
+def gallery_snap(file, settle=3):
+    """One photo of a finished part with the bed up at the camera, kept for the History gallery. Read-only on the printer."""
+    import printer
+    time.sleep(settle)   # the bed has just stopped moving
+    os.makedirs(GALLERY, exist_ok=True)
+    name = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w-]", "_", os.path.splitext(os.path.basename(file or "print"))[0]) + ".jpg"
+    printer.snap(os.path.join(GALLERY, name))
+    with open(os.path.join(GALLERY, "gallery.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"t": time.time(), "file": file, "photo": name, "for": ""}) + "\n")
+    return name
+
+
+def gallery(photo=None, who_for=None):
+    """The finished-part photos, newest first; photo + who_for tags who that part was for."""
+    log = os.path.join(GALLERY, "gallery.jsonl")
+    try:
+        rows = [json.loads(l) for l in open(log, encoding="utf-8") if l.strip()]
+    except (OSError, ValueError):
+        rows = []
+    if photo is not None:
+        hit = next((r for r in rows if r["photo"] == photo), None)
+        if not hit:
+            raise ValueError("no such photo")
+        hit["for"] = str(who_for or "")[:60]
+        with open(log + ".part", "w", encoding="utf-8") as f:
+            f.write("".join(json.dumps(r) + "\n" for r in rows))
+        os.replace(log + ".part", log)
+    return rows[::-1]
+
+
 HEATERS = {"T0": "extruder", "T1": "extruder1", "T2": "extruder2", "T3": "extruder3", "bed": "heater_bed"}
 LIMITS = {"x": (0.0, 271.0), "y": (0.0, 335.0)}
 FANS = {"part": None, "cavity": "cavity_fan", "exhaust": "exhaust_fan", "circulation": "circulation_fan"}
@@ -2000,6 +2034,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
             return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "live_relay": CFG.get("live_relay"), "printer_screen": screen, "push": push, "boot": BOOT,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
+        m = re.fullmatch(r"/gallery-photo/([\w-]+\.jpg)", p)
+        if m:
+            f = os.path.join(GALLERY, m.group(1))
+            return self.send(200, open(f, "rb").read(), "image/jpeg") if os.path.isfile(f) else self.send(404, {"error": "no such photo"})
+        if p == "/api/gallery":   # GET the finished-part photos; POST {"photo", "for"} says who a part was for
+            try:
+                if self.command == "POST":
+                    r = json.loads(self.body() or b"{}")
+                    rows = gallery(str(r.get("photo", "")), r.get("for"))
+                    record(f'tagged a finished part as for {str(r.get("for") or "nobody")[:60]}', str(r.get("photo", "")), who=actor(self))
+                else:
+                    rows = gallery()
+            except (ValueError, AttributeError) as e:
+                return self.send(400, {"error": str(e)})
+            return self.send(200, rows)
         m = re.fullmatch(r"/calibration-photo/([\w-]+\.jpg)", p)
         if m:
             f = os.path.join(CAL_PHOTOS, m.group(1))
