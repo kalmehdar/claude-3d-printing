@@ -471,7 +471,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             <div class="sub">Fans</div>
             <div id="fanRow"></div>
             <p class="foot">Load and unload are on each head in Now.</p></div>
-          <div class="card" id="maintCard"><div class="chead"><h2>Maintenance</h2><span class="foot">by hours of printing</span></div><div class="list" id="maintList"></div></div>
+          <div class="card" id="maintCard"><div class="chead"><h2>Maintenance</h2><span class="foot">Snapmaker&#39;s U1 schedule</span></div><div class="list" id="maintList"></div></div>
           <div class="card" id="calCard"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
             <p class="note" style="margin:10px 0 0">Each one homes first if needed, moves the head and bed, and writes its result in the console below. The plate must be clear.</p></div>
           <div class="card"><h2>Console</h2><pre id="conLog" class="console" aria-live="polite">Loading...</pre>
@@ -1495,7 +1495,7 @@ function renderBanner() {
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
     const due = (S.maint || []).filter(m => m.due);   // maintenance only nags when the printer is idle
-    if (due.length && ps.state !== "complete") { sub = (sub ? sub + " " : "") + `Maintenance due: ${due.map(m => m.what.toLowerCase()).join("; ")} (Printer tab).`; if (!cls) cls = "warn"; }
+    if (due.length && ps.state !== "complete") { sub = (sub ? sub + " " : "") + `Maintenance due: ${due.length} job${due.length > 1 ? "s" : ""} on the Printer tab.`; if (!cls) cls = "warn"; }
     if (S.plate) sub = (sub ? sub + " " : "") + (S.plate === "smooth" ? "Smooth plate on: PETG needs a thin layer of glue stick first." : "Textured plate on.");
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
@@ -1606,7 +1606,7 @@ $("#tab-printer").addEventListener("click", e => { const b = e.target.closest("[
 function renderMaint() {
   const rows = S.maint || []; $("#maintCard").hidden = !rows.length;
   $("#maintList").innerHTML = rows.map(m => issueHtml({icon: m.due ? "waiting" : "done", title: esc(m.what),
-    detail: m.due ? `due: ${Math.round(m.since_h)} h since, every ${m.every_h} h` : `${Math.round(m.since_h)} of ${m.every_h} h`,
+    detail: m.due ? `due: ${m.since} ${m.unit} since, every ${m.every}` : `${m.since} of ${m.every} ${m.unit}`,
     meta: [m.who ? `last by ${esc(m.who)}` : ""], attrs: m.due ? ' style="color:var(--warn)"' : "",
     acts: `<button class="btn sm${m.due ? " primary" : ""}" data-maint="${esc(m.task)}">Done</button>`})).join("");
 }

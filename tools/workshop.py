@@ -1092,38 +1092,51 @@ def plate(name=None, who=""):
 
 
 MAINT = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "maintenance.json")
-# Workshop's own defaults, in hours of printing (not Snapmaker's figures): change the hours here if they prove too often or too rare
-MAINT_TASKS = {"plate": ("Wash the plate in warm soapy water", 15), "wipers": ("Clean the nozzle wipers and purge area", 50),
-               "belts": ("Check the belts are tight and not frayed", 100), "lube": ("Grease the Z lead screws and wipe the rods", 200)}
+# Snapmaker's own U1 schedule (wiki.snapmaker.com/en/snapmaker_u1/troubleshooting/Core_Components_Maintenance_Guide and
+# /PEI_steel_sheet_cleaning, read 23 Nov 2026): (what, unit, every); unit is "prints" or "days"
+MAINT_TASKS = {
+    "plate": ("Wash the PEI plate: dish soap, sponge, water, once below 40 C (never acetone)", "prints", 10),   # "every 5-10 prints"
+    "shafts": ("Clean the steel linear shafts and add a little white lithium grease", "days", 30),           # "Monthly"
+    "xrod": ("Wipe the X carbon rod with isopropanol: never grease it", "days", 30),                         # "Monthly"
+    "belts": ("Check the XY belt tension and wipe the teeth dry", "days", 30),                                # "Monthly"
+    "zscrew": ("Clean and grease the Z lead screw (the grease that came with the U1)", "days", 91),            # "Quarterly"
+    "pins": ("Clean and grease the steel pins and balls at the arrow marks", "days", 91),                    # "Quarterly"
+    "pogo": ("Wipe the tool-head pogo pins with a barely damp alcohol cloth, one direction", "days", 150),    # "Every 4-6 months"
+}
 
 
-def print_hours():
-    """Total hours the U1 has spent printing, from Moonraker's history totals."""
-    return _get("/server/history/totals", timeout=10)["job_totals"]["total_print_time"] / 3600
+def print_count():
+    """Prints the U1 has run, from Moonraker's history totals."""
+    return _get("/server/history/totals", timeout=10)["job_totals"]["total_jobs"]
 
 
-def maintenance(done=None, who="", hours=None):
-    """Each task with how many print hours since it was last done and whether it is due; done=task marks it done now.
-    A task never marked done counts from when Workshop first saw the printer (its hours then), not from zero."""
-    hours = print_hours() if hours is None else hours
+def maintenance(done=None, who="", jobs=None, now=None):
+    """Each task with how far it is into its interval (prints or days) and whether it is due; done=task marks it done now.
+    A task never marked done counts from when Workshop first saw it, not from the printer's first day."""
+    jobs = print_count() if jobs is None else jobs
+    now = time.time() if now is None else now
     try:
         data = json.load(open(MAINT, encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
     changed = False
     for k in MAINT_TASKS:
-        if k not in data:
-            data[k], changed = {"at_h": hours, "who": "", "t": time.time()}, True
+        if "at_jobs" not in data.get(k, {}):   # new, or from the old print-hours version: start counting now
+            data[k], changed = {"at_jobs": jobs, "t": now, "who": ""}, True
     if done:
         if done not in MAINT_TASKS:
             raise ValueError("task is one of " + ", ".join(MAINT_TASKS))
-        data[done], changed = {"at_h": hours, "who": who, "t": time.time()}, True
+        data[done], changed = {"at_jobs": jobs, "t": now, "who": who}, True
     if changed:
         os.makedirs(os.path.dirname(MAINT), exist_ok=True)
         json.dump(data, open(MAINT + ".part", "w"), indent=1)
         os.replace(MAINT + ".part", MAINT)
-    return [{"task": k, "what": what, "every_h": every, "since_h": round(hours - data[k]["at_h"], 1),
-             "due": hours - data[k]["at_h"] >= every, "who": data[k]["who"], "t": data[k]["t"]} for k, (what, every) in MAINT_TASKS.items()]
+    rows = []
+    for k, (what, unit, every) in MAINT_TASKS.items():
+        since = jobs - data[k]["at_jobs"] if unit == "prints" else int((now - data[k]["t"]) // 86400)
+        rows.append({"task": k, "what": what, "unit": unit, "every": every, "since": since, "due": since >= every,
+                     "who": data[k]["who"], "t": data[k]["t"]})
+    return rows
 
 
 SPOOLS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "spools.json")
@@ -2099,7 +2112,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except (OSError, ValueError, KeyError, AttributeError) as e:
                 return self.send(400 if isinstance(e, ValueError) else 502, {"error": str(e)})
             if task:
-                record("did maintenance: " + MAINT_TASKS[task][0].lower(), "", who=actor(self))
+                record("did maintenance: " + MAINT_TASKS[task][0].split(":")[0].lower(), "", who=actor(self))
             return self.send(200, rows)
         if p.startswith("/api/filament-check"):   # before a start: would any spool run out mid-print?
             f = (urllib.parse.parse_qs(urllib.parse.urlparse(p).query).get("file") or [""])[0]
