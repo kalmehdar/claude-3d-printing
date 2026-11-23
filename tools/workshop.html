@@ -59,9 +59,10 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .now{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .card h2{font-size:12.5px;font-weight:500;color:var(--dim);margin:0 0 12px;letter-spacing:0}
-.cam{position:relative;padding:0;overflow:hidden;background:#000;aspect-ratio:16/9}
-.pip{position:absolute;right:10px;bottom:10px;width:min(36%,340px);aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:2;background:#0b0c0e}
-.pip.full{inset:0;width:auto;border-radius:0;border:0;box-shadow:none}
+.cam{position:relative;padding:0;overflow:hidden;background:#000}
+.camview{position:relative;aspect-ratio:16/9}   /* the video keeps its own box; the 3D view sits under it, never on it (23 Nov) */
+.pip{position:relative;aspect-ratio:16/9;overflow:hidden;border-top:1px solid rgba(255,255,255,.1);background:#0b0c0e}
+.pip.full{position:absolute;inset:0;aspect-ratio:auto;border:0;z-index:2}
 .pip .viewer{height:100%;border-radius:0}
 .fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
 .fold>summary::-webkit-details-marker{display:none}
@@ -72,7 +73,7 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .pip .stamp{position:absolute;left:6px;bottom:6px;font-size:10.5px;color:#fff;background:rgba(0,0,0,.6);padding:1px 6px;border-radius:5px}
 .pip .camtools{position:absolute;right:6px;top:6px;display:flex;gap:4px}
 .pip .camtools .btn{min-height:26px;padding:0 8px;font-size:11.5px;background:rgba(16,17,19,.75)}
-@media (max-width:520px){.pip{width:36%;left:6px;right:auto;top:42px;bottom:auto} .cam .pip .camtools{left:auto;right:4px;top:4px;flex-wrap:nowrap} .cam .pip .camtools .btn{min-height:24px;padding:0 7px;font-size:11px} .pip:not(.full) .stamp,.pip:not(.full) #l3Reset{display:none}}
+@media (max-width:520px){.cam .pip .camtools{left:auto;right:4px;top:4px;flex-wrap:nowrap} .cam .pip .camtools .btn{min-height:24px;padding:0 7px;font-size:11px}}
 .cam img{width:100%;height:100%;object-fit:cover;display:block}
 .cam .stamp{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:#fff;background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;font-variant-numeric:tabular-nums}
 .cam .camtools{position:absolute;right:8px;top:8px;display:flex;gap:6px}
@@ -260,7 +261,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 @media (max-width:520px){.jkv{grid-template-columns:repeat(2,minmax(0,1fr))} .jspeed{margin-left:0}}
 .hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.hstat{display:none}}
-@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .cam>.camtools{left:6px;right:6px;top:6px;gap:4px;overflow-x:auto;flex-wrap:nowrap;justify-content:safe flex-end;scrollbar-width:none} .cam>.camtools .btn{flex:none;min-height:30px;padding:0 6px;font-size:11px}}   /* phone: camera buttons on one slim row   /* phone: one header row, camera buttons that fit */
+@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .camview>.camtools{left:6px;right:6px;top:6px;gap:4px;overflow-x:auto;flex-wrap:nowrap;justify-content:safe flex-end;scrollbar-width:none} .camview>.camtools .btn{flex:none;min-height:30px;padding:0 6px;font-size:11px}}   /* phone: camera buttons on one slim row   /* phone: one header row, camera buttons that fit */
 .pushrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px;font-size:12px;color:var(--dim)}.pushrow b{color:var(--text);font-weight:500}.pushrow .pacts{display:flex;gap:4px;flex:none}
 #pushHide{color:var(--dim)}
 /* Printer tab */
@@ -379,8 +380,8 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             </div>
             <div class="actions" id="jobActions"></div>
           </div>
-          <div class="card cam" id="camCard"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div>
+          <div class="card cam" id="camCard"><div class="camview"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
             <div class="pip" id="l3Card" hidden><div class="viewer" id="l3"></div><span class="stamp" id="l3Stamp">3D</span>
               <div class="camtools"><button class="btn sm" id="l3Swap" aria-pressed="false" aria-label="Show the 3D view large">Large</button><button class="btn sm" id="l3Reset" aria-label="Back to the starting view">Reset</button></div></div></div>
           <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
