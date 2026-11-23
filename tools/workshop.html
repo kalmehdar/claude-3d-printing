@@ -223,6 +223,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .issue .acts{display:flex;gap:4px;opacity:0;transition:opacity .1s}
 .issue:hover .acts,.issue:focus-within .acts{opacity:1}
 @media (hover:none){.issue .acts{opacity:1}}
+@media (hover:none){:is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid] .acts{display:none} :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{content:"\203A";color:var(--faint);font-size:18px;line-height:1}}   /* touch screens, phone or iPad: tap the row, its sheet or panel has every button (23 Nov) */
 @media (hover:hover) and (min-width:641px){.issue{position:relative}.issue .acts{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding-left:16px;background:linear-gradient(90deg,transparent,var(--hover) 16px)}}   /* buttons float over the row on hover, so meta columns line up */
 .ghead{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;background:var(--panel2);font-size:12.5px;font-weight:500;color:var(--text)}
 .ghead .si{width:14px;height:14px}
@@ -234,8 +235,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
-  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid] .acts{display:none}   /* Files and Designs on a phone: tap the row, its sheet has every button (23 Nov) */
-  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
+  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{grid-column:3;grid-row:1}
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
