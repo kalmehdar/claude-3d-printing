@@ -809,8 +809,8 @@ function render() {
   // queue badge + next up
   const next = S.queue[0];
   const nm = next && (S.meta[next.filename] || {});
-  $("#nextUp").innerHTML = next ? `<div class="list">${issueHtml({icon: "queued", id: "Q-1", title: esc(next.filename),
-      meta: [nm.estimated_time ? hm(nm.estimated_time) : "", nm.filament_weight_total ? Math.round(nm.filament_weight_total) + " g" : "",
+  $("#nextUp").innerHTML = next ? `<div class="list">${issueHtml({icon: "queued", id: "Q-1", title: esc(next.filename.replace(/\.gcode$/i, "")),
+      meta: [nm.estimated_time ? hm(nm.estimated_time) : "", nm.filament_weight_total ? Math.round(nm.filament_weight_total) + " g" : "", cost(nm.filament_weight_total, nm.filament_type),
              thumbUrl(next.filename, nm) ? `<i class="mini" style="background-image:url('${thumbUrl(next.filename, nm)}')"></i>` : ""],
       acts: ""})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
     : `Nothing queued. <a href="#designs" onclick="go('designs');return false">Pick a design</a> or <a href="#files" onclick="go('files');return false">a file</a>.`;
@@ -963,9 +963,9 @@ async function loadQueue() {
     if (tab !== "queue") return;
     await ensureMeta(S.queue.map(j => j.filename));
     $("#qList").innerHTML = S.queue.length ? S.queue.map((j, i) => { const m = S.meta[j.filename] || {};
-      return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename),
-        meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", short(j.time_added),
-               `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>`],
+      return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename.replace(/\.gcode$/i, "")), tip: j.filename,
+        meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", cost(m.filament_weight_total, m.filament_type), short(j.time_added),
+               thumbUrl(j.filename, m) ? `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>` : ""],
         panel: (thumbUrl(j.filename, m) ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
           ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : "") : ""],
           ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
@@ -1482,7 +1482,8 @@ function renderBanner() {
     const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
     const waiting = S.bed && S.bed.state === "part waiting";
     if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${(S.bed.file || "A print").replace(/\.gcode$/i, "")} is waiting on the bed` : `Finished ${ps.filename.replace(/\.gcode$/i, "")}`;
-      sub = `Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let it cool, flex the plate, then tap "I took it off" so the other person knows.`; }
+      const bm = S.meta[(S.bed && S.bed.file) || ps.filename] || {}, bc = cost(bm.filament_weight_total, bm.filament_type);
+      sub = `${bc ? `Cost about ${bc}. ` : ""}Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let it cool, flex the plate, then tap "I took it off" so the other person knows.`; }
     else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
@@ -1711,7 +1712,7 @@ async function loadLast() {
     + pkv([["Print", esc(stem)], ["Result", (WORD[j.status] || esc(j.status)) + (j.end_time ? " " + day(j.end_time) : "")],
       ["Printing time", took ? hm(took) + vs : ""], ["Start to finish", j.total_duration ? hm(j.total_duration) : ""],
       ["Claude's look", (lk => lk ? `${lk.quality}${lk.flaws.length ? " (" + lk.flaws.join(", ").replace(/_/g, " ") + ")" : ""}: ${esc(lk.reason)} ${esc(lk.advice)}` : "")(looks.find(x => x.file === j.filename))],
-      ["Filament", grams ? Math.round(grams) + " g" + (cost(grams, m.filament_type) ? " (" + cost(grams, m.filament_type) + ")" : "") : ""]]);
+      ["Cost", cost(grams, m.filament_type)], ["Filament", grams ? Math.round(grams) + " g" : ""]]);
 }
 
 /* ---------- alerts on this computer: a chime, and a pop-up where the browser allows it (https or localhost only) ---------- */

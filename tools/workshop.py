@@ -434,6 +434,16 @@ def alert_change(prev, s, folder=None):
     import printer
     f = s.get("file") or "the print"
     took = f'{s["printing_min"] // 60:.0f} h {s["printing_min"] % 60:.0f} min, {s["filament_used_m"]} m of filament' if s.get("printing_min") else ""
+    meta = None
+    if s["state"] in ("complete", "cancelled", "error") and prev in ("printing", "paused"):
+        try:
+            with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
+                meta = json.load(r)["result"]
+        except (OSError, ValueError, KeyError) as e:
+            print("print metadata for the alert failed:", e, flush=True)
+    c = print_cost(meta, split_use((s.get("filament_used_m") or 0) * 1000, meta)) if meta else 0
+    if c:
+        took = (took + ", " if took else "") + f"about £{c:.2f}"   # the print's cost on the phone (Khalid, 23 Nov)
     msg = {"paused": (f"Print paused: {f}", (s.get("message") or "Check the printer before resuming.").strip(), "warn"),
            "complete": (f"Print finished: {f}", f"Took {took}. Let the bed cool before taking it off." if took else "Let the bed cool before taking it off.", "good"),
            "cancelled": (f"Print cancelled: {f}", took and f"After {took}.", "bad"),
@@ -456,8 +466,8 @@ def alert_change(prev, s, folder=None):
             threading.Thread(target=lift_then_look, daemon=True).start()
         if s["state"] in ("complete", "cancelled", "error"):   # what it really used comes off the spools
             try:
-                with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(s.get("file") or ""), timeout=10) as r:
-                    meta = json.load(r)["result"]
+                if meta is None:
+                    raise OSError("no metadata for " + str(s.get("file")))
                 use = take_off_spools(s.get("file"), (s.get("filament_used_m") or 0) * 1000, meta)
                 log_print(s, meta, use, folder)
             except (OSError, ValueError, KeyError) as e:
@@ -466,6 +476,13 @@ def alert_change(prev, s, folder=None):
         bed("printing", who="", file=f)
     if s["state"] == "printing" and prev == "paused":
         printer.push(f"Print resumed: {f}", "", "info", click=CFG.get("url"))
+
+
+def print_cost(meta, use, prices=None):
+    """£ for a print: each head's measured grams at its material's register price. 0.0 when no price is known."""
+    types = str(meta.get("filament_type") or "").split(";")
+    prices = filament_prices(CFG.get("register")) if prices is None else prices
+    return sum(g * prices.get((types[int(h[1:])] if int(h[1:]) < len(types) else "").upper(), 0) / 1000 for h, g in use.items())
 
 
 def filament_prices(path):
@@ -972,13 +989,12 @@ def log_print(s, meta, use, folder=None):
     while end + 1 < len(lines) and lines[end + 1].startswith("|"):
         end += 1
     types = [t for t in str(meta.get("filament_type") or "").split(";")]
-    sp, prices = spools(), filament_prices(CFG.get("register"))
-    heads, cost = [], 0.0
+    sp = spools()
+    heads, cost = [], print_cost(meta, use)
     for h, g in use.items():
         i = int(h[1:])
         mat = types[i] if i < len(types) else ""
         heads.append(f'{(sp.get(h) or {}).get("spool") or mat or "?"} on {h}')
-        cost += g * prices.get(mat.upper(), 0) / 1000
     file = s.get("file") or "?"
     m = PRESET_IN_NAME.search(file)
     outcome = OUTCOME.get(s.get("state"), s.get("state") or "?")
