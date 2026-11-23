@@ -25,4 +25,7 @@ except RuntimeError as e:
     assert "T1 PETG black" in str(e) and not any("print/start" in p for _, p in calls), (e, calls)
 assert "Started" in pm.t_start({"filename": "x.gcode", "bed_clear": True, "filament_ok": True})
 assert any("print/start" in p for _, p in calls)
+calls.clear()                                    # the queue start tells Workshop the bed is clear before starting
+pm.t_queue({"action": "start", "bed_clear": True})
+assert calls.index(("POST", "/api/bed")) < calls.index(("POST", "/server/job_queue/start")), calls
 print("filament check passed")

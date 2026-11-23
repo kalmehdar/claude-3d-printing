@@ -287,6 +287,7 @@ def t_queue(a):
     if act == "start":
         if not a.get("bed_clear"):
             raise RuntimeError("Not started: the person must say the bed is empty (bed_clear=true).")
+        http("POST", "/api/bed")   # as printer_start does: the person said it is empty, so Workshop's bed check lets it through
         mr("POST", "/server/job_queue/start")
         return "Started the next job; the queue is held again behind it."
     raise RuntimeError("action is list, add, remove, hold or start")
