@@ -153,6 +153,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
 .qcard,.rqcard{margin-bottom:16px}
+@media (max-width:640px){.dtools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"s s v" "b st g";gap:8px}.dtools #dSearch{grid-area:s;min-width:0}#dBench{grid-area:b}#dState{grid-area:st}#dGroup{grid-area:g}.dtools select{min-width:0;width:100%;padding:0 6px}.dtools .seg{grid-area:v;justify-self:stretch}.dtools .seg .btn{flex:1}}
 #fanRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 20px}.fanline{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px}.fanline>span:first-child{color:var(--dim);font-size:13px}
 @media (max-width:640px){#fanRow{grid-template-columns:1fr}}
 .lockmsg{display:none;margin:12px 0 0}#ctlCard.busy .lockmsg{display:block}#ctlCard.busy .mv{display:none}
@@ -233,8 +234,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
-  #fCards .issue[data-pid] .acts{display:none}   /* Files on a phone: tap the row, its sheet has every button (23 Nov) */
-  #fCards .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
+  :is(#fCards,#dCards) .issue[data-pid] .acts{display:none}   /* Files and Designs on a phone: tap the row, its sheet has every button (23 Nov) */
+  :is(#fCards,#dCards) .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
@@ -431,9 +432,9 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
 
     <section id="tab-designs" hidden>
       <p class="note" id="dIntro"></p>
-      <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
+      <div class="toolbar dtools"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
         <select id="dState" aria-label="Which state"><option value="">Any state</option><option value="ready">Ready</option><option value="check">Check first</option><option value="later">Later</option></select>
-        <select id="dGroup" aria-label="Group by"><option value="use">Group by use</option><option value="state">Group by state</option></select>
+        <select id="dGroup" aria-label="Group by"><option value="use">By use</option><option value="state">By state</option></select>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-view="list" aria-pressed="true">List</button><button class="btn sm" data-view="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="dCards"></div>
     </section>
@@ -1221,8 +1222,8 @@ async function live3d() {
 let DESIGNS = null;
 async function loadDesigns() {
   if (!DESIGNS) { try { DESIGNS = await api("/api/designs"); S.info = await api("/api/info"); } catch (e) { return toast(e.message, true); } }
-  $("#dIntro").textContent = `${DESIGNS.designs.length} designs. Times and grams are real slicer numbers for the ${DESIGNS.printer_label} where the design has been sliced.`;
-  const sel = $("#dBench"); if (!sel.options.length) sel.innerHTML = `<option value="">All designs</option>` + DESIGNS.benches.map((b, i) => `<option value="${i}">${esc(b)}</option>`).join("");
+  $("#dIntro").textContent = `${DESIGNS.designs.length} designs · times and grams are real ${DESIGNS.printer_label} slicer numbers where sliced`;
+  const sel = $("#dBench"); if (!sel.options.length) sel.innerHTML = `<option value="">All</option>` + DESIGNS.benches.map((b, i) => `<option value="${i}">${esc(b)}</option>`).join("");
   renderDesigns();
 }
 function renderDesigns() {
