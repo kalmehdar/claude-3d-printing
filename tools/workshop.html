@@ -153,6 +153,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
 .qcard,.rqcard{margin-bottom:16px}
+#fanRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 20px}.fanline{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px}.fanline>span:first-child{color:var(--dim);font-size:13px}
+@media (max-width:640px){#fanRow{grid-template-columns:1fr}}
+.lockmsg{display:none;margin:12px 0 0}#ctlCard.busy .lockmsg{display:block}#ctlCard.busy .mv{display:none}
 @media (max-width:640px){.ftools{flex-wrap:nowrap}.ftools input[type=search]{min-width:0}.ftools #fRefresh{flex:none;width:38px;padding:0}.drop{padding:12px 14px;font-size:13px}}
 .qcard .chead,.rqcard .chead{align-items:center;flex-wrap:wrap}.qcard .chead .spacer{flex:1}
 #planNote:empty{display:none}#planNote{margin:0 0 10px}
@@ -439,31 +442,32 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
     <section id="tab-printer" hidden>
       <div class="grid now">
         <div class="grid" style="align-content:start">
-          <div class="card"><h2>Controls <a class="note" href="http://192.168.1.237/" target="_blank" rel="noopener" style="float:right;font-weight:400">Fluidd ↗</a></h2>
+          <div class="card" id="ctlCard"><div class="chead"><h2>Controls</h2><a class="note" href="http://192.168.1.237/" target="_blank" rel="noopener">Fluidd ↗</a></div>
             <div class="ctrls">
-              <button class="btn" data-ctl="light">Light on or off</button>
-              <button class="btn" data-ctl="heaters">Heaters off</button>
-              <button class="btn" data-ctl="home">Home</button>
-              <button class="btn" data-ctl="motors">Motors off</button>
-              <button class="btn" data-ctl="view">Bed into view</button>
+              <button class="btn" data-ctl="light">Light</button>
+              <button class="btn mv" data-ctl="heaters">Heaters off</button>
+              <button class="btn mv" data-ctl="home">Home</button>
+              <button class="btn mv" data-ctl="motors">Motors off</button>
+              <button class="btn mv" data-ctl="view">Bed into view</button>
             </div>
-            <div class="sub">Move <span class="note">(idle and homed; the bed never comes closer than 20 mm over the last print)</span></div>
-            <div class="jog">
+            <p class="note lockmsg">Moving, heating and homing are hidden while a print runs. The light and the part fan still work.</p>
+            <div class="sub mv">Move <span class="note">(idle and homed; the bed never comes closer than 20 mm over the last print)</span></div>
+            <div class="jog mv">
               <div class="pad"><span></span><button class="btn" data-jog="y,1" aria-label="Head back">Y+</button><span></span>
                 <button class="btn" data-jog="x,-1" aria-label="Head left">X−</button><button class="btn" data-jog="home" aria-label="Home">⌂</button><button class="btn" data-jog="x,1" aria-label="Head right">X+</button>
                 <span></span><button class="btn" data-jog="y,-1" aria-label="Head forward">Y−</button><span></span></div>
               <div class="zcol"><button class="btn" data-jog="z,-1" aria-label="Bed up">Bed up</button><button class="btn" data-jog="z,1" aria-label="Bed down">Bed down</button></div>
               <div class="steps" role="group" aria-label="Step size"></div>
             </div>
-            <div class="sub">Heat</div>
-            <div class="ctrls"><select id="hHeater" aria-label="Heater"><option>T0</option><option>T1</option><option>T2</option><option>T3</option><option value="bed">Bed</option></select>
+            <div class="sub mv">Heat</div>
+            <div class="ctrls mv"><select id="hHeater" aria-label="Heater"><option>T0</option><option>T1</option><option>T2</option><option>T3</option><option value="bed">Bed</option></select>
               <input id="hTemp" type="number" inputmode="numeric" min="0" max="300" placeholder="°C" aria-label="Temperature" style="width:80px">
               <button class="btn" id="hSet">Set</button><button class="btn" id="hOff">Off</button>
               <button class="btn sm ghost" data-preset="245">PETG 245</button><button class="btn sm ghost" data-preset="220">PLA 220</button><button class="btn sm ghost" data-preset="80" data-bed="1">Bed 80</button></div>
             <div class="sub">Fans</div>
-            <div class="ctrls" id="fanRow"></div>
-            <p class="note" style="margin:10px 0 0">While a print runs, only the light and the part fan work: Workshop refuses anything that moves, heats or feeds. Load and unload are on each head in Now.</p></div>
-          <div class="card"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
+            <div id="fanRow"></div>
+            <p class="foot">Load and unload are on each head in Now.</p></div>
+          <div class="card" id="calCard"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
             <p class="note" style="margin:10px 0 0">Each one homes first if needed, moves the head and bed, and writes its result in the console below. The plate must be clear.</p></div>
           <div class="card"><h2>Console</h2><pre id="conLog" class="console" aria-live="polite">Loading...</pre>
             <form id="conForm" class="ctrls" style="margin-top:8px"><input id="conIn" placeholder="One G-code command, e.g. M114" aria-label="G-code command" autocomplete="off" spellcheck="false" style="flex:1;min-width:160px"><button class="btn">Send</button></form></div>
@@ -766,6 +770,7 @@ function render() {
   $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
   $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
   $("#kLeft").parentElement.hidden = $("#kEnd").parentElement.hidden = left == null;   // no dashes once it ends
+  $("#ctlCard").classList.toggle("busy", active); $("#calCard").hidden = active;   // Printer tab: hide what Workshop refuses mid-print
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
   $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
@@ -1748,7 +1753,7 @@ $("#hSet").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, cel
 $("#hOff").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, celsius: 0});
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => { if (b.dataset.bed) $("#hHeater").value = "bed"; $("#hTemp").value = b.dataset.preset; });
 const FAN_NAMES = {part: "Part", cavity: "Cavity", exhaust: "Exhaust", circulation: "Circulation"};
-$("#fanRow").innerHTML = Object.entries(FAN_NAMES).map(([k, n]) => `<span class="note" style="align-self:center;min-width:76px">${n}</span>` + [0, 50, 100].map(p => `<button class="btn sm" data-fan="${k}" data-pct="${p}">${p}%</button>`).join("")).join('<span style="flex-basis:100%"></span>');
+$("#fanRow").innerHTML = Object.entries(FAN_NAMES).map(([k, n]) => `<div class="fanline"><span>${n}</span><span class="seg" role="group" aria-label="${n} fan">` + [0, 50, 100].map(p => `<button class="btn sm" data-fan="${k}" data-pct="${p}" aria-label="${n} fan ${p}%">${p}%</button>`).join("") + `</span></div>`).join("");
 $("#fanRow").addEventListener("click", e => { const b = e.target.closest("[data-fan]"); if (b) ctl({action: "fan", fan: b.dataset.fan, percent: +b.dataset.pct}); });
 const CAL = {shaper: ["Input shaping", "The head shakes in X and Y for a few minutes to measure vibration."], offsets: ["Head offsets", "Each head touches the calibration point so the four line up."],
              mesh: ["Bed mesh", "The probe touches the whole bed."], screws: ["Bed tilt", "Probes the screw corners and says how far to turn each."]};
