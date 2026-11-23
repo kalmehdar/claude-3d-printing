@@ -91,8 +91,11 @@ PRESETS = {
     # quality's outside (gentle outer wall, Arachne, scarf seam round the whole loop, inner-outer-inner) on 0.12 mm layers,
     # which makes each line about 40% smaller. ponytail: 0.12 is the finest the videos found worth it on a 0.4 nozzle; 0.08
     # fused supports into the model (TKMakes). Even layers matter more once the filament is dried and calibrated.
-    "smooth": {"layer_height": "0.12", "wall_loops": "3", "top_shell_layers": "7", "bottom_shell_layers": "5",
-               "outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+    # 23 Nov wall tests on the U1 (black SnapSpeed PLA, 30 mm part, lamp across the walls): 0.08 mm layers were the
+    # smoothest; 1500 outer-wall acceleration beat 3000 and a 45 mm/s outer wall at 0.12. Top and bottom layer counts
+    # keep the skins about as thick as before (0.8 / 0.56 mm). Supports can fuse at 0.08: use quality for supported parts.
+    "smooth": {"layer_height": "0.08", "wall_loops": "3", "top_shell_layers": "10", "bottom_shell_layers": "7",
+               "outer_wall_speed": "80", "outer_wall_acceleration": "1500", "top_surface_speed": "100",
                "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
                "seam_slope_type": "none", "seam_slope_conditional": "1", "seam_slope_inner_walls": "1",
                "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
@@ -125,7 +128,7 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
                 "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
-                "smooth": "the smoothest walls: quality's clean outside on 0.12 mm layers, so layer lines are about 40% smaller (slower)",
+                "smooth": "the smoothest walls: quality's clean outside on 0.08 mm layers and a gentler outer wall (tested 23 Nov); about half again slower than 0.12; not for parts with supports",
                 "polished": "quality plus ironed flat tops (20% flow, the best of our test) (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)",
