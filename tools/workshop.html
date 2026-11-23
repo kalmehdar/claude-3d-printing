@@ -152,6 +152,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat{background:transparent;border:0;border-right:1px solid var(--line);border-radius:0;padding:12px 14px}
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
+.qcard,.rqcard{margin-bottom:16px}
+.qcard .chead,.rqcard .chead{align-items:center;flex-wrap:wrap}.qcard .chead .spacer{flex:1}
+#planNote:empty{display:none}#planNote{margin:0 0 10px}
+.foot{font-size:12px;color:var(--faint);margin:10px 0 0}.chead .foot{margin:0}
+.rqform{display:grid;grid-template-columns:minmax(0,2fr) 64px minmax(0,1fr) minmax(0,1.4fr) auto;grid-template-areas:"what qty col note ask";gap:8px;margin:4px 0 10px}
+.rqform input{height:30px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:0 9px;min-width:0}
+#rqWhat{grid-area:what}#rqQty{grid-area:qty}#rqColour{grid-area:col}#rqNote{grid-area:note}#rqAdd{grid-area:ask}
+@media (max-width:640px){.rqform{grid-template-columns:minmax(0,1fr) 64px;grid-template-areas:"what what" "col qty" "note ask"}.rqform input{height:38px;font-size:16px}#rqAdd{min-height:38px}}
+.qcard .list,.rqcard .list{border:0;border-radius:0}
+.qcard .list>.empty,.rqcard .list>.empty{border:0!important;padding:10px 0 0;text-align:left;font-size:13px}
+
 .drop{display:block;cursor:pointer;border:1px dashed var(--line2);border-radius:var(--r);padding:14px;text-align:center;color:var(--dim);margin-bottom:12px;background:var(--panel)}
 .drop:hover,.drop.over{border-color:var(--accent);color:var(--text)}
 /* sheets */
@@ -385,20 +396,22 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
     </section>
 
     <section id="tab-queue" hidden>
-      <div class="card" style="margin-bottom:16px"><h2>Print requests</h2>
-        <p class="note">Ask for something to be printed. It waits here with your name until one of you, or Claude, takes it.</p>
-        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-          <input id="rqWhat" list="rqDesigns" placeholder="What, e.g. a design name" aria-label="What to print" style="flex:1;min-width:200px"><datalist id="rqDesigns"></datalist>
-          <input id="rqQty" type="number" min="1" max="50" value="1" aria-label="How many" style="width:80px">
-          <input id="rqColour" placeholder="Colour" aria-label="Colour" style="width:120px">
-          <input id="rqNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
+      <div class="card qcard">
+        <div class="chead"><h2>Queue</h2><span class="chip" id="qState"></span><span class="spacer"></span>
+          <button class="btn sm" id="qPause">Hold</button><button class="btn sm primary" id="qStart">Start queue</button></div>
+        <p class="note" id="planNote"></p>
+        <div class="list" id="qList"></div>
+        <p class="foot">The next job starts when the printer is free. Starting always asks for an empty bed first.</p>
+      </div>
+      <div class="card rqcard">
+        <div class="chead"><h2>Requests</h2><span class="foot">Waits here with your name until someone takes it</span></div>
+        <div class="rqform">
+          <input id="rqWhat" list="rqDesigns" placeholder="What to print, e.g. a design name" aria-label="What to print"><datalist id="rqDesigns"></datalist>
+          <input id="rqQty" type="number" min="1" max="50" value="1" aria-label="How many">
+          <input id="rqColour" placeholder="Colour" aria-label="Colour">
+          <input id="rqNote" placeholder="Note (optional)" aria-label="Note">
           <button class="btn primary" id="rqAdd">Ask</button></div>
         <div class="list" id="rqList"></div></div>
-      <p class="note" id="planNote" style="margin:0 0 10px"></p>
-      <div class="toolbar"><span class="note" id="qState"></span><span class="spacer"></span>
-        <button class="btn" id="qPause">Hold queue</button><button class="btn primary" id="qStart">Start queue</button></div>
-      <div class="list" id="qList"></div>
-      <p class="note">The queue starts the next job when the printer is free. Starting always asks for an empty bed first.</p>
     </section>
 
     <section id="tab-files" hidden>
@@ -918,7 +931,7 @@ async function loadRequests() {
     acts: (r.state === "open" ? `<button class="btn sm" data-rq="${r.id}" data-to="taken">I'll do it</button>` : "") +
       (r.state === "open" || r.state === "taken" ? `<button class="btn sm ghost" data-rq="${r.id}" data-to="done">Done</button><button class="btn sm ghost" data-rq="${r.id}" data-to="dropped">Drop</button>` : "")});
   $("#rqList").innerHTML = RQ_GROUP.map(([k, label, icon]) => { const g = k === "past" ? past : live.filter(r => r.state === k);
-      return g.length ? ghead(icon, label, g.length) + g.map(row).join("") : ""; }).join("") || `<div class="empty">No requests.</div>`;
+      return g.length ? ghead(icon, label, g.length) + g.map(row).join("") : ""; }).join("") || `<div class="empty">No requests yet.</div>`;
 }
 $("#rqAdd").onclick = async () => {
   try { await post("/api/requests", {what: $("#rqWhat").value, qty: +$("#rqQty").value, colour: $("#rqColour").value, note: $("#rqNote").value});
@@ -932,7 +945,7 @@ async function loadQueue() {
   try {
     const q = await api(M("/server/job_queue/status")); S.queue = q.queued_jobs || [];
     const qc = $("#qCount"); qc.textContent = S.queue.length; qc.hidden = !S.queue.length;
-    $("#qState").textContent = `Queue is ${q.queue_state === "ready" ? "running" : q.queue_state === "paused" ? "on hold" : q.queue_state} · ${S.queue.length} job${S.queue.length === 1 ? "" : "s"}`;
+    $("#qState").textContent = `${q.queue_state === "ready" ? "Running" : q.queue_state === "paused" ? "On hold" : q.queue_state} · ${S.queue.length} job${S.queue.length === 1 ? "" : "s"}`;
     $("#qStart").hidden = q.queue_state === "ready" || !S.queue.length; $("#qPause").hidden = q.queue_state !== "ready";
     if (tab !== "queue") return;
     await ensureMeta(S.queue.map(j => j.filename));
@@ -945,7 +958,7 @@ async function loadQueue() {
           ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
           ["Added", day(j.time_added)]]),
         acts: `<button class="btn sm" data-prev="${esc(j.filename)}">Preview</button><button class="btn sm danger" data-rm="${esc(j.job_id)}">Remove</button>`}); }).join("")
-      : `<div class="empty">The queue is empty. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
+      : `<div class="empty">Nothing waiting. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
   } catch (e) { toast(e.message, true); }
 }
 $("#qList").addEventListener("click", async e => {
