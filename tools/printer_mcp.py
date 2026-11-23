@@ -102,6 +102,12 @@ def t_status(_):
         lines.append(f'Plate: {http("GET", "/api/plate")["plate"]} PEI')
     except (RuntimeError, KeyError, ValueError):
         pass
+    try:   # maintenance due by print hours (Workshop's own intervals)
+        due = [m["what"] for m in http("GET", "/api/maintenance") if m.get("due")]
+        if due:
+            lines.append("Maintenance due: " + "; ".join(due) + " (mark done on the Printer tab)")
+    except (RuntimeError, KeyError, ValueError, TypeError):
+        pass
     try:   # grams left on each head's spool (Workshop counts what each print really used)
         heads = http("GET", "/api/spools").get("heads", {})
         left = [f'{h} {v["spool"]}: about {max(0, v["start_g"] - v["used_g"]):.0f} g left' for h, v in sorted(heads.items())]

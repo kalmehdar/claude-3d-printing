@@ -470,6 +470,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             <div class="sub">Fans</div>
             <div id="fanRow"></div>
             <p class="foot">Load and unload are on each head in Now.</p></div>
+          <div class="card" id="maintCard"><div class="chead"><h2>Maintenance</h2><span class="foot">by hours of printing</span></div><div class="list" id="maintList"></div></div>
           <div class="card" id="calCard"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
             <p class="note" style="margin:10px 0 0">Each one homes first if needed, moves the head and bed, and writes its result in the console below. The plate must be clear.</p></div>
           <div class="card"><h2>Console</h2><pre id="conLog" class="console" aria-live="polite">Loading...</pre>
@@ -868,7 +869,8 @@ async function setFilament(i) {
   };
 }
 async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ }
-  try { S.plate = (await api("/api/plate")).plate; } catch (e) { /* older Workshop: no plate switch */ } }
+  try { S.plate = (await api("/api/plate")).plate; } catch (e) { /* older Workshop: no plate switch */ }
+  try { S.maint = await api("/api/maintenance"); } catch (e) { S.maint = []; } }
 async function loadSpools() { try { S.spools = await api("/api/spools"); } catch (e) { /* the head cards just leave grams out */ } }
 async function newSpool(i) {
   const tc = (S.status || {}).print_task_config || {};
@@ -1490,6 +1492,8 @@ function renderBanner() {
     else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
+    const due = (S.maint || []).filter(m => m.due);   // maintenance only nags when the printer is idle
+    if (due.length && ps.state !== "complete") { sub = (sub ? sub + " " : "") + `Maintenance due: ${due.map(m => m.what.toLowerCase()).join("; ")} (Printer tab).`; if (!cls) cls = "warn"; }
     if (S.plate) sub = (sub ? sub + " " : "") + (S.plate === "smooth" ? "Smooth plate on: PETG needs a thin layer of glue stick first." : "Textured plate on.");
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
@@ -1597,7 +1601,17 @@ $("#tab-printer").addEventListener("click", e => { const b = e.target.closest("[
   if (k === "home") return confirmSheet("Home the printer?", "The head moves to its corners and back. Check nothing is in its way.", "Home", async () => { await gcode(cmd); toast(word); });
   (async () => { try { await gcode(cmd); toast(word); } catch (err) { toast(err.message, true); } })();
 });
+function renderMaint() {
+  const rows = S.maint || []; $("#maintCard").hidden = !rows.length;
+  $("#maintList").innerHTML = rows.map(m => issueHtml({icon: m.due ? "waiting" : "done", title: esc(m.what),
+    detail: m.due ? `due: ${Math.round(m.since_h)} h since, every ${m.every_h} h` : `${Math.round(m.since_h)} of ${m.every_h} h`,
+    meta: [m.who ? `last by ${esc(m.who)}` : ""], attrs: m.due ? ' style="color:var(--warn)"' : "",
+    acts: `<button class="btn sm${m.due ? " primary" : ""}" data-maint="${esc(m.task)}">Done</button>`})).join("");
+}
+$("#maintList").addEventListener("click", async e => { const b = e.target.closest("[data-maint]"); if (!b) return;
+  try { S.maint = await post("/api/maintenance", {task: b.dataset.maint}); toast("Marked done"); renderMaint(); render(); } catch (err) { toast(err.message, true); } });
 async function loadPrinter() {
+  renderMaint();
   api("/api/health").then(h => {
     const m = h.mesh;
     if (!m.rows.length) $("#meshBox").textContent = "No mesh yet: the printer probes the bed at the start of each print.";

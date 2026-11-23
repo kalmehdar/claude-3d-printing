@@ -1090,6 +1090,41 @@ def plate(name=None, who=""):
         return {"plate": "textured"}
 
 
+MAINT = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "maintenance.json")
+# Workshop's own defaults, in hours of printing (not Snapmaker's figures): change the hours here if they prove too often or too rare
+MAINT_TASKS = {"plate": ("Wash the plate in warm soapy water", 15), "wipers": ("Clean the nozzle wipers and purge area", 50),
+               "belts": ("Check the belts are tight and not frayed", 100), "lube": ("Grease the Z lead screws and wipe the rods", 200)}
+
+
+def print_hours():
+    """Total hours the U1 has spent printing, from Moonraker's history totals."""
+    return _get("/server/history/totals", timeout=10)["job_totals"]["total_print_time"] / 3600
+
+
+def maintenance(done=None, who="", hours=None):
+    """Each task with how many print hours since it was last done and whether it is due; done=task marks it done now.
+    A task never marked done counts from when Workshop first saw the printer (its hours then), not from zero."""
+    hours = print_hours() if hours is None else hours
+    try:
+        data = json.load(open(MAINT, encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    changed = False
+    for k in MAINT_TASKS:
+        if k not in data:
+            data[k], changed = {"at_h": hours, "who": "", "t": time.time()}, True
+    if done:
+        if done not in MAINT_TASKS:
+            raise ValueError("task is one of " + ", ".join(MAINT_TASKS))
+        data[done], changed = {"at_h": hours, "who": who, "t": time.time()}, True
+    if changed:
+        os.makedirs(os.path.dirname(MAINT), exist_ok=True)
+        json.dump(data, open(MAINT + ".part", "w"), indent=1)
+        os.replace(MAINT + ".part", MAINT)
+    return [{"task": k, "what": what, "every_h": every, "since_h": round(hours - data[k]["at_h"], 1),
+             "due": hours - data[k]["at_h"] >= every, "who": data[k]["who"], "t": data[k]["t"]} for k, (what, every) in MAINT_TASKS.items()]
+
+
 SPOOLS = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "spools.json")
 LOW_G = 200   # warn when a spool drops under this (Almehdar register: flag a reorder under 200 g)
 
@@ -2008,6 +2043,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 plate(name, who=actor(self))
                 record(f"put the {name} plate on", "", who=actor(self))
             return self.send(200, plate())
+        if p == "/api/maintenance":   # GET the list; POST {"task"} marks one done (who did it is logged)
+            try:
+                task = str(json.loads(self.body() or b"{}").get("task", "")) if self.command == "POST" else None
+                rows = maintenance(task, who=actor(self))
+            except (OSError, ValueError, KeyError, AttributeError) as e:
+                return self.send(400 if isinstance(e, ValueError) else 502, {"error": str(e)})
+            if task:
+                record("did maintenance: " + MAINT_TASKS[task][0].lower(), "", who=actor(self))
+            return self.send(200, rows)
         if p.startswith("/api/filament-check"):   # before a start: would any spool run out mid-print?
             f = (urllib.parse.parse_qs(urllib.parse.urlparse(p).query).get("file") or [""])[0]
             try:
