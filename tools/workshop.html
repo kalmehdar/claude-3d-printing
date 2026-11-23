@@ -234,8 +234,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
   .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
-  :is(#fCards,#dCards) .issue[data-pid] .acts{display:none}   /* Files and Designs on a phone: tap the row, its sheet has every button (23 Nov) */
-  :is(#fCards,#dCards) .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
+  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid] .acts{display:none}   /* Files and Designs on a phone: tap the row, its sheet has every button (23 Nov) */
+  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{content:"\203A";grid-column:3;grid-row:1;color:var(--faint);font-size:18px;line-height:1}
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
@@ -485,10 +485,11 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
 
     <section id="tab-history" hidden>
       <div class="stats" id="hStats"></div>
-      <div class="card" id="tlCard" hidden style="margin-bottom:16px"><h2>Printer timelapses</h2><div id="tlBox"></div></div>
-      <div class="card" id="costCard" hidden style="margin-bottom:16px"><h2>Filament and cost</h2><div id="costBox"></div></div>
-      <div class="card" id="accCard" hidden style="margin-bottom:16px"><h2>Slicer against the printer</h2><div class="note" id="accInfo"></div></div>
-      <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
+      <div class="list" id="hList" style="margin-bottom:16px"></div>
+      <details class="card fold" id="tlCard" hidden style="margin-bottom:16px"><summary><h2>Printer timelapses</h2></summary><div id="tlBox"></div></details>
+      <details class="card fold" id="costCard" hidden style="margin-bottom:16px"><summary><h2>Filament and cost</h2></summary><div id="costBox"></div></details>
+      <details class="card fold" id="accCard" hidden style="margin-bottom:16px"><summary><h2>Slicer against the printer</h2></summary><div class="note" id="accInfo"></div></details>
+      <details class="card fold" id="calHistCard" style="margin-bottom:16px"><summary><h2>Calibration</h2></summary>
         <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
           value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
         <div id="calWizard" style="margin:12px 0 14px"></div>
@@ -498,8 +499,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
           <input id="calVal" placeholder="Value picked, e.g. 240" aria-label="Value picked" style="width:150px">
           <input id="calNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
           <button class="btn primary" id="calSave">Record</button></div>
-        <div class="list" id="calList"></div></div>
-      <div class="list" id="hList"></div>
+        <div class="list" id="calList"></div></details>
     </section>
   </main>
 </div>
@@ -1350,12 +1350,12 @@ async function loadHistory() {
     let lastDay = "";
     $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => { const a = accFor(j), d = dayLabel(j.start_time), photos = (FR.jobs || []).includes(runKey(j));
       const head = d !== lastDay ? ghead("", d, h.jobs.filter(x => dayLabel(x.start_time) === d).length) : ""; lastDay = d;
-      return head + issue({icon: JOB_SI[j.status] || "queued", id: "P-" + parseInt(j.job_id, 16), title: esc(j.filename),
+      return head + issue({icon: JOB_SI[j.status] || "queued", id: "P-" + parseInt(j.job_id, 16), title: esc(j.filename.replace(/\.gcode$/i, "")),
         detail: a ? `slicer ${hm(j.metadata.estimated_time)}, took ${hm(j.total_duration)} · filament ${Math.round(a.filament * 100)}%` : "",
         tip: j.status.replace("_", " "),
         meta: [new Date(j.start_time * 1000).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}), ...(j.status === "in_progress" ? ["printing now"] : [hm(j.print_duration), (j.filament_used / 1000).toFixed(1) + " m", histCost(j)]),
-               `<i class="mini" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></i>`],
-        panel: (j.metadata ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, j.metadata)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Status", esc(j.status.replace("_", " "))], ["Started", day(j.start_time)],
+               j.metadata && thumbUrl(j.filename, j.metadata) ? `<i class="mini" style="background-image:url('${thumbUrl(j.filename, j.metadata)}')"></i>` : ""],
+        panel: (j.metadata && thumbUrl(j.filename, j.metadata) ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, j.metadata)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Status", esc(j.status.replace("_", " "))], ["Started", day(j.start_time)],
           ["Finished", j.end_time && j.status !== "in_progress" ? day(j.end_time) : ""], ["Printing time", j.status === "in_progress" ? "printing now" : hm(j.print_duration)],
           ["Overall", j.status === "in_progress" ? "" : hm(j.total_duration)], ["Slicer said", j.metadata?.estimated_time ? hm(j.metadata.estimated_time) : ""],
           ["Filament", (j.filament_used / 1000).toFixed(1) + " m" + (histCost(j) ? " · " + histCost(j) : "")],
@@ -1763,7 +1763,7 @@ $("#calBtns").addEventListener("click", e => { const b = e.target.closest("[data
   confirmSheet(n + "?", what + " Take everything off the plate first. It runs to the end; watch the console.", "Start " + n.toLowerCase(), () => ctl({action: "calibrate", which: b.dataset.cal, nothing_in_the_way: true}, n + " finished: see the console")); });
 $("#wCam").onclick = () => (S.info || {}).live_camera ? window.open(S.info.live_camera, "_blank") : $("#camFull").click();
 $("#wScreen").onclick = () => (S.info || {}).printer_screen ? $("#screenBtn").click() : toast("The printer's screen isn't available", true);
-$("#wLapse").onclick = () => { go("history"); setTimeout(() => $("#tlCard").scrollIntoView({behavior: "smooth"}), 200); };
+$("#wLapse").onclick = () => { go("history"); setTimeout(() => { $("#tlCard").open = true; $("#tlCard").scrollIntoView({behavior: "smooth"}); }, 200); };
 // console: the printer's own messages, newest last; one command at a time through the guard
 let conSeen = 0;
 async function loadConsole() {
