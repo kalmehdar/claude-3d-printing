@@ -476,6 +476,14 @@ def alert_change(prev, s, folder=None):
         printer.push(*msg, click=CFG.get("url"))
         if s["state"] in ("complete", "cancelled", "error"):   # a part (or what's left of one) now sits on the bed
             bed("part waiting", who="", file=s.get("file") or "")
+        if s["state"] == "paused" and prev == "printing" and s.get("file") and s.get("message"):
+            # the printer paused itself (its spaghetti detector, a runout, a head that failed to park): Claude reads the
+            # layer photos and a fresh picture and pushes the likely cause and what to change. A person's pause, a pause
+            # at a layer and the photo watch's own pause carry no message, so they never land here (the watch calls the
+            # doctor itself). API, not the subscription: it runs with nobody in the loop (Khalid, 24 Nov).
+            import threading
+            threading.Thread(target=print_doctor, args=(s["file"], "the printer paused it itself (" + s["message"] + "); it is still paused. The last picture is the camera right now. "
+                                                                "Say in next_step whether it looks safe to continue or should be cancelled"), kwargs={"now": True}, daemon=True).start()
         if s["state"] in ("error", "cancelled") and s.get("file"):   # what went wrong, while the photos are fresh
             import threading
             threading.Thread(target=print_doctor, args=(s["file"], "the print " + ("stopped with an error: " + (s.get("message") or "") if s["state"] == "error" else "was cancelled")), daemon=True).start()
@@ -934,10 +942,11 @@ Photo watch notes (newest last):
 {notes}"""
 
 
-def print_doctor(file, reason, photos=8):
+def print_doctor(file, reason, photos=8, now=False):
     """After a pause, failure or flawed finish: Claude reads the print's layer photos and its slicer settings and suggests
     what to change. Saved to ~/.config/claude-3d-printing/doctor/, in the activity feed and on the phone. Read-only: it
-    changes no setting and touches nothing on the printer. Returns the report, or None."""
+    changes no setting and touches nothing on the printer. now=True adds a fresh camera picture last (after a pause the
+    newest layer photo can be from before the problem). Returns the report, or None."""
     import base64
     import printer
     if not api_key() or not file:
@@ -950,6 +959,14 @@ def print_doctor(file, reason, photos=8):
                           if (m := re.search(r"-layer(\d+)\.jpg$", f))))
         step = max(1, len(layered) // photos)
         shots = [p for _, p in layered[::step]][-photos:]
+    if now:
+        try:
+            snap = os.path.join(tempfile.mkdtemp(prefix="doctor-"), "now.jpg")
+            printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+            printer.snap(snap)
+            shots = shots[-(photos - 1):] + [snap]
+        except (OSError, ValueError, KeyError):
+            pass   # the layer photos alone still help
     try:
         tail = printer.fetch("/server/files/gcodes/" + urllib.parse.quote(file), tail=120_000).decode("utf-8", "replace")
         settings = "\n".join(l[2:] for l in tail.splitlines() if l.startswith("; ") and l[2:].split(" = ")[0] in DOCTOR_KEYS)
