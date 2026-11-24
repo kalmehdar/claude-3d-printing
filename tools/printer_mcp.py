@@ -410,7 +410,7 @@ def t_upload_model(a):
         raise ValueError("give the path of an .stl or .3mf file on this computer")
     params = urllib.parse.urlencode({"name": os.path.basename(path), "colour": (a.get("colour") or "888888").lstrip("#"),
                                      "preset": a.get("preset") or "lean", "queue": "1" if a.get("queue") else "0",
-                                     "glue": "1" if a.get("glue") else "0"})
+                                     "glue": "1" if a.get("glue") else "0", "allow_substitute": "1" if a.get("allow_substitute") else "0"})
     req = urllib.request.Request(URL + "/api/upload-model?" + params, data=open(path, "rb").read(), method="POST",
                                  headers={"X-Workshop": "1", "X-Workshop-User": USER, "Content-Type": "application/octet-stream"})
     try:
@@ -654,10 +654,11 @@ TOOLS = [
     ("printer_plan", "The queue as a plan: when each job would start and finish after the current print, and any that would start in the quiet hours (03:00 to 08:00, when no new print starts).", {}, t_plan),
     ("printer_plate", "Which build plate is on the printer (textured or smooth PEI), or record that the person swapped it. Slicing uses it.",
      {"plate": {"type": "string", "enum": ["textured", "smooth"], "description": "set only when the person says they changed the plate"}}, t_plate, []),
-    ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. Never starts a print.",
+    ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. A painted or multicolour 3MF saved for another printer (Bambu H2D, X2D, A1) keeps its colours, each on the loaded head nearest in colour, and its supports and prime tower; if a colour it uses is not loaded it is refused unless allow_substitute. Never starts a print.",
      {"path": {"type": "string", "description": "the .stl or .3mf file on this computer"}, "colour": {"type": "string", "description": "hex colour of the loaded filament to use, e.g. 1c1c1c (STL only)"},
       "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"},
-      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed a glue-stick layer is on"}}, t_upload_model, ["path"]),
+      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed a glue-stick layer is on"},
+      "allow_substitute": {"type": "boolean", "description": "slice anyway with the nearest loaded colour (ask the person first)"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
     ("printer_doctor", "The print doctor's latest reports: after a pause, a failure or a flawed finish, Claude reads the layer photos and slicer settings and suggests setting changes. Read them before re-slicing a print that went wrong.", {}, t_doctor),
