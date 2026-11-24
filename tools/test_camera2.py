@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import workshop as w  # noqa: E402
 
 dev = tempfile.NamedTemporaryFile(delete=False).name   # stands in for /dev/video0
+w.CAM2_CONF = os.path.join(tempfile.mkdtemp(), "camera2.json")   # never the real settings file
 w.CFG["camera2"] = dev
 runs, live = [], [0]
 
@@ -38,27 +39,30 @@ ts = [threading.Thread(target=w.cam2_frame) for _ in range(5)]
 [t.start() for t in ts]
 [t.join() for t in ts]
 assert len(runs) == 1 and runs[0][runs[0].index("-i") + 1] == dev, runs    # five viewers at once: one grab, shared
-assert runs[0][runs[0].index("-video_size") + 1] == "2560x1440" and runs[0][runs[0].index("-frames:v") + 1] == "1"
-assert "select=gte(n\\,60)" in runs[0][runs[0].index("-vf") + 1]          # 2 s of frames skipped for autofocus
-assert len(controls) == 1 and "exposure_time_absolute=600" in controls[0][-1] and "white_balance_temperature=5200" in controls[0][-1]
+assert runs[0][runs[0].index("-input_format") + 1] == "yuyv422" and runs[0][runs[0].index("-video_size") + 1] == "1920x1080"
+assert runs[0][runs[0].index("-framerate") + 1] == "5" and runs[0][runs[0].index("-frames:v") + 1] == "1"
+assert "select=gte(n\\,5)" in runs[0][runs[0].index("-vf") + 1] and "lenscorrection" not in runs[0][runs[0].index("-vf") + 1]
+c = controls[0][-1]
+assert len(controls) == 1 and "exposure_time_absolute=600" in c and "white_balance_temperature=5200" in c
+assert "focus_automatic_continuous=0,focus_absolute=11" in c                # focus locked, not hunting
 w._cam2["fail_t"] = 0
 w.cam2_frame(max_age=0)
 assert len(runs) == 2                                                       # a fresh one when asked for
 
-# 1440p refused: 1080p
+# raw YUYV refused: MJPEG 1440p, then 1080p
 sizes = []
 def no_1440(cmd, capture_output=True, timeout=None):
     if cmd[0] == "v4l2-ctl":
         return subprocess.CompletedProcess(cmd, 0, b"", b"")
-    size = cmd[cmd.index("-video_size") + 1]
+    size = cmd[cmd.index("-input_format") + 1] + " " + cmd[cmd.index("-video_size") + 1]
     sizes.append(size)
-    if size == "2560x1440":
+    if size != "mjpeg 1920x1080":
         return subprocess.CompletedProcess(cmd, 1, b"", b"Invalid argument")
     open(cmd[-1], "wb").write(b"\xff\xd8" + b"y" * 2000 + b"\xff\xd9")
     return subprocess.CompletedProcess(cmd, 0, b"", b"")
 subprocess.run = no_1440
 w._cam2["fail_t"] = 0
-assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8y") and sizes == ["2560x1440", "1920x1080"], sizes
+assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8y") and sizes == ["yuyv422 1920x1080", "mjpeg 2560x1440", "mjpeg 1920x1080"], sizes
 
 # no v4l2-ctl on the box: still a picture, with the camera's own settings
 def no_ctl(cmd, capture_output=True, timeout=None):
@@ -141,4 +145,30 @@ w._cam2.update(t=time.time(), jpg=b"\xff\xd8ok\xff\xd9")
 assert get("/cam2.jpg?t=1") == (200, "image/jpeg")
 w.CFG["camera2"] = "none"
 assert get("/cam2.jpg") [0] == 404
+# settings: checked, saved, used in the next grab; refocus reads where autofocus settled and locks it
+w.CFG["camera2"] = dev
+assert w.cam2_settings() == w.CAM2_DEFAULTS
+for bad in ({"focus": 5000}, {"k1": 3}, {"zoom": 1}):
+    try:
+        w.cam2_settings(bad)
+        raise AssertionError(bad)
+    except ValueError:
+        pass
+assert w.cam2_settings({"k1": -0.22, "k2": "0.03"})["k2"] == 0.03 and json.load(open(w.CAM2_CONF))["k1"] == -0.22
+assert "lenscorrection=k1=-0.22:k2=0.03" in w.cam2_filter(5, w.cam2_settings())
+seen = []
+def refocus_run(cmd, capture_output=True, timeout=None, text=False):
+    seen.append(cmd)
+    out = "focus_absolute: 14\n" if cmd[:2] == ["v4l2-ctl", "-d"] and "-C" in cmd else ""
+    return subprocess.CompletedProcess(cmd, 0, out if text else out.encode(), "" if text else b"")
+subprocess.run = refocus_run
+assert w.cam2_refocus() == 14 and w.cam2_settings()["focus"] == 14
+assert any("focus_automatic_continuous=1" in " ".join(c) for c in seen)           # AF on for the refocus only
+code, out = w.control({"action": "camera2", "refocus": True, "k1": -0.2})
+assert code == 200 and "refocused at 14" in out["done"] and "k1 -0.2" in out["done"], out
+try:
+    w.control({"action": "camera2", "k2": 9})
+    raise AssertionError("k2 9 accepted")
+except ValueError:
+    pass
 print("second camera check passed")

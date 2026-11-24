@@ -812,10 +812,45 @@ def cam2_device():
 # head, so a fixed 60 ms exposure; a fixed white balance stops the strip's magenta tint. The webcam forgets these when it
 # is replugged (twice that night; the CT passthrough survived), so they are set before every capture.
 CAM2_CONTROLS = ("auto_exposure=1,exposure_time_absolute=600,gain=72,gamma=190,brightness=6,sharpness=4,"
-                 "backlight_compensation=0,power_line_frequency=1,white_balance_automatic=0,white_balance_temperature=5200,"
-                 "focus_automatic_continuous=1")
-CAM2_SIZES = ("2560x1440", "1920x1080")   # 1440p (Khalid), 1080p if the camera refuses it; not 4K
-CAM2_FILTER = "select=gte(n\\,60),hqdn3d=1.5:1.5:0:0,unsharp=5:5:0.5:5:5:0"   # skip 2 s so autofocus settles; light clean-up
+                 "backlight_compensation=0,power_line_frequency=1,white_balance_automatic=0,white_balance_temperature=5200")
+# Sharper stills (Khalid, 24 Nov): the raw YUYV mode first (1080p at 5 fps, no MJPEG compression), MJPEG 1440p and 1080p
+# after it if the camera refuses. skip: frames dropped so exposure settles (1 s of each mode).
+CAM2_MODES = (("yuyv422", "1920x1080", 5, 5), ("mjpeg", "2560x1440", 30, 30), ("mjpeg", "1920x1080", 30, 30))
+CAM2_CONF = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "camera2.json")
+CAM2_DEFAULTS = {"focus": 11, "k1": 0.0, "k2": 0.0}   # focus: continuous AF settled near 11 at the bed (24 Nov); k: lens off
+
+
+def cam2_settings(change=None):
+    """The second camera's tunable settings (camera2.json): focus (focus_absolute, locked: continuous autofocus hunted),
+    k1 and k2 (ffmpeg lenscorrection for the 120 degree lens; 0 is off until tuned on a real frame). change: keys to set."""
+    try:
+        conf = {**CAM2_DEFAULTS, **json.load(open(CAM2_CONF, encoding="utf-8"))}
+    except (OSError, ValueError):
+        conf = dict(CAM2_DEFAULTS)
+    if change:
+        for k, v in change.items():
+            if k == "focus":
+                v = int(v)
+                if not 0 <= v <= 1023:
+                    raise ValueError("focus is 0 to 1023")
+            elif k in ("k1", "k2"):
+                v = float(v)
+                if not -1 <= v <= 1:
+                    raise ValueError(f"{k} is -1 to 1")
+            else:
+                raise ValueError("camera2 settings are focus, k1 and k2")
+            conf[k] = v
+        os.makedirs(os.path.dirname(CAM2_CONF), exist_ok=True)
+        json.dump(conf, open(CAM2_CONF + ".part", "w", encoding="utf-8"), indent=1)
+        os.replace(CAM2_CONF + ".part", CAM2_CONF)
+        with _cam2_lock:
+            _cam2.update(t=0)   # the next picture uses the new settings
+    return conf
+
+
+def cam2_filter(skip, conf):
+    lens = f"lenscorrection=k1={conf['k1']:g}:k2={conf['k2']:g}:i=bilinear," if conf["k1"] or conf["k2"] else ""
+    return f"select=gte(n\\,{skip}),{lens}hqdn3d=1.5:1.5:0:0,unsharp=5:5:0.5:5:5:0"
 
 
 CAM2_BACKOFF = 30   # seconds after a failed grab with no new attempt: a hung webcam must not hold every caller in turn
@@ -823,8 +858,9 @@ CAM2_BACKOFF = 30   # seconds after a failed grab with no new attempt: a hung we
 
 def cam2_frame(max_age=4.0, wait=None, fresh_only=False):
     """A JPEG from the second camera, or None. One ffmpeg at a time holds the device; a frame under max_age seconds old is
-    shared, so several viewers and the photo watch never queue up behind each other. Each grab sets the camera's controls,
-    skips 2 s of frames for autofocus and keeps one at 1440p (1080p as a fallback), lightly denoised and sharpened.
+    shared, so several viewers and the photo watch never queue up behind each other. Each grab sets the camera's controls
+    (focus locked at camera2.json's value), skips about 1 s of frames and keeps one: raw YUYV 1080p first, MJPEG 1440p and
+    1080p as fallbacks, lens-corrected when k1/k2 are set, lightly denoised and sharpened.
     After a failure nobody grabs again for CAM2_BACKOFF seconds (the last good frame, under a minute old, is returned).
     wait: seconds to wait for another caller's grab (None waits); when it runs out, None. fresh_only: None unless this
     call's own grab succeeded (a picture labelled 'at the same moment' must be from now)."""
@@ -842,26 +878,46 @@ def cam2_frame(max_age=4.0, wait=None, fresh_only=False):
         out = os.path.join(tempfile.gettempdir(), "workshop-cam2.jpg")
         try:
             import subprocess
+            conf = cam2_settings()
             try:   # best effort: without v4l2-ctl the picture comes with the camera's own settings
-                subprocess.run(["v4l2-ctl", "-d", dev, "-c", CAM2_CONTROLS], capture_output=True, timeout=10)
+                subprocess.run(["v4l2-ctl", "-d", dev, "-c", CAM2_CONTROLS + f",focus_automatic_continuous=0,focus_absolute={conf['focus']}"],
+                               capture_output=True, timeout=10)
             except (OSError, subprocess.SubprocessError) as e:
                 print("second camera controls:", e, flush=True)
-            for size in CAM2_SIZES:
+            for fmt, size, fps, skip in CAM2_MODES:
                 if os.path.exists(out):
                     os.remove(out)
-                r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "v4l2", "-input_format", "mjpeg",
-                                    "-video_size", size, "-i", dev, "-vf", CAM2_FILTER, "-frames:v", "1", "-q:v", "2", out],
+                r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "v4l2", "-input_format", fmt, "-framerate", str(fps),
+                                    "-video_size", size, "-i", dev, "-vf", cam2_filter(skip, conf), "-frames:v", "1", "-q:v", "2", out],
                                    capture_output=True, timeout=25)
                 if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 1000:
                     _cam2.update(t=time.time(), jpg=open(out, "rb").read(), fail_t=0)
                     return _cam2["jpg"]
-                print(f"second camera ({size}):", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
+                print(f"second camera ({fmt} {size}):", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
         except Exception as e:   # noqa: BLE001 - a hung camera (TimeoutExpired) must not take a check down with it
             print("second camera:", e, flush=True)
         _cam2["fail_t"] = time.time()
         return None if fresh_only else recent
     finally:
         _cam2_lock.release()
+
+
+def cam2_refocus():
+    """Run the camera's autofocus once (about 3 s of frames with continuous AF on), read where it settled, save it as the
+    locked focus and return it. Only on request: continuous AF hunted and blurred stills (24 Nov)."""
+    dev = cam2_device()
+    if not dev:
+        raise ValueError("no second camera")
+    import subprocess
+    with _cam2_lock:
+        subprocess.run(["v4l2-ctl", "-d", dev, "-c", "focus_automatic_continuous=1"], capture_output=True, timeout=10)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "v4l2", "-input_format", "mjpeg", "-video_size", "1920x1080",
+                        "-i", dev, "-frames:v", "90", "-f", "null", "-"], capture_output=True, timeout=30)   # 3 s of AF
+        r = subprocess.run(["v4l2-ctl", "-d", dev, "-C", "focus_absolute"], capture_output=True, text=True, timeout=10)
+    m = re.search(r"focus_absolute:\s*(\d+)", r.stdout or "")
+    if not m:
+        raise ValueError("the camera did not report its focus: " + ((r.stderr or r.stdout or "").strip()[-120:] or "no answer"))
+    return cam2_settings({"focus": int(m.group(1))})["focus"]
 
 
 def cam2_arg(max_age=4.0):
@@ -2023,6 +2079,17 @@ def control(req):
                                   "says carry on first (person_checked).", "why": h["why"]}
         g("RESUME", timeout=120)
         return 200, {"done": "resumed" + (" after: " + h["why"] if h["why"] else "")}
+    if act == "camera2":   # the second camera: {refocus: true} and/or {focus, k1, k2}; only the webcam, so mid-print too
+        change = {k: req[k] for k in ("focus", "k1", "k2") if req.get(k) is not None}
+        done = []
+        if req.get("refocus") is True:
+            done.append(f"refocused at {cam2_refocus()}")
+        if change:
+            conf = cam2_settings(change)
+            done.append(", ".join(f"{k} {conf[k]:g}" for k in change))
+        if not done:
+            return 200, {"done": "camera2 settings: " + ", ".join(f"{k} {v:g}" for k, v in cam2_settings().items())}
+        return 200, {"done": "second camera: " + "; ".join(done)}
     if act == "detector":   # the printer's own camera checks; saved on the printer, so it stays until changed back
         on, sens = req.get("spaghetti"), req.get("sensitivity")
         if on is None and sens is None:
@@ -2108,7 +2175,7 @@ def control(req):
             return 400, {"error": "that rewrites the printer's setup or forces a motor: do it on the printer itself"}
         g(cmd, timeout=600)
         return 200, {"done": f"sent {cmd}"}
-    return 400, {"error": "action is heat, move, fan, calibrate, gcode, resume or detector"}
+    return 400, {"error": "action is heat, move, fan, calibrate, gcode, resume, detector or camera2"}
 
 
 # What the pages and the MCP may reach on the printer through /moonraker/ (22 Nov 2026 review, P1: every other path,

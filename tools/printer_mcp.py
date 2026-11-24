@@ -358,6 +358,11 @@ def t_wait(a):
     return what + "\n\n" + t_status({})
 
 
+def t_camera2(a):
+    return http("POST", "/api/control", {"action": "camera2", **{k: a[k] for k in ("refocus", "focus", "k1", "k2") if a.get(k) is not None}},
+                timeout=60)["done"]
+
+
 def t_queue(a):
     act = a.get("action", "list")
     if act == "list":
@@ -640,6 +645,11 @@ TOOLS = [
      "error, started), when it reaches a layer, or after the minutes given (default 5, at most 15), with the status then.",
      {"layer": {"type": "integer", "minimum": 1, "description": "return once the print reaches this layer"},
       "minutes": {"type": "number", "description": "longest wait, up to 15"}}, t_wait),
+    ("printer_camera2", "The top-view camera's settings: with nothing, show them; refocus=true runs its autofocus once and locks the "
+     "focus where it settled (do it after the camera is moved); focus sets it by hand (0 to 1023); k1 and k2 (-1 to 1) correct the "
+     "wide lens's barrel distortion (0 is off). Then look with printer_snapshot camera=top.",
+     {"refocus": {"type": "boolean"}, "focus": {"type": "integer", "minimum": 0, "maximum": 1023},
+      "k1": {"type": "number", "minimum": -1, "maximum": 1}, "k2": {"type": "number", "minimum": -1, "maximum": 1}}, t_camera2),
     ("printer_snapshot", "Fresh pictures of the printer: the camera inside it (low, at bed level) and the top view (a second camera above the front of the bed, looking down). Look before every start (the plate must be on and empty) and to check a print. Both by default.",
      {"camera": {"type": "string", "enum": ["both", "printer", "top"], "description": "which camera; both by default"}}, t_snapshot),
     ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
