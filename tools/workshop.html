@@ -768,6 +768,7 @@ function render() {
   $("#jobFile").textContent = (ps.filename || "Nothing printing").replace(/\.gcode$/i, ""); $("#jobFile").title = ps.filename || "";
   const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
   // tool changes done and left: offsets of each real head change in the file, against how far the printer has read it
+  if (!active) S.tcFor = null;   // a new job reads the offsets again, even for the same file name re-sliced (review, 24 Nov)
   if (active && ps.filename && S.tcFor !== ps.filename) { S.tcFor = ps.filename; S.tc = null; api("/api/tool-changes?file=" + encodeURIComponent(ps.filename)).then(r => { S.tc = r; render(); }).catch(() => {}); }
   const tc2 = active && S.tc && S.tc.total ? S.tc : null, pos = (s.virtual_sdcard || {}).file_position || 0;
   const done = tc2 ? tc2.offsets.filter(o => o < pos).length : 0;
