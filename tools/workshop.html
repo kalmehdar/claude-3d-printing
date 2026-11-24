@@ -189,6 +189,8 @@ dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
 .ctrow .pieces .btn{min-width:52px;min-height:44px;flex-direction:column;gap:0;line-height:1.1}
 .ctrow .pieces small{color:var(--dim);font-size:10.5px}
 @media (max-width:640px){.ctrow .pieces{padding-left:12px}}
+@media (max-width:640px){#tab-printer>.grid.now{display:flex;flex-direction:column-reverse}}   /* phones: watching (live, detector, spools, calibration) before the controls */
+#detCard .seg .btn[aria-pressed="true"]{background:var(--accent);color:#fff}
 .layerbar{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:12px}
 .layerbar input{width:100%;accent-color:var(--accent)}
 input[type=range]{accent-color:var(--accent)}
@@ -488,6 +490,11 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
         </div>
         <div class="grid" style="align-content:start">
           <div class="card"><h2>Live</h2><div id="liveBox" class="note">Collecting readings: the charts fill while this page is open.</div></div>
+          <div class="card" id="detCard" hidden><div class="chead"><h2>Spaghetti detector</h2><span class="note" id="detState"></span></div>
+            <p class="note" style="margin:0 0 10px">The printer's own camera pauses a print when it sees loose strands. Off for a print it keeps stopping by
+              mistake; it stays as set until changed back.</p>
+            <div class="ctrls"><span class="seg" role="group" aria-label="Detector"><button class="btn sm" data-det="on">On</button><button class="btn sm" data-det="off">Off</button></span>
+              <span class="seg" role="group" aria-label="Sensitivity"><button class="btn sm" data-dets="low">Low</button><button class="btn sm" data-dets="high">High</button></span></div></div>
           <div class="card"><h2>Watch</h2><div class="ctrls"><button class="btn" id="wCam">Live camera</button><button class="btn" id="wScreen">Printer screen</button><button class="btn" id="wLapse">Timelapses</button></div></div>
           <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
           <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
@@ -713,7 +720,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "virtual_sdcard", "pause_resume", "machine_state_manager"];
+const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "virtual_sdcard", "pause_resume", "machine_state_manager", "defect_detection"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -839,7 +846,7 @@ function render() {
   $("#temps").innerHTML = `Bed <b>${Math.round(s.heater_bed.temperature)}°</b>${s.heater_bed.target ? " / " + Math.round(s.heater_bed.target) + "°" : ""}`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
-  renderBanner();
+  renderBanner(); renderDetector();
   // queue badge + next up
   const next = S.queue[0];
   const nm = next && (S.meta[next.filename] || {});
@@ -849,6 +856,19 @@ function render() {
       acts: ""})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
     : `Nothing queued. <a href="#designs" onclick="go('designs');return false">Pick a design</a> or <a href="#files" onclick="go('files');return false">a file</a>.`;
 }
+// the printer's own spaghetti detector (defect_detection: main_enable, noodle.enable, noodle.sensitivity)
+function renderDetector() {
+  const d = (S.status || {}).defect_detection; $("#detCard").hidden = !d; if (!d) return;
+  const n = d.noodle || {}, on = !!(d.main_enable && n.enable);
+  $("#detState").textContent = on ? `on, ${n.sensitivity || "?"} sensitivity` : "off";
+  document.querySelectorAll("[data-det]").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.det === "on") === on)));
+  document.querySelectorAll("[data-dets]").forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.dets === n.sensitivity)); b.disabled = !on; });
+}
+$("#detCard").addEventListener("click", async e => {
+  const b = e.target.closest("[data-det],[data-dets]"); if (!b || b.getAttribute("aria-pressed") === "true") return;
+  const body = b.dataset.det ? {action: "detector", spaghetti: b.dataset.det === "on"} : {action: "detector", sensitivity: b.dataset.dets};
+  try { const r = await post("/api/control", body); toast(r.done); poll(); } catch (err) { toast(err.message, true); }
+});
 $("#jobActions").addEventListener("click", async e => {
   const a = e.target.closest("button")?.dataset.a; if (!a) return;
   try {
