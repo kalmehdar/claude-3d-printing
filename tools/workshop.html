@@ -698,7 +698,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO"];
+const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "virtual_sdcard"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -767,7 +767,13 @@ function render() {
   const est = (S.meta[ps.filename] || {}).estimated_time;
   $("#jobFile").textContent = (ps.filename || "Nothing printing").replace(/\.gcode$/i, ""); $("#jobFile").title = ps.filename || "";
   const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
-  $("#kLayer").textContent = (info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "") + (active && pal.enable ? ` · pauses at layer ${pal.layer}` : "");
+  // tool changes done and left: offsets of each real head change in the file, against how far the printer has read it
+  if (!active) S.tcFor = null;   // a new job reads the offsets again, even for the same file name re-sliced (review, 24 Nov)
+  if (active && ps.filename && S.tcFor !== ps.filename) { S.tcFor = ps.filename; S.tc = null; api("/api/tool-changes?file=" + encodeURIComponent(ps.filename)).then(r => { S.tc = r; render(); }).catch(() => {}); }
+  const tc2 = active && S.tc && S.tc.total ? S.tc : null, pos = (s.virtual_sdcard || {}).file_position || 0;
+  const done = tc2 ? tc2.offsets.filter(o => o < pos).length : 0;
+  $("#kLayer").textContent = [info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "",
+    tc2 ? `tool change ${done} of ${tc2.total}` : "", active && pal.enable ? `pauses at layer ${pal.layer}` : ""].filter(Boolean).join(" · ");
   let left = null;
   let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;

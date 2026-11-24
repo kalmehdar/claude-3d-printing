@@ -1368,6 +1368,36 @@ def make_timelapse(folder):
         print("timelapse failed for", folder, e, flush=True)
 
 
+_changes = {}
+
+
+def tool_changes(file, read=None):
+    """Byte offsets in a G-code file where the head really changes (a T line naming another head), so the page can say how
+    many tool changes are done and left from virtual_sdcard.file_position. Read once per file and kept while it is unchanged."""
+    if read is None:
+        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
+            stamp = json.load(r)["result"].get("modified")
+        if _changes.get(file, (None,))[0] == stamp:
+            return _changes[file][1]
+        read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=120)
+    else:
+        stamp = None
+    offsets, head, at = [], None, 0
+    with read as f:
+        for line in f:
+            if line[:1] == b"T" and line[1:2].isdigit():
+                t = line.split(None, 1)[0]
+                if head is not None and t != head:
+                    offsets.append(at)
+                head = t
+            at += len(line)
+    out = {"total": len(offsets), "offsets": offsets}
+    if stamp is not None:
+        _changes.clear()   # ponytail: one file kept, the one printing; a dict per file if the queue view wants them too
+        _changes[file] = (stamp, out)
+    return out
+
+
 def frames(job=""):
     """The layer photos printer.py watch saved: the jobs newest first, or one job's photos in order."""
     import printer
@@ -2254,6 +2284,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             return self.send(200, out)
+        if p.startswith("/api/tool-changes"):   # ?file=: where the head changes, for "tool change 12 of 40" on the page
+            f = urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("file", [""])[0]
+            if not f or ".." in f:
+                return self.send(400, {"error": "give file"})
+            try:
+                return self.send(200, tool_changes(f))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"printer: {e}"})
         if p.startswith("/api/frames"):
             return self.send(200, frames(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("job", [""])[0]))
         m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.(jpg|mp4))", p)
