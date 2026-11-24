@@ -65,7 +65,8 @@ def q(s):
 
 def t_status(_):
     objs = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3",
-            "print_task_config", "webhooks", "filament_feed%20left", "filament_feed%20right"]
+            "print_task_config", "webhooks", "filament_feed%20left", "filament_feed%20right", "pause_resume",
+            "machine_state_manager", "defect_detection"]
     s = mr("GET", "/printer/objects/query?" + "&".join(objs))["status"]
     ps, ds, info = s["print_stats"], s.get("display_status", {}), s["print_stats"].get("info") or {}
     p = ds.get("progress") or 0
@@ -76,6 +77,14 @@ def t_status(_):
     if ps["state"] == "printing" and p > 0.02:
         left = ps["print_duration"] * (1 - p) / p
         lines.append(f"About {round(left / 60)} min left, finishes {time.strftime('%H:%M', time.localtime(time.time() + left))}")
+    if ps["state"] == "paused" or (ps.get("exception") or {}).get("id"):
+        import printer
+        h = printer.hold(s)
+        lines.append("Paused: " + (h["why"] or "no reason given") + (" Resume is possible." if h["can_resume"] else f' Not resumable yet: {h["waiting"]}.'))
+    dd = s.get("defect_detection") or {}
+    if dd:
+        nd = dd.get("noodle") or {}
+        lines.append("Spaghetti detector: " + (f'on, {nd.get("sensitivity", "?")} sensitivity' if dd.get("main_enable") and nd.get("enable") else "off"))
     lines.append(f'Bed {s["heater_bed"]["temperature"]:.0f} / {s["heater_bed"]["target"]:.0f} C')
     tc = s.get("print_task_config") or {}
     feed = {**s.get("filament_feed left", {}), **s.get("filament_feed right", {})}
@@ -285,6 +294,14 @@ def t_simple(action):
         mr("POST", f"/printer/print/{action}")
         return {"pause": "Paused.", "resume": "Resumed.", "cancel": "Cancelled."}[action]
     return go
+
+
+def t_resume(a):
+    return http("POST", "/api/control", {"action": "resume", "person_checked": a.get("person_checked") is True})["done"]
+
+
+def t_detector(a):
+    return http("POST", "/api/control", {"action": "detector", **{k: a[k] for k in ("spaghetti", "sensitivity") if k in a}})["done"]
 
 
 WAIT_EVERY = 10   # seconds between looks while waiting
@@ -633,7 +650,14 @@ TOOLS = [
      {"filename": {"type": "string"}, "bed_clear": {"type": "boolean", "description": "true only if the person said the bed is empty"},
       "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
-    ("printer_resume", "Resume a paused print.", {}, t_simple("resume")),
+    ("printer_resume", "Resume a paused print, including one the printer's spaghetti detector paused. Refused, with the reason, "
+     "until the printer will really take it. After the printer's own detector paused it, Workshop refuses unless person_checked: "
+     "look at printer_snapshot, ask the person, and pass person_checked=true only when they say the part is fine.",
+     {"person_checked": {"type": "boolean", "description": "the person looked at the part after a detector pause and said carry on"}}, t_resume),
+    ("printer_detector", "The printer's own spaghetti detector (its camera pauses the print when it sees loose strands). Turn it on or "
+     "off or set its sensitivity; the printer keeps the setting until it is changed back, so say so and offer to turn it back on.",
+     {"spaghetti": {"type": "boolean", "description": "true on, false off"},
+      "sensitivity": {"type": "string", "enum": ["low", "high"]}}, t_detector),
     ("printer_cancel", "Cancel the current print (it cannot be resumed). Confirm with the person first unless the print is failing.", {}, t_simple("cancel")),
     ("printer_queue", "The job queue: list, add a file, remove a job, hold the queue, or start the next job (bed_clear needed).",
      {"action": {"type": "string", "enum": ["list", "add", "remove", "hold", "start"]}, "filename": {"type": "string"},

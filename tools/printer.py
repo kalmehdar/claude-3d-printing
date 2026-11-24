@@ -200,7 +200,7 @@ def status():
     names = call("/printer/objects/list")["objects"]
     heads = [o for o in names if o == "extruder" or (o.startswith("extruder") and o[8:].isdigit())]
     s = query("print_stats", "display_status", "heater_bed", "webhooks", "toolhead", *heads,
-              *(["print_task_config"] if "print_task_config" in names else []))
+              *[o for o in ("print_task_config", "pause_resume", "machine_state_manager") if o in names])
     ps, ds = s["print_stats"], s.get("display_status", {})
     info, p = ps.get("info") or {}, ds.get("progress") or 0
     out = {"klippy": s["webhooks"]["state"], "state": ps["state"], "file": ps.get("filename") or None,
@@ -219,9 +219,43 @@ def status():
     if t:   # Snapmaker U1: what is loaded on each head
         out["slots"] = [f"T{i} {ty} {sub} #{c[:6]}" for i, (ty, sub, c) in enumerate(zip(
             t.get("filament_type", []), t.get("filament_sub_type", []), t.get("filament_color_rgba", [])))]
-    if ps.get("message"):
-        out["message"] = ps["message"]
+    h = hold(s)
+    if h["why"]:
+        out["message"] = h["why"]
+    if ps["state"] == "paused":
+        out["can_resume"] = h["can_resume"]
     return out
+
+
+# Snapmaker U1 defect detection (klippy/extras/defect_detection.py in Snapmaker/u1-klipper): module 532 writes its finding
+# into print_stats.exception, then sends the normal PAUSE. Codes from defect_event_handler.
+DEFECT = {1: "the camera saw something left on the bed", 2: "the camera saw spaghetti (loose strands where the part should be)",
+          3: "the camera saw residue on the bed", 4: "the camera saw a dirty nozzle"}
+
+
+def hold(s):
+    """Why a print is held and whether RESUME will be accepted, from print_stats, pause_resume and machine_state_manager.
+    RESUME (pause_resume.py) needs print_stats paused, is_paused true and the machine's action code idle (0); during a
+    detector pause print_stats can still read printing for a moment (24 Nov 2026: two resumes refused)."""
+    ps = s.get("print_stats") or {}
+    ex = ps.get("exception") or {}
+    if ex.get("id") == 532 and ex.get("code") in DEFECT:
+        why = "Paused by the printer's own detector: " + DEFECT[ex["code"]] + "."
+    elif ex.get("message"):
+        why = "The printer says: " + str(ex["message"]) + "."
+    else:
+        why = (ps.get("message") or "").strip()
+    paused_flag = (s.get("pause_resume") or {}).get("is_paused")
+    action = (s.get("machine_state_manager") or {}).get("action_code", 0)
+    if ps.get("state") != "paused":
+        wait = "the printer has not finished pausing yet" if paused_flag or ex else "the print is not paused"
+    elif paused_flag is False:
+        wait = "the printer does not count itself as paused yet"
+    elif action:
+        wait = f"the printer is still busy with something (action {action}); wait a few seconds"
+    else:
+        wait = ""
+    return {"why": why, "can_resume": not wait, "waiting": wait}
 
 
 def record(what, detail="", who=None, via="printer.py"):
