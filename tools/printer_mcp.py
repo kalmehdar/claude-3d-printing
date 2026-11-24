@@ -287,6 +287,37 @@ def t_simple(action):
     return go
 
 
+WAIT_EVERY = 10   # seconds between looks while waiting
+
+
+def t_wait(a):
+    """Block until the print changes state (pauses, finishes, fails, starts), reaches a layer, or minutes pass, instead of
+    calling printer_status over and over. Returns what happened and the status at that moment."""
+    minutes = float(a.get("minutes") or 5)
+    if not 0 < minutes <= 15:
+        raise ValueError("minutes is up to 15")
+    layer = int(a["layer"]) if a.get("layer") else None
+
+    def look():
+        ps = mr("GET", "/printer/objects/query?print_stats=state,filename,message,info")["status"]["print_stats"]
+        return ps["state"], (ps.get("info") or {}).get("current_layer") or 0, ps
+    state0, _, _ = look()
+    end = time.time() + minutes * 60
+    while True:
+        state, now, ps = look()
+        if state != state0:
+            what = f"State changed: {state0} -> {state}" + (f' ({ps["message"]})' if ps.get("message") else "")
+            break
+        if layer and now >= layer:
+            what = f"Reached layer {now}."
+            break
+        if time.time() >= end:
+            what = f"Nothing changed in {minutes:g} min (still {state}" + (f", layer {now}" if now else "") + ")."
+            break
+        time.sleep(WAIT_EVERY)
+    return what + "\n\n" + t_status({})
+
+
 def t_queue(a):
     act = a.get("action", "list")
     if act == "list":
@@ -380,7 +411,7 @@ def t_upload_model(a):
         raise ValueError("give the path of an .stl or .3mf file on this computer")
     params = urllib.parse.urlencode({"name": os.path.basename(path), "colour": (a.get("colour") or "888888").lstrip("#"),
                                      "preset": a.get("preset") or "lean", "queue": "1" if a.get("queue") else "0",
-                                     "glue": "1" if a.get("glue") else "0"})
+                                     "glue": "1" if a.get("glue") else "0", "allow_substitute": "1" if a.get("allow_substitute") else "0"})
     req = urllib.request.Request(URL + "/api/upload-model?" + params, data=open(path, "rb").read(), method="POST",
                                  headers={"X-Workshop": "1", "X-Workshop-User": USER, "Content-Type": "application/octet-stream"})
     try:
@@ -565,6 +596,10 @@ def t_alerts(_):
 HEAD = {"type": "string", "description": "T0, T1, T2 or T3 (the printer's screen numbers them 1 to 4)"}
 TOOLS = [
     ("printer_status", "What the printer is doing: state, layer, time left, bed, each head's filament and whether it is loaded, recent warnings.", {}, t_status),
+    ("printer_wait", "Wait for the print instead of polling printer_status: returns when the state changes (paused, finished, cancelled, "
+     "error, started), when it reaches a layer, or after the minutes given (default 5, at most 15), with the status then.",
+     {"layer": {"type": "integer", "minimum": 1, "description": "return once the print reaches this layer"},
+      "minutes": {"type": "number", "description": "longest wait, up to 15"}}, t_wait),
     ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
     ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
      {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
@@ -623,10 +658,11 @@ TOOLS = [
     ("printer_plan", "The queue as a plan: when each job would start and finish after the current print, and any that would start in the quiet hours (03:00 to 08:00, when no new print starts).", {}, t_plan),
     ("printer_plate", "Which build plate is on the printer (textured or smooth PEI), or record that the person swapped it. Slicing uses it.",
      {"plate": {"type": "string", "enum": ["textured", "smooth"], "description": "set only when the person says they changed the plate"}}, t_plate, []),
-    ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. Never starts a print.",
+    ("printer_upload_model", "Slice an STL or 3MF from this computer on the Workshop computer and send it to the printer (optionally queue it). An STL goes on the head holding the given colour. A painted or multicolour 3MF saved for another printer (Bambu H2D, X2D, A1) keeps its colours, each on the loaded head nearest in colour, and its supports and prime tower; if a colour it uses is not loaded it is refused unless allow_substitute. Never starts a print.",
      {"path": {"type": "string", "description": "the .stl or .3mf file on this computer"}, "colour": {"type": "string", "description": "hex colour of the loaded filament to use, e.g. 1c1c1c (STL only)"},
       "preset": {"type": "string", "description": "lean (default), quality, strong, fine, polished, draft or standard"}, "queue": {"type": "boolean"},
-      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed a glue-stick layer is on"}}, t_upload_model, ["path"]),
+      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed a glue-stick layer is on"},
+      "allow_substitute": {"type": "boolean", "description": "slice anyway with the nearest loaded colour (ask the person first)"}}, t_upload_model, ["path"]),
     ("printer_control", "Heaters off, motors off, or home the printer. Workshop refuses all three while a print runs. Home moves the head: ask the person first and pass nothing_in_the_way.",
      {"action": {"type": "string", "enum": ["heaters_off", "motors_off", "home"]}, "nothing_in_the_way": {"type": "boolean"}}, t_control, ["action"]),
     ("printer_doctor", "The print doctor's latest reports: after a pause, a failure or a flawed finish, Claude reads the layer photos and slicer settings and suggests setting changes. Read them before re-slicing a print that went wrong.", {}, t_doctor),
