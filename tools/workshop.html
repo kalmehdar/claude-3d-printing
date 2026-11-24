@@ -235,6 +235,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .issue .acts{display:flex;gap:4px;opacity:0;transition:opacity .1s}
 .issue:hover .acts,.issue:focus-within .acts{opacity:1}
 @media (hover:none){.issue .acts{opacity:1}}
+@media (hover:hover) and (max-width:640px){.issue .acts{opacity:1}}   /* a narrow window with a mouse: the buttons have their own line, so show it (it was a blank band per row) */
 @media (hover:none){:is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid] .acts{display:none} :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{content:"\203A";color:var(--faint);font-size:18px;line-height:1}}   /* touch screens, phone or iPad: tap the row, its sheet or panel has every button (23 Nov) */
 @media (hover:hover) and (min-width:641px){.issue{position:relative}.issue .acts{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding-left:16px;background:linear-gradient(90deg,transparent,var(--hover) 16px)}}   /* buttons float over the row on hover, so meta columns line up */
 .ghead{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;background:var(--panel2);font-size:12.5px;font-weight:500;color:var(--text)}
@@ -818,7 +819,11 @@ function render() {
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
   const used = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m used" : "", grams = jm.filament_weight_total ? Math.round(jm.filament_weight_total) + " g" : "";
   $("#kFilL").textContent = jobCost ? "Cost" : "Filament";   // the print's cost up front: slicer grams at the spool's price (23 Nov)
-  $("#kFil").innerHTML = jobCost ? `${jobCost}<small>${[grams, used].filter(Boolean).join(" · ")}</small>` : esc([used, grams && "of " + grams].filter(Boolean).join(" ") || "-");
+  // the prime tower (tool-change purges and the tower itself) from the same read as the tool changes: plastic for the bin
+  const tw = active && S.tc && S.tcFor === ps.filename && S.tc.tower_g >= 1 ? S.tc.tower_g : 0;
+  const twTxt = tw ? `tower and purge ${Math.round(tw)} g${cost(tw, jm.filament_type) ? " (" + cost(tw, jm.filament_type) + ")" : ""}` : "";
+  $("#kFil").innerHTML = jobCost ? `${jobCost}<small>${[grams, used, twTxt].filter(Boolean).join(" · ")}</small>` : esc([[used, grams && "of " + grams].filter(Boolean).join(" "), twTxt].filter(Boolean).join(" · ") || "-");
+  $("#kFil").title = tw ? "Grams going into the prime tower: purging between colours and the tower itself. Included in the cost." : "";
   document.title = (ps.state === "paused" ? "Paused · " : active ? `${p}% · ` : ps.state === "complete" ? "Finished · " : "") + "Workshop";
   $("#hStat").textContent = active ? `${(ps.filename || "").replace(/\.gcode$/, "")} · ${p}%${$("#kEnd").textContent !== "-" ? " · ends " + $("#kEnd").textContent.replace("about ", "~") : ""}` : "";
   const acts = [];

@@ -1492,7 +1492,8 @@ _changes = {}
 
 def tool_changes(file, read=None):
     """Byte offsets in a G-code file where the head really changes (a T line naming another head), so the page can say how
-    many tool changes are done and left from virtual_sdcard.file_position. Read once per file and kept while it is unchanged."""
+    many tool changes are done and left from virtual_sdcard.file_position, and the grams per head that go into the prime
+    tower (purges and the tower itself: plastic for the bin). Read once per file and kept while it is unchanged."""
     if read is None:
         with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
             stamp = json.load(r)["result"].get("modified")
@@ -1501,16 +1502,36 @@ def tool_changes(file, read=None):
         read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=120)
     else:
         stamp = None
-    offsets, head, at = [], None, 0
+    offsets, head, at, tower, mm, conf = [], None, 0, False, {}, {}
     with read as f:
         for line in f:
-            if line[:1] == b"T" and line[1:2].isdigit():
+            c = line[:1]
+            if c == b"T" and line[1:2].isdigit():
                 t = line.split(None, 1)[0]
                 if head is not None and t != head:
                     offsets.append(at)
                 head = t
+            elif c == b";":
+                if line.startswith(b";TYPE:"):   # the prime tower: tool-change purges and the tower itself, all waste
+                    tower = line.startswith(b";TYPE:Prime tower")
+                elif line.startswith((b"; filament_density", b"; filament_diameter")):
+                    k, _, v = line[2:].decode("ascii", "replace").replace("=", ":").partition(":")
+                    conf.setdefault(k.strip(), [float(x) for x in re.findall(r"[\d.]+", v)])
+            elif tower and c == b"G" and b" E" in line:   # relative extrusion (M83): a retract and its unretract cancel
+                m = re.search(rb" E(-?[\d.]+)", line)
+                if m:
+                    k = (head or b"T0").decode()
+                    mm[k] = mm.get(k, 0.0) + float(m.group(1))
             at += len(line)
-    out = {"total": len(offsets), "offsets": offsets}
+    waste = {}
+    for k, v in mm.items():   # grams = length x filament cross-section x density
+        i = int(k[1:])
+        dens = (conf.get("filament_density") or [1.24])[min(i, len(conf.get("filament_density") or [1]) - 1)]
+        dia = (conf.get("filament_diameter") or [1.75])[min(i, len(conf.get("filament_diameter") or [1]) - 1)]
+        g = max(v, 0.0) * 3.14159265 * (dia / 2) ** 2 * dens / 1000
+        if g >= 0.05:
+            waste[k] = round(g, 1)
+    out = {"total": len(offsets), "offsets": offsets, "tower_g": round(sum(waste.values()), 1), "tower_by_head": waste}
     if stamp is not None:
         _changes.clear()   # ponytail: one file kept, the one printing; a dict per file if the queue view wants them too
         _changes[file] = (stamp, out)

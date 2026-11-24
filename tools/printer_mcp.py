@@ -74,6 +74,15 @@ def t_status(_):
              + (f' - {ps["filename"]}' if ps.get("filename") else "")]
     if info.get("total_layer"):
         lines.append(f'Layer {info["current_layer"]} of {info["total_layer"]}, {round(p * 100)}%')
+    if ps["state"] in ("printing", "paused") and ps.get("filename"):
+        try:   # Workshop reads the file once and keeps it: tool changes so far, and plastic for the prime tower
+            tc = http("GET", "/api/tool-changes?file=" + q(ps["filename"]), timeout=60)
+            pos = (mr("GET", "/printer/objects/query?virtual_sdcard=file_position")["status"].get("virtual_sdcard") or {}).get("file_position") or 0
+            if tc.get("total"):
+                lines.append(f'Tool change {sum(o < pos for o in tc["offsets"])} of {tc["total"]}'
+                             + (f'; about {tc["tower_g"]:g} g into the prime tower (purges and tower)' if tc.get("tower_g") else ""))
+        except (RuntimeError, OSError, ValueError, KeyError):
+            pass
     if ps["state"] == "printing" and p > 0.02:
         left = ps["print_duration"] * (1 - p) / p
         lines.append(f"About {round(left / 60)} min left, finishes {time.strftime('%H:%M', time.localtime(time.time() + left))}")
