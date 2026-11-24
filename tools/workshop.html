@@ -489,8 +489,8 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
           <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
           <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
           <details class="card fold" id="calHistCard" open><summary><h2>Calibration</h2></summary>
-        <p class="note">Make a test for one head, print it, then tap the number of the best piece. Its value goes into that
-          filament's slicing profile, with a photo of the print and the old profile kept.</p>
+        <p class="note">Make a test for one head, print it, then tap the number of the best piece. It is recorded with a photo, and
+          Claude opens the change to that filament's slicing profile as a pull request.</p>
         <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin:12px 0 4px">
           <select id="ctTest" aria-label="Which test"><option value="pressure-advance">Pressure advance (8 boxes)</option>
             <option value="flow-ratio">Flow ratio (9 tiles)</option><option value="temperature">Temperature (5 bands)</option></select>
@@ -1410,7 +1410,7 @@ function renderWizard(r) {
   const answered = m => r.results.find(x => (x.note || "").includes(m.file) && x.t > m.t);
   $("#calWizard").innerHTML = made.length ? `<div class="list">${made.map(m => { const a = answered(m), on = files.includes(m.file);
     return `<div class="ctrow">${issueHtml({icon: a ? "done" : "progress", id: "T" + m.head, title: `${esc(CT_WORD[m.test] || m.test)} · ${esc(m.material)}`,
-      detail: a ? `picked ${esc(a.value)}${a.saved ? a.saved.pending_git ? ", profile change waiting for a pull request" : ", saved to the profile" : ""}` : `print it, then tap ${esc(m.read)}`,
+      detail: a ? `picked ${esc(a.value)}${a.saved ? ", profile change waiting for a pull request" : ""}` : `print it, then tap ${esc(m.read)}`,
       meta: [esc(m.time || ""), m.grams ? m.grams + " g" : "", on ? "" : "not on the printer any more"],
       acts: on && !a ? `<button class="btn sm" data-calq="${esc(m.file)}">Queue it</button>` : ""})}
       ${a ? "" : `<div class="pieces" role="group" aria-label="Best piece">${m.pieces.map(p => `<button class="btn sm" data-ctfile="${esc(m.file)}" data-ctn="${p.n}" title="${p.value}"><b>${p.n}</b><small>${p.value}</small></button>`).join("")}</div>`}</div>`; }).join("")}</div>`
@@ -1421,10 +1421,10 @@ $("#calWizard").addEventListener("click", e => {
   if (q) addToQueue(q.dataset.calq);
   if (!b) return;
   const m = (S.calR.made || []).find(x => x.file === b.dataset.ctfile), p = m.pieces.find(x => x.n === +b.dataset.ctn);
-  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo, then the ${m.material} slicing profile changes from ${m.current} (straight away, or as a pull request where the profiles live in git).`,
-    "Save to profile", async () => { try { const r = await post("/api/calibration", {file: m.file, piece: p.n, save: true});
+  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo. Claude then opens a pull request changing the ${m.material} slicing profile from ${m.current}; Workshop slices with it once it is merged.`,
+    "Record", async () => { try { const r = await post("/api/calibration", {file: m.file, piece: p.n, save: true});
       const sv = r.saved || {};
-      toast(sv.pending_git ? `Recorded. Claude opens the ${sv.material} profile change for you to merge.` : `Saved: ${Object.entries(sv).map(([k, v]) => k + " " + v).join(", ")}`);
+      toast(`Recorded. Claude opens the ${sv.material || m.material} profile change for you to merge.`);
       loadCalibration(); } catch (err) { toast(err.message, true); } });
 });
 function headOptions() {

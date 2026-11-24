@@ -159,8 +159,7 @@ def t_calibration(a):
         return f'Recorded {r["test"]} = {r["value"]} for {r["filament"] or "the loaded filament"}' + (" with a photo of the print." if r.get("photo") else ".") + (
             f' The profile lives in git here: call the almehdar-workshop MCP\'s workshop_profile for {r["saved"]["material"]} with '
             + ", ".join(f"{k} = {v}" for k, v in r["saved"].items() if k not in ("pending_git", "material", "next")) + " (who = the person) to open the pull request."
-            if (r.get("saved") or {}).get("pending_git")
-            else " Saved into the slicing profile: " + ", ".join(f"{k} = {v}" for k, v in r["saved"].items()) + "." if r.get("saved")
+            if r.get("saved")
             else f' It belongs in the profile key {r["key"]}; pass save=true to write it.' if r.get("key") else "")
     got = http("GET", "/api/calibration")
     made = got.get("made") or []
@@ -574,7 +573,7 @@ TOOLS = [
       "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"},
       "file": {"type": "string", "description": "a test made by printer_calibration_test: give piece instead of value"},
       "piece": {"type": "integer", "description": "the numbered piece the person picked"},
-      "save": {"type": "boolean", "description": "also write it into the filament's slicing profile (the old profile is kept); only when the person agrees"},
+      "save": {"type": "boolean", "description": "also mark it as a profile change: the reply says the workshop_profile call that opens the pull request; only when the person agrees"},
       "material": {"type": "string", "description": "with save and a value (no file): the profile name, e.g. petg"}}, t_calibration),
     ("printer_calibration_test", "Make a one-tap calibration test for one head and put it on the printer (never starts it): pressure-advance "
      "(8 boxes, one per PA value), flow-ratio (9 tiles round the profile's flow) or temperature (5 bands, 5 C apart from 10 above the "

@@ -52,13 +52,14 @@ assert [l for l in o.splitlines() if "band" in l and l.startswith("M104 S2") and
     f"M104 S{t} ; temperature band {b} of 5" for b, t in enumerate([255, 250, 245, 240, 235], 1)]
 assert "M104 S255 T1 ; set nozzle temperature (held to band 1)" in o and "M109 S245 T1" in o   # start wait untouched
 
-# the answer: piece number -> value -> profile, old profile kept
+# the answer: piece number -> value -> a profile change waiting for a pull request; Workshop never writes a profile
 assert caltest.answer(plan, 6) == "0.96"
 t = tempfile.mkdtemp()
 prof = os.path.join(t, "u1")
 os.makedirs(prof)
 json.dump({"name": "machine"}, open(os.path.join(prof, "machine.json"), "w"))
 json.dump({"filament_flow_ratio": ["0.95"], "pressure_advance": ["0.04"], "enable_pressure_advance": ["0"]}, open(os.path.join(prof, "filament-petg.json"), "w"))
+before = open(os.path.join(prof, "filament-petg.json")).read()
 w.CFG.update(profile=prof, moonraker="http://127.0.0.1:9", camera="")
 w.CAL_LOG, w.CAL_PHOTOS, w.CAL_PLANS = os.path.join(t, "cal.jsonl"), os.path.join(t, "photos"), os.path.join(t, "plans.json")
 w.record = lambda *a, **k: None
@@ -67,12 +68,11 @@ printer.snap = lambda path: (_ for _ in ()).throw(OSError("no camera in tests"))
 plan.update(material="petg", file="cal-flow-ratio-T1-petg.gcode", t=0)
 json.dump({plan["file"]: plan}, open(w.CAL_PLANS, "w"))
 row = w.calibration({"file": plan["file"], "piece": 6, "save": True}, who="Khalid")[0]
-assert row["test"] == "flow-ratio" and row["value"] == "0.96" and row["saved"] == {"filament_flow_ratio": "0.96"}, row
-assert json.load(open(os.path.join(prof, "filament-petg.json")))["filament_flow_ratio"] == ["0.96"]
-assert any(f.endswith("-before-filament-petg.json") for f in os.listdir(w.CAL_PHOTOS))
+assert row["test"] == "flow-ratio" and row["value"] == "0.96" and row["saved"]["pending_git"], row
+assert row["saved"]["filament_flow_ratio"] == "0.96" and row["saved"]["material"] == "petg", row
 row = w.calibration({"test": "pressure-advance", "value": "0.035", "material": "petg", "save": True}, who="Khalid")[0]
-d = json.load(open(os.path.join(prof, "filament-petg.json")))
-assert d["pressure_advance"] == ["0.035"] and d["enable_pressure_advance"] == ["1"], d
+assert row["saved"]["pressure_advance"] == "0.035" and row["saved"]["enable_pressure_advance"] == "1", row
+assert open(os.path.join(prof, "filament-petg.json")).read() == before   # untouched, git or not
 for bad in ({"file": "nope.gcode", "piece": 1}, {"file": plan["file"], "piece": 99}, {"test": "flow-ratio", "value": "x", "material": "petg", "save": True},
             {"test": "flow-ratio", "value": "0.9", "material": "../etc", "save": True}):
     try:
@@ -81,15 +81,3 @@ for bad in ({"file": "nope.gcode", "piece": 1}, {"file": plan["file"], "piece": 
     except ValueError:
         pass
 print("calibration test check passed")
-
-# a profile that lives in git (alm-01's Almehdar checkout) is not edited: the change waits for a pull request
-import subprocess  # noqa: E402
-subprocess.run(["git", "init", "-q", prof], check=True)
-subprocess.run(["git", "-C", prof, "add", "filament-petg.json"], check=True)
-before = open(os.path.join(prof, "filament-petg.json")).read()
-plan.update(t=1)
-json.dump({plan["file"]: plan}, open(w.CAL_PLANS, "w"))
-row = w.calibration({"file": plan["file"], "piece": 7, "save": True}, who="Khalid")[0]
-assert row["saved"]["pending_git"] and row["saved"]["filament_flow_ratio"] == "0.97", row
-assert open(os.path.join(prof, "filament-petg.json")).read() == before
-print("git-tracked profile check passed")
