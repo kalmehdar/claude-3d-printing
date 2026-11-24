@@ -42,6 +42,10 @@ assert list(starts) == [1, 0, 0, 1, 0, 1, 0] and set(tools) == {1}, (starts, too
 assert [round(z, 2) for z in lz] == [0.2, 0.4] and list(lp) == [0, 5], (lz, lp)
 assert raw[:4] == b"WTP1" and len(gz) < len(raw) + 40
 
+# everything=True (the Files preview) keeps the infill too
+alln = struct.unpack_from("<I", w.toolpath("t.gcode", read=io.BytesIO(g), everything=True)[0], 4)[0]
+assert alln == 9, alln   # the infill is its own polyline (a ;TYPE: change starts one): 7 points + 2
+
 # absolute extrusion with G92 resets; a file without ;TYPE: keeps every extrusion
 ab = w.toolpath("a.gcode", read=io.BytesIO(b"M82\nG92 E0\nG1 X0 Y0 Z0.2\nG1 X5 Y0 E2\nG92 E0\nG1 X5 Y5 E1\nG1 X9 Y5 E1\n"))[0]
 assert struct.unpack_from("<I", ab, 4)[0] == 3, "two extrusions, one polyline (the second E1 after it is no move of plastic)"
