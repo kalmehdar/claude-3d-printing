@@ -50,6 +50,46 @@ assert alln == 9, alln   # the infill is its own polyline (a ;TYPE: change start
 ab = w.toolpath("a.gcode", read=io.BytesIO(b"M82\nG92 E0\nG1 X0 Y0 Z0.2\nG1 X5 Y0 E2\nG92 E0\nG1 X5 Y5 E1\nG1 X9 Y5 E1\n"))[0]
 assert struct.unpack_from("<I", ab, 4)[0] == 3, "two extrusions, one polyline (the second E1 after it is no move of plastic)"
 
+# vase mode: one polyline climbing through ;Z: markers still has its layers
+vase = b"M83\n;Z:0.2\nG1 X0 Y0 Z0.2\nG1 X10 Y0 Z0.25 E1\n;Z:0.4\nG1 X10 Y10 Z0.35 E1\nG1 X0 Y10 Z0.45 E1\n;Z:0.6\nG1 X0 Y0 Z0.55 E1\n"
+vr = w.toolpath("v.gcode", read=io.BytesIO(vase))[0]
+vn, vl = struct.unpack_from("<II", vr, 4)
+assert (vn, vl) == (5, 3), (vn, vl)
+assert list(struct.unpack_from("<3I", vr, 12 + 8 * vn + 4 * vl)) == [0, 1, 3]   # layer 2 starts at point 1 (its first segment 1->2)
+
+# the cache: no modified time = built each time, not kept (it used to raise KeyError); one build for two viewers at once;
+# a file over the cap refused; eviction never fails
+import threading  # noqa: E402
+import time  # noqa: E402
+fetches, meta = [], {"size": 100}
+
+
+def mr(method, path, body=None, headers=None, timeout=30):
+    if "metadata" in path:
+        return io.BytesIO(json.dumps({"result": meta}).encode())
+    fetches.append(path)
+    time.sleep(0.2)   # a slow printer: the second viewer arrives while the first reads
+    return io.BytesIO(g)
+
+
+w.moonraker = mr
+w._toolpath.clear()
+assert w.toolpath("n.gcode") and w.toolpath("n.gcode") and len(fetches) == 2 and not w._toolpath   # no stamp: never cached
+meta["modified"], fetches[:] = 1.0, []
+ts = [threading.Thread(target=w.toolpath, args=("c.gcode",)) for _ in range(3)]
+[t.start() for t in ts]
+[t.join() for t in ts]
+assert len(fetches) == 1, fetches                       # three viewers on a cold cache: the printer serves it once
+for k in range(6):                                      # more files than the cache keeps: the oldest go, nothing raises
+    w.toolpath(f"f{k}.gcode")
+assert len(w._toolpath) == 4
+meta["size"] = w.TOOLPATH_MAX + 1
+try:
+    w.toolpath("big.gcode")
+    raise AssertionError("an oversize file was read")
+except ValueError as e:
+    assert "MB" in str(e)
+
 node = shutil.which("node")
 if node:   # the page's own decoder: segments and layer starts as the 3D view uses them
     html = open(os.path.join(os.path.dirname(__file__), "workshop.html"), encoding="utf-8").read()

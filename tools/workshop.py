@@ -1543,33 +1543,62 @@ def tool_changes(file, read=None):
 
 
 _toolpath = {}
+_toolpath_lock = _threading.Lock()   # guards the cache dict and the per-file locks
+_toolpath_building = {}              # (file, everything) -> a lock: one build per file, a second viewer waits for it
 TOOLPATH_KEEP = (b"Outer wall", b"Overhang wall")
+TOOLPATH_MAX = 200 * 1024 * 1024     # bigger G-code is refused: one build reads it all (24 Nov review)
 
 
 def toolpath(file, read=None, everything=False):
     """The running print's shape for the live 3D view, small: outer and overhang walls only (every extrusion when the
     file has no ;TYPE: comments), points to 0.01 mm as int16, split into polylines. The page used to download and parse
     the whole G-code on every Now view during a print (38 MB for the 24 Nov ghost cap; this is 0.6 MB gzipped).
-    Binary: b'WTP1', uint32 points, uint32 layers, int16 x,y,z per point, uint8 tool per point, uint8 1 where a
-    polyline starts, float32 z per layer, uint32 first point per layer. Kept, gzipped, while the file is unchanged.
     everything=True keeps every extrusion (infill, supports, tower) for the Files preview: 4.3 MB gzipped against 38 MB.
-    Returns (raw bytes, gzipped bytes)."""
+    Binary: b'WTP1', uint32 points, uint32 layers, int16 x,y,z per point, uint8 tool per point, uint8 1 where a
+    polyline starts, float32 z per layer, uint32 first point per layer. Kept, gzipped, while the file is unchanged
+    (a file whose metadata has no modified time is built each time and not kept). Returns (raw bytes, gzipped bytes)."""
+    if read is not None:
+        return _build_toolpath(read, everything)
+    key = (file, everything)
+    with _toolpath_lock:
+        building = _toolpath_building.setdefault(key, _threading.Lock())
+    with building:   # two phones on a cold cache: the second waits and gets the first one's result
+        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
+            meta = json.load(r)["result"]
+        stamp = meta.get("modified")
+        with _toolpath_lock:
+            hit = _toolpath.get(key)
+        if stamp is not None and hit and hit[0] == stamp:
+            return hit[1]
+        if (meta.get("size") or 0) > TOOLPATH_MAX:
+            raise ValueError(f"the file is {meta['size'] // 1048576} MB, over the {TOOLPATH_MAX // 1048576} MB the 3D view reads")
+        out = _build_toolpath(moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=300), everything)
+        if stamp is not None:
+            with _toolpath_lock:
+                while len(_toolpath) >= 4 and key not in _toolpath:   # the printing file's outline and a few previews
+                    _toolpath.pop(next(iter(_toolpath)), None)
+                _toolpath[key] = (stamp, out)
+        return out
+
+
+def _build_toolpath(read, everything):
+    import array
     import gzip
     import struct
-    stamp = None
-    if read is None:
-        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
-            stamp = json.load(r)["result"].get("modified")
-        if _toolpath.get((file, everything), (None,))[0] == stamp:
-            return _toolpath[(file, everything)][1]
-        read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=300)
     x = y = z = e = 0.0
     abs_e = abs_xyz = True
     tool, keep, typed, last = 0, False, False, None
-    pts, tools, starts, layers = [], bytearray(), bytearray(), []
+    pts, tools, starts, layers = array.array("h"), bytearray(), bytearray(), []
+    marked, pending = False, None   # the slicer's ;Z: layer markers, when the file has them (vase mode: one long polyline)
     clamp = lambda v: max(-32768, min(32767, round(v * 100)))   # noqa: E731
     with read as f:
         for raw in f:
+            if raw[:3] == b";Z:":
+                try:
+                    marked, pending = True, float(raw[3:])
+                except ValueError:
+                    pass
+                continue
             if raw[:6] == b";TYPE:":
                 typed, keep, last = True, everything or raw[6:].strip() in TOOLPATH_KEEP, None
                 continue
@@ -1617,12 +1646,18 @@ def toolpath(file, read=None, everything=False):
                         de = v
             if de > 0 and (nx != x or ny != y) and (keep or not typed):
                 if last != (x, y, z):   # a new polyline starts where this move starts
-                    if not layers or abs(z - layers[-1][0]) > 0.005:
+                    if not marked and (not layers or abs(z - layers[-1][0]) > 0.005):
                         layers.append((z, len(tools)))
-                    pts += (clamp(x), clamp(y), clamp(z))
+                    if pending is not None:
+                        layers.append((pending, len(tools)))
+                        pending = None
+                    pts.extend((clamp(x), clamp(y), clamp(z)))
                     tools.append(tool)
                     starts.append(1)
-                pts += (clamp(nx), clamp(ny), clamp(nz))
+                elif pending is not None:   # a new layer mid-polyline (vase mode): it starts at the previous point
+                    layers.append((pending, len(tools) - 1))
+                    pending = None
+                pts.extend((clamp(nx), clamp(ny), clamp(nz)))
                 tools.append(tool)
                 starts.append(0)
                 last = (nx, ny, nz)
@@ -1630,14 +1665,11 @@ def toolpath(file, read=None, everything=False):
                 last = None
             x, y, z = nx, ny, nz
     n, nl = len(tools), len(layers)
-    raw = (b"WTP1" + struct.pack("<II", n, nl) + struct.pack(f"<{3 * n}h", *pts) + bytes(tools) + bytes(starts)
+    if sys.byteorder != "little":
+        pts.byteswap()
+    raw = (b"WTP1" + struct.pack("<II", n, nl) + pts.tobytes() + bytes(tools) + bytes(starts)
            + struct.pack(f"<{nl}f", *[a for a, _ in layers]) + struct.pack(f"<{nl}I", *[b for _, b in layers]))
-    out = (raw, gzip.compress(raw, 6))
-    if stamp is not None:
-        if len(_toolpath) >= 4:   # ponytail: the printing file's outline and a few previews; oldest first out
-            _toolpath.pop(next(iter(_toolpath)))
-        _toolpath[(file, everything)] = (stamp, out)
-    return out
+    return raw, gzip.compress(raw, 6)
 
 
 def frames(job=""):
