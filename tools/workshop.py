@@ -401,7 +401,7 @@ def watch_alerts():
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
-                checked.pop(was, None); _LAST_OK.pop(was, None); head_check = False   # the run is over: nothing carries into the next
+                checked.pop(was, None); _LAST_OK.pop(was, None); _WATCH_PAUSED.pop(was, None); head_check = False   # the run is over: nothing carries into the next
                 was = None
         except Exception as e:
             print("layer photo failed:", e, flush=True)
@@ -1025,6 +1025,13 @@ def checked_block(file, run=None):
 
 
 _LAST_OK = {}   # run folder -> (photo, layer) the watch last passed: the "before" picture for its next look
+# run folder -> [problem, layer, told] of the watch's last pause. It only checks while the print runs, so a later finding
+# means a person looked and resumed: the same problem then warns once instead of pausing again for REPAUSE_GAP layers
+# (24 Nov 2026: a tangle on the prime tower paused the hoodie at 419 and again at 421, the figure itself fine).
+# ponytail: in memory, a Workshop restart forgets it and the watch may pause once more
+_WATCH_PAUSED = {}
+REPAUSE_GAP = 50
+WATCH_WORD = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}
 
 
 def photo_watch(file, layer, photo, first=None, head_change=False):
@@ -1057,6 +1064,17 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
             if v["verdict"] == "ok" and v["problem"] == "none":
                 _LAST_OK[os.path.dirname(photo)] = (photo, layer)
             return
+        run = os.path.dirname(photo)
+        was = _WATCH_PAUSED.get(run)
+        if was and was[0] == v["problem"] and layer - was[1] < REPAUSE_GAP:
+            log({"not_paused": f"a person resumed after the same finding at layer {was[1]}"})
+            if not was[2]:
+                was[2] = True
+                printer.push(f"Still seeing {WATCH_WORD[v['problem']]}, not pausing again",
+                             f"{os.path.basename(file)} at layer {layer}. {v['reason']} You resumed after this at layer {was[1]}, "
+                             f"so the watch keeps printing until layer {was[1] + REPAUSE_GAP}. Cancel from Workshop if it gets worse.",
+                             "warn", click=CFG.get("url"))
+            return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
@@ -1067,7 +1085,8 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         if printer.status()["state"] != "printing":
             return
         moonraker("POST", "/printer/print/pause", timeout=10).read()
-        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}[v2["problem"]]
+        _WATCH_PAUSED[run] = [v2["problem"], layer, False]
+        what = WATCH_WORD[v2["problem"]]
         record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
         printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
