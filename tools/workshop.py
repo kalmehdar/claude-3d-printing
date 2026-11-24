@@ -1581,15 +1581,21 @@ def control(req):
     if act == "resume":   # the page's Resume and printer_resume: only when the printer will take it, else say why
         import printer
         with moonraker("GET", "/printer/objects/query?print_stats&pause_resume&machine_state_manager", timeout=5) as r:
-            h = printer.hold(json.load(r)["result"]["status"])
+            s0 = json.load(r)["result"]["status"]
+        h = printer.hold(s0)
         if not h["can_resume"]:
             return 409, {"error": "Not resumed: " + h["waiting"] + ".", "why": h["why"]}
+        if ((s0.get("print_stats") or {}).get("exception") or {}).get("id") == 532 and req.get("person_checked") is not True:
+            return 409, {"error": "Not resumed: the printer's detector paused it. A person looks at the part (camera or in person) and "
+                                  "says carry on first (person_checked).", "why": h["why"]}
         g("RESUME", timeout=120)
         return 200, {"done": "resumed" + (" after: " + h["why"] if h["why"] else "")}
     if act == "detector":   # the printer's own camera checks; saved on the printer, so it stays until changed back
         on, sens = req.get("spaghetti"), req.get("sensitivity")
         if on is None and sens is None:
             return 400, {"error": "give spaghetti (true or false) and/or sensitivity (low or high)"}
+        if on is not None and not isinstance(on, bool):   # the string "false" is truthy: only a real true or false
+            return 400, {"error": "spaghetti is true or false"}
         if sens is not None and sens not in ("low", "high"):
             return 400, {"error": "sensitivity is low or high"}
         cmd = "DEFECT_DETECTION_CONFIG" + (f" NOODLE_ENABLE={int(bool(on))}" if on is not None else "") + (f" NOODLE_SENSITIVITY={sens}" if sens else "")
@@ -1677,7 +1683,7 @@ def control(req):
 PROXY_OK = {
     "GET": ("/printer/objects/query", "/server/job_queue/status", "/server/history/list", "/server/history/totals",
             "/server/files/list", "/server/files/metadata", "/server/files/gcodes/", "/server/files/timelapse/", "/server/gcode_store"),
-    "POST": ("/printer/print/start", "/printer/print/pause", "/printer/print/resume", "/printer/print/cancel",
+    "POST": ("/printer/print/start", "/printer/print/pause", "/printer/print/cancel",   # resume only via /api/control (its checks)
              "/printer/gcode/script", "/server/job_queue/job", "/server/job_queue/start", "/server/job_queue/pause",
              "/server/files/upload"),
     "DELETE": ("/server/files/gcodes/", "/server/job_queue/job"),

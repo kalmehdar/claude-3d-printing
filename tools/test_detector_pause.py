@@ -48,12 +48,21 @@ state["s"] = st("printing", NOODLE)
 code, out = w.control({"action": "resume"})
 assert code == 409 and "spaghetti" in out["why"] and not any("RESUME" in p for p in sent), (code, out, sent)
 state["s"] = st("paused", NOODLE)
-code, out = w.control({"action": "resume"})
+code, out = w.control({"action": "resume"})   # a detector pause needs a person's word
+assert code == 409 and "person" in out["error"] and not any("RESUME" in p for p in sent), (code, out)
+code, out = w.control({"action": "resume", "person_checked": "true"})   # only a real true
+assert code == 409, (code, out)
+code, out = w.control({"action": "resume", "person_checked": True})
 assert code == 200 and any(p.endswith("script=RESUME") for p in sent), (code, out, sent)
+sent.clear()
+state["s"] = st("paused")   # a pause by a person (no detector): no extra check
+assert w.control({"action": "resume"})[0] == 200 and any(p.endswith("script=RESUME") for p in sent)
+assert not w.proxy_allowed("POST", "/printer/print/resume")   # the raw path cannot skip these checks
 
 # detector settings: checked, then one DEFECT_DETECTION_CONFIG
 assert w.control({"action": "detector"})[0] == 400
 assert w.control({"action": "detector", "sensitivity": "max"})[0] == 400
+assert w.control({"action": "detector", "spaghetti": "false"})[0] == 400   # a string is not a switch
 sent.clear()
 code, out = w.control({"action": "detector", "spaghetti": False})
 assert code == 200 and sent[-1].endswith("DEFECT_DETECTION_CONFIG%20NOODLE_ENABLE%3D0"), sent

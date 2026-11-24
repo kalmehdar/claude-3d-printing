@@ -278,12 +278,43 @@ def t_simple(action):
     return go
 
 
-def t_resume(_):
-    return http("POST", "/api/control", {"action": "resume"})["done"]
+def t_resume(a):
+    return http("POST", "/api/control", {"action": "resume", "person_checked": a.get("person_checked") is True})["done"]
 
 
 def t_detector(a):
     return http("POST", "/api/control", {"action": "detector", **{k: a[k] for k in ("spaghetti", "sensitivity") if k in a}})["done"]
+
+
+WAIT_EVERY = 10   # seconds between looks while waiting
+
+
+def t_wait(a):
+    """Block until the print changes state (pauses, finishes, fails, starts), reaches a layer, or minutes pass, instead of
+    calling printer_status over and over. Returns what happened and the status at that moment."""
+    minutes = float(a.get("minutes") or 5)
+    if not 0 < minutes <= 15:
+        raise ValueError("minutes is up to 15")
+    layer = int(a["layer"]) if a.get("layer") else None
+
+    def look():
+        ps = mr("GET", "/printer/objects/query?print_stats=state,filename,message,info")["status"]["print_stats"]
+        return ps["state"], (ps.get("info") or {}).get("current_layer") or 0, ps
+    state0, _, _ = look()
+    end = time.time() + minutes * 60
+    while True:
+        state, now, ps = look()
+        if state != state0:
+            what = f"State changed: {state0} -> {state}" + (f' ({ps["message"]})' if ps.get("message") else "")
+            break
+        if layer and now >= layer:
+            what = f"Reached layer {now}."
+            break
+        if time.time() >= end:
+            what = f"Nothing changed in {minutes:g} min (still {state}" + (f", layer {now}" if now else "") + ")."
+            break
+        time.sleep(WAIT_EVERY)
+    return what + "\n\n" + t_status({})
 
 
 def t_queue(a):
@@ -564,6 +595,10 @@ def t_alerts(_):
 HEAD = {"type": "string", "description": "T0, T1, T2 or T3 (the printer's screen numbers them 1 to 4)"}
 TOOLS = [
     ("printer_status", "What the printer is doing: state, layer, time left, bed, each head's filament and whether it is loaded, recent warnings.", {}, t_status),
+    ("printer_wait", "Wait for the print instead of polling printer_status: returns when the state changes (paused, finished, cancelled, "
+     "error, started), when it reaches a layer, or after the minutes given (default 5, at most 15), with the status then.",
+     {"layer": {"type": "integer", "minimum": 1, "description": "return once the print reaches this layer"},
+      "minutes": {"type": "number", "description": "longest wait, up to 15"}}, t_wait),
     ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
     ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
      {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
@@ -588,7 +623,9 @@ TOOLS = [
       "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
     ("printer_resume", "Resume a paused print, including one the printer's spaghetti detector paused. Refused, with the reason, "
-     "until the printer will really take it; look at printer_snapshot first and only resume if the person says it is fine.", {}, t_resume),
+     "until the printer will really take it. After the printer's own detector paused it, Workshop refuses unless person_checked: "
+     "look at printer_snapshot, ask the person, and pass person_checked=true only when they say the part is fine.",
+     {"person_checked": {"type": "boolean", "description": "the person looked at the part after a detector pause and said carry on"}}, t_resume),
     ("printer_detector", "The printer's own spaghetti detector (its camera pauses the print when it sees loose strands). Turn it on or "
      "off or set its sensitivity; the printer keeps the setting until it is changed back, so say so and offer to turn it back on.",
      {"spaghetti": {"type": "boolean", "description": "true on, false off"},
