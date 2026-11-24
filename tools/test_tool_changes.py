@@ -26,4 +26,13 @@ assert w.tool_changes("z.gcode", read=io.BytesIO(b"T0\nG1 X1 E5\n"))["tower_g"] 
 assert w.tool_changes("a.gcode", read=io.BytesIO(b"M82\nT0\n;TYPE:Prime tower\nG1 X1 E500\nG1 X2 E520\n"))["tower_g"] == 0
 assert w.tool_changes("b.gcode", read=io.BytesIO(b"T0\n;TYPE:Prime tower\nG1 X1 E500\n"))["tower_g"] == 0
 assert w.tool_changes("c.gcode", read=io.BytesIO(b"M82\nT0\n;TYPE:Prime tower\nG1 X1 E500\nM83\nG1 X2 E100\n"))["tower_by_head"] == {"T0": 0.3}
+# time left: the slicer's M73 minutes at the file position, scaled by how slow the print has really been
+g = b"M73 P0 R100\nG1 X1\nM73 P1 R100\nM73 P50 R40\nG1 X2\nM73 P90 R10\nM73 P100 R0\n"
+r = w.tool_changes("t.gcode", read=io.BytesIO(g))
+assert [m for _, m in r["remain"]] == [100, 40, 10, 0], r["remain"]    # a repeated R is kept once
+at40 = r["remain"][1][0]
+assert w.time_left(r, at40, 60 * 60 * 2) == 40 * 7200 / 60             # 60 slicer minutes took 2 h: 40 left takes 80 min
+assert w.time_left(r, at40 + 5, 7200) == w.time_left(r, at40, 7200)    # between markers: the last one read
+assert w.time_left(r, 0, 600) is None                                   # nothing done yet: too early to scale
+assert w.time_left({"remain": []}, 10, 600) is None and w.time_left(None, 10, 600) is None
 print("tool change count check passed")

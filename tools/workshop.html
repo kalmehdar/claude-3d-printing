@@ -807,7 +807,11 @@ function render() {
     tc2 ? `tool change ${done} of ${tc2.total}` : "", active && pal.enable ? `pauses at layer ${pal.layer}` : ""].filter(Boolean).join(" · ");
   let left = null;
   let guess = false;
-  if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
+  const rm = active && S.tc && S.tcFor === ps.filename ? S.tc.remain || [] : [];   // the slicer's minutes left by file position (time_left in workshop.py)
+  let rNow = rm.length ? rm[0][1] : 0; for (const [at, m] of rm) { if (at > pos) break; rNow = m; }
+  const rDone = rm.length ? rm[0][1] - rNow : 0;
+  if (ps.state === "printing" && rDone >= 15 && ps.print_duration) left = rNow * ps.print_duration / rDone;
+  else if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
   else if (active && est) {   // early on: the slicer's estimate, corrected by what past prints really took
     const k = ACC && ACC.n >= 2 ? ACC.time : 1, prep = ACC && ACC.n >= 2 && !(info.current_layer > 0) ? ACC.prep_min * 60 : 0;
     left = Math.max(est * k - ps.print_duration, 0) + prep; guess = true; }
