@@ -100,6 +100,15 @@ PRESETS = {
                "seam_slope_type": "none", "seam_slope_conditional": "1", "seam_slope_inner_walls": "1",
                "seam_slope_steps": "20", "seam_slope_entire_loop": "1", "staggered_inner_seams": "1",
                "wall_sequence": "inner-outer-inner wall"},
+    # figure: the default for figurines and painted models (Khalid, 24 Nov: "keep improving the quality... smoother defaults").
+    # quality's clean outside on 0.16 mm layers with the 23 Nov wall-test outer wall (45 mm/s, 1500 acceleration), tree
+    # supports on. 0.16 not 0.12: the duo hoodie ghost at 0.12 was 12.4 h against 9.2 h, and 0.08 fuses supports. Multi-colour
+    # prints add the tower and support-contact sets on top (wipe_tower_filament, support_interface_filament).
+    "figure": {"layer_height": "0.16", "wall_loops": "3", "top_shell_layers": "6", "bottom_shell_layers": "4",
+               "outer_wall_speed": "45", "outer_wall_acceleration": "1500", "top_surface_speed": "100",
+               "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
+               "seam_slope_type": "none", "staggered_inner_seams": "1", "wall_sequence": "inner-outer-inner wall",
+               "enable_support": "1", "support_type": "tree(auto)"},
     "lean": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100", "wall_generator": "arachne",
              "precise_outer_wall": "1", "seam_position": "back", "prime_volume": "20",
              "sparse_infill_pattern": "lightning", "sparse_infill_density": "10%"},
@@ -133,6 +142,7 @@ PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standa
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
                 "low-waste": "multi-colour on a tool changer: smaller prime tower and purge (check the first print for colour bleed)",
                 "grip": "a gentle fuzzy skin outside, for handles and things you hold; hides layer lines (not for faces that must fit)",
+                "figure": "figurines and painted models: 0.16 mm layers, the gentle outer wall from the 23 Nov test, tree supports on (about a third slower than quality)",
                 "fine-text": "sharp lettering and fine detail: 0.12 mm layers, 0.25 mm lines, 4 walls, about half speed (slow; make the text bold and print it face up)"}
 
 
