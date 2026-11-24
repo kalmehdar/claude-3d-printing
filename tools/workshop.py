@@ -1578,6 +1578,23 @@ def control(req):
             return json.load(r)["result"]["status"]
     def g(cmd, timeout=60):
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=timeout).read()
+    if act == "resume":   # the page's Resume and printer_resume: only when the printer will take it, else say why
+        import printer
+        with moonraker("GET", "/printer/objects/query?print_stats&pause_resume&machine_state_manager", timeout=5) as r:
+            h = printer.hold(json.load(r)["result"]["status"])
+        if not h["can_resume"]:
+            return 409, {"error": "Not resumed: " + h["waiting"] + ".", "why": h["why"]}
+        g("RESUME", timeout=120)
+        return 200, {"done": "resumed" + (" after: " + h["why"] if h["why"] else "")}
+    if act == "detector":   # the printer's own camera checks; saved on the printer, so it stays until changed back
+        on, sens = req.get("spaghetti"), req.get("sensitivity")
+        if on is None and sens is None:
+            return 400, {"error": "give spaghetti (true or false) and/or sensitivity (low or high)"}
+        if sens is not None and sens not in ("low", "high"):
+            return 400, {"error": "sensitivity is low or high"}
+        cmd = "DEFECT_DETECTION_CONFIG" + (f" NOODLE_ENABLE={int(bool(on))}" if on is not None else "") + (f" NOODLE_SENSITIVITY={sens}" if sens else "")
+        g(cmd)
+        return 200, {"done": "spaghetti detector " + ", ".join(x for x in (("on" if on else "off") if on is not None else "", sens and sens + " sensitivity") if x)}
     s = st()
     busy = s["print_stats"]["state"] in ("printing", "paused")
     if act == "fan":
@@ -1652,7 +1669,7 @@ def control(req):
             return 400, {"error": "that rewrites the printer's setup or forces a motor: do it on the printer itself"}
         g(cmd, timeout=600)
         return 200, {"done": f"sent {cmd}"}
-    return 400, {"error": "action is heat, move, fan, calibrate or gcode"}
+    return 400, {"error": "action is heat, move, fan, calibrate, gcode, resume or detector"}
 
 
 # What the pages and the MCP may reach on the printer through /moonraker/ (22 Nov 2026 review, P1: every other path,
