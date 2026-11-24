@@ -313,8 +313,12 @@ ALERT_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing
 _alerts = []        # every warning seen, oldest first; the printer's own console only keeps a few minutes
 
 
+_scanned = [0.0]   # when the console was last read for warnings
+
+
 def scan_alerts():
     """Copy new warnings and errors from the printer's console into the alert history (kept on disk)."""
+    _scanned[0] = time.time()
     with moonraker("GET", "/server/gcode_store?count=1000", timeout=10) as r:
         store = json.load(r)["result"]["gcode_store"]
     seen = {(int(a["t"] // 60), a["text"]) for a in _alerts}   # the same message within a minute counts once
@@ -338,8 +342,11 @@ def scan_alerts():
 
 
 def alerts(limit=12):
+    """The alert history, newest first. The watcher thread reads the printer's console every 20 s; a page asks only when
+    that is over 10 s old, instead of fetching 1000 console lines from the printer on every page's 10 s poll."""
     try:
-        scan_alerts()
+        if time.time() - _scanned[0] > 10:
+            scan_alerts()
     except (OSError, ValueError, KeyError):
         pass
     return _alerts[::-1][:limit]
@@ -1846,6 +1853,44 @@ PROXY_OK = {
 }
 
 
+# Every open page polls the printer's status every 2.5 s and the queue every 15 s; with a few family phones and Claude
+# watching, the U1's small computer answered the same question many times a second. One answer is shared for a second.
+SHARED_POLLS = ("/printer/objects/query", "/server/job_queue/status")
+POLL_TTL = 1.0
+_poll_cache = {}
+
+
+_list_cache = [0.0, None]   # the file list behind /api/meta for 10 s; any action drops it
+_meta_cache = {}   # (file, modified) -> its Moonraker metadata; a file's metadata never changes until it is replaced
+
+
+def files_meta(names):
+    """Metadata for many G-code files in one answer, for the Files and Queue lists (they asked once per file: 44 round
+    trips over a phone's tailnet link). Fetched from the printer in parallel on alm-01's LAN, kept per file version."""
+    import concurrent.futures
+    t, mods = _list_cache
+    if mods is None or time.time() - t > 10:   # the U1's Moonraker is the slow part (5 s for a list mid-print, 24 Nov)
+        with moonraker("GET", "/server/files/list?root=gcodes", timeout=15) as r:
+            mods = {f["path"]: f.get("modified") for f in json.load(r)["result"]}
+        _list_cache[:] = [time.time(), mods]
+    want = [n for n in dict.fromkeys(names) if n in mods][:100]
+
+    def one(n):
+        key = (n, mods[n])
+        if key not in _meta_cache:
+            try:
+                with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(n), timeout=15) as r:
+                    _meta_cache[key] = json.load(r)["result"]
+            except (OSError, ValueError, KeyError):
+                return n, {}   # not kept: asked again next time
+        return n, _meta_cache[key]
+    with concurrent.futures.ThreadPoolExecutor(6) as ex:
+        out = dict(ex.map(one, want))
+    if len(_meta_cache) > 500:   # ponytail: drop everything past 500 versions; a real LRU if the printer ever holds that many
+        _meta_cache.clear()
+    return out
+
+
 def proxy_allowed(method, path):
     u = urllib.parse.urlparse(path)
     if ".." in urllib.parse.unquote(u.path) or not any(u.path == x or (x.endswith("/") and u.path.startswith(x)) or u.path.startswith(x + "?")
@@ -1931,6 +1976,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def proxy(self, path, timeout=30):
         hdrs = {k: v for k, v in self.headers.items() if k.lower() not in SKIP}
+        shared = self.command == "GET" and path.startswith(SHARED_POLLS)
+        if shared:
+            hit = _poll_cache.get(path)
+            if hit and time.time() - hit[0] < POLL_TTL:
+                return self.send(hit[1], hit[2], hit[3])
         try:
             r = moonraker(self.command, path, self.body(), hdrs, timeout)
         except urllib.error.HTTPError as e:
@@ -1954,7 +2004,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             finally:
                 r.close()   # free the printer's connection too (22 Nov 2026 review)
             return
-        self.send(r.status, r.read(), ctype, keep)
+        body = r.read()
+        if shared and r.status == 200:
+            _poll_cache[path] = (time.time(), r.status, body, ctype)
+        self.send(r.status, body, ctype, keep)
 
     MCP_LOCAL_ONLY = ("printer_upload_model",)   # 22 Nov 2026 review: over HTTP it read files on alm-01
 
@@ -2145,6 +2198,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # one handler serves every request on a kept-alive connection (Caddy reuses them): forget the last request's
         # body, or the next request reads it as its own (22 Nov 2026: replies shifted one request behind)
         self.__dict__.pop("_body", None)
+        if self.command != "GET":
+            _poll_cache.clear()   # any action (the proxy or /api/...): the next status look goes to the printer
+            _list_cache[:] = [0.0, None]   # an upload or delete changes the file list
         p = self.path
         if not self.allowed():
             return self.send(403, {"error": "refused: open Workshop by its address, not from another site"})
@@ -2428,6 +2484,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             return self.send(200, out)
+        if p.startswith("/api/meta"):   # ?f=a.gcode&f=b.gcode: every file's slicer metadata in one answer
+            try:
+                return self.send(200, files_meta(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("f", [])))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"printer: {e}"})
         if p.startswith("/api/tool-changes"):   # ?file=: where the head changes, for "tool change 12 of 40" on the page
             f = urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("file", [""])[0]
             if not f or ".." in f:

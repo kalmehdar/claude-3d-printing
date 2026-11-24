@@ -1051,8 +1051,10 @@ function thumbUrl(name, m) {
   const dir = name.includes("/") ? name.slice(0, name.lastIndexOf("/") + 1) : "";
   return M("/server/files/gcodes/" + (dir + t.relative_path).split("/").map(enc).join("/")).replace(/[()'"\\]/g, c => "%" + c.charCodeAt(0).toString(16));   // safe inside url('...')
 }
-async function ensureMeta(names) {
-  await Promise.all(names.filter(n => !S.meta[n]).map(async n => { try { S.meta[n] = await api(M("/server/files/metadata?filename=" + enc(n))); } catch (e) { S.meta[n] = {}; } }));
+async function ensureMeta(names) {   // one /api/meta answer for every file still unknown (was one request per file)
+  const want = [...new Set(names.filter(n => !S.meta[n]))]; if (!want.length) return;
+  let got = {}; try { got = await api("/api/meta?" + want.map(n => "f=" + enc(n)).join("&")); } catch (e) {}
+  for (const n of want) S.meta[n] = got[n] || {};
 }
 // The file printing (or paused) now gets Preview only: no second Print, no Delete under a running job (22 Nov audit)
 function fileActs(path) {
