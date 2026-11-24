@@ -1503,6 +1503,7 @@ def tool_changes(file, read=None):
     else:
         stamp = None
     offsets, head, at, tower, mm, conf = [], None, 0, False, {}, {}
+    rel = False   # only relative extrusion (M83) is counted; Klipper starts absolute, and an M82 file would read as hundreds of grams
     with read as f:
         for line in f:
             c = line[:1]
@@ -1517,7 +1518,9 @@ def tool_changes(file, read=None):
                 elif line.startswith((b"; filament_density", b"; filament_diameter")):
                     k, _, v = line[2:].decode("ascii", "replace").replace("=", ":").partition(":")
                     conf.setdefault(k.strip(), [float(x) for x in re.findall(r"[\d.]+", v)])
-            elif tower and c == b"G" and b" E" in line:   # relative extrusion (M83): a retract and its unretract cancel
+            elif c == b"M" and line[:3] in (b"M82", b"M83") and not line[3:4].isdigit():
+                rel = line[:3] == b"M83"
+            elif tower and rel and c == b"G" and b" E" in line:   # relative extrusion: a retract and its unretract cancel
                 m = re.search(rb" E(-?[\d.]+)", line)
                 if m:
                     k = (head or b"T0").decode()

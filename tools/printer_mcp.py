@@ -76,7 +76,7 @@ def t_status(_):
         lines.append(f'Layer {info["current_layer"]} of {info["total_layer"]}, {round(p * 100)}%')
     if ps["state"] in ("printing", "paused") and ps.get("filename"):
         try:   # Workshop reads the file once and keeps it: tool changes so far, and plastic for the prime tower
-            tc = http("GET", "/api/tool-changes?file=" + q(ps["filename"]), timeout=60)
+            tc = http("GET", "/api/tool-changes?file=" + q(ps["filename"]), timeout=10)   # never stall the status on a first read
             pos = (mr("GET", "/printer/objects/query?virtual_sdcard=file_position")["status"].get("virtual_sdcard") or {}).get("file_position") or 0
             if tc.get("total"):
                 lines.append(f'Tool change {sum(o < pos for o in tc["offsets"])} of {tc["total"]}'

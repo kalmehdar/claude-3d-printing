@@ -21,4 +21,9 @@ area = 3.14159265 * 0.875 ** 2
 assert r["tower_by_head"] == {"T0": round(100 * area * 1.27 / 1000, 1), "T1": round(39.2 * area * 1.24 / 1000, 1)}, r
 assert r["tower_g"] == round(sum(r["tower_by_head"].values()), 1) and r["total"] == 1   # walls never count
 assert w.tool_changes("z.gcode", read=io.BytesIO(b"T0\nG1 X1 E5\n"))["tower_g"] == 0     # no tower, no waste
+# absolute extrusion (M82, or no M83 at all: Klipper's default) is not counted, so another slicer's file never reads as
+# hundreds of grams of purge; a switch back to M83 counts again
+assert w.tool_changes("a.gcode", read=io.BytesIO(b"M82\nT0\n;TYPE:Prime tower\nG1 X1 E500\nG1 X2 E520\n"))["tower_g"] == 0
+assert w.tool_changes("b.gcode", read=io.BytesIO(b"T0\n;TYPE:Prime tower\nG1 X1 E500\n"))["tower_g"] == 0
+assert w.tool_changes("c.gcode", read=io.BytesIO(b"M82\nT0\n;TYPE:Prime tower\nG1 X1 E500\nM83\nG1 X2 E100\n"))["tower_by_head"] == {"T0": 0.3}
 print("tool change count check passed")
