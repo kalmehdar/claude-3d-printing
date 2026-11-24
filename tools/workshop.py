@@ -491,7 +491,10 @@ def alert_change(prev, s, folder=None):
             import threading
             threading.Thread(target=print_doctor, args=(s["file"], "the printer paused it itself (" + s["message"] + "); it is still paused. The last picture is the camera right now. "
                                                                 "Say in next_step whether it looks safe to continue or should be cancelled"), kwargs={"now": True}, daemon=True).start()
-        if s["state"] in ("error", "cancelled") and s.get("file"):   # what went wrong, while the photos are fresh
+        # what went wrong, while the photos are fresh; not after a cancel before anything printed (24 Nov: two cancels
+        # during heating each cost a Claude call and a phone push diagnosing an empty plate)
+        printed = (s.get("printing_min") or 0) >= 1 or (s.get("filament_used_m") or 0) >= 0.2
+        if s.get("file") and (s["state"] == "error" or (s["state"] == "cancelled" and printed)):
             import threading
             threading.Thread(target=print_doctor, args=(s["file"], "the print " + ("stopped with an error: " + (s.get("message") or "") if s["state"] == "error" else "was cancelled")), daemon=True).start()
         if s["state"] == "complete":   # Claude looks at what came out (Khalid, 22 Nov: Claude does the jobs without being asked)

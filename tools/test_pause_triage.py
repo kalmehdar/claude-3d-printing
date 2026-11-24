@@ -59,4 +59,12 @@ had = set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*")))
 w.alert_change("printing", {**base, "state": "paused", "message": reason}, folder="ghost-0000AB")   # a new run
 assert done.wait(5) and len(asked) == 1
 assert set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*"))) == had, "this pause left a snapshot folder behind"
+# a cancel before anything printed (still heating): no doctor, no push about an empty plate
+asked.clear()
+done.clear()
+pushes.clear()
+w.alert_change("printing", {"file": "empty.gcode", "state": "cancelled", "printing_min": 0.0, "filament_used_m": 0.0})
+assert not done.wait(0.5) and not asked and not any(t.startswith("Print doctor") for t, _ in pushes), pushes
+w.alert_change("printing", {"file": "empty.gcode", "state": "cancelled", "printing_min": 12.0, "filament_used_m": 1.5})
+assert done.wait(5) and len(asked) == 1                         # a cancel after printing: the doctor looks, as before
 print("pause triage check passed")
