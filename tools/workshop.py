@@ -801,10 +801,20 @@ def cam2_device():
     return dev if os.path.exists(dev) else None
 
 
-def cam2_frame(max_age=2.0):
+# Tested on alm-01 on 24 Nov 2026 (Verbatim 49580, LED strip light): auto exposure picked about 1 s and smeared the moving
+# head, so a fixed 60 ms exposure; a fixed white balance stops the strip's magenta tint. The webcam forgets these when it
+# is replugged (twice that night; the CT passthrough survived), so they are set before every capture.
+CAM2_CONTROLS = ("auto_exposure=1,exposure_time_absolute=600,gain=72,gamma=190,brightness=6,sharpness=4,"
+                 "backlight_compensation=0,power_line_frequency=1,white_balance_automatic=0,white_balance_temperature=5200,"
+                 "focus_automatic_continuous=1")
+CAM2_SIZES = ("2560x1440", "1920x1080")   # 1440p (Khalid), 1080p if the camera refuses it; not 4K
+CAM2_FILTER = "select=gte(n\\,60),hqdn3d=1.5:1.5:0:0,unsharp=5:5:0.5:5:5:0"   # skip 2 s so autofocus settles; light clean-up
+
+
+def cam2_frame(max_age=4.0):
     """A JPEG from the second camera, or None. One ffmpeg at a time holds the device; a frame under max_age seconds old is
-    shared, so several viewers and the photo watch never queue up behind each other. The camera's first frames are dark
-    while its exposure settles, so six are read and the last kept (copied as MJPEG, not re-encoded)."""
+    shared, so several viewers and the photo watch never queue up behind each other. Each grab sets the camera's controls,
+    skips 2 s of frames for autofocus and keeps one at 1440p (1080p as a fallback), lightly denoised and sharpened."""
     dev = cam2_device()
     if not dev:
         return None
@@ -814,13 +824,20 @@ def cam2_frame(max_age=2.0):
         out = os.path.join(tempfile.gettempdir(), "workshop-cam2.jpg")
         try:
             import subprocess
-            r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "v4l2", "-input_format", "mjpeg",
-                                "-video_size", "1920x1080", "-i", dev, "-frames:v", "6", "-c:v", "copy", "-update", "1", out],
-                               capture_output=True, timeout=20)
-            if r.returncode == 0 and os.path.getsize(out) > 1000:
-                _cam2.update(t=time.time(), jpg=open(out, "rb").read())
-            else:
-                print("second camera:", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
+            try:   # best effort: without v4l2-ctl the picture comes with the camera's own settings
+                subprocess.run(["v4l2-ctl", "-d", dev, "-c", CAM2_CONTROLS], capture_output=True, timeout=10)
+            except (OSError, subprocess.SubprocessError) as e:
+                print("second camera controls:", e, flush=True)
+            for size in CAM2_SIZES:
+                if os.path.exists(out):
+                    os.remove(out)
+                r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "v4l2", "-input_format", "mjpeg",
+                                    "-video_size", size, "-i", dev, "-vf", CAM2_FILTER, "-frames:v", "1", "-q:v", "2", out],
+                                   capture_output=True, timeout=25)
+                if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 1000:
+                    _cam2.update(t=time.time(), jpg=open(out, "rb").read())
+                    break
+                print(f"second camera ({size}):", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
         except (OSError, ValueError) as e:
             print("second camera:", e, flush=True)
         except Exception as e:   # noqa: BLE001 - a hung camera (TimeoutExpired) must not take a check down with it
@@ -828,7 +845,7 @@ def cam2_frame(max_age=2.0):
         return _cam2["jpg"] if _cam2["jpg"] and time.time() - _cam2["t"] < 60 else None
 
 
-def cam2_arg(max_age=2.0):
+def cam2_arg(max_age=4.0):
     """{"front": jpg} for look_at_photo when the second camera gave a picture, else {} (the call is as before)."""
     jpg = cam2_frame(max_age)
     return {"front": jpg} if jpg else {}

@@ -17,7 +17,13 @@ w.CFG["camera2"] = dev
 runs, live = [], [0]
 
 
+controls = []
+
+
 def fake_run(cmd, capture_output=True, timeout=None):
+    if cmd[0] == "v4l2-ctl":   # the controls, set before every grab
+        controls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
     runs.append(cmd)
     live[0] += 1
     assert live[0] == 1, "two ffmpeg processes held the camera at once"
@@ -32,9 +38,34 @@ ts = [threading.Thread(target=w.cam2_frame) for _ in range(5)]
 [t.start() for t in ts]
 [t.join() for t in ts]
 assert len(runs) == 1 and runs[0][runs[0].index("-i") + 1] == dev, runs    # five viewers at once: one grab, shared
-assert "-frames:v" in runs[0] and runs[0][runs[0].index("-frames:v") + 1] == "6"
+assert runs[0][runs[0].index("-video_size") + 1] == "2560x1440" and runs[0][runs[0].index("-frames:v") + 1] == "1"
+assert "select=gte(n\\,60)" in runs[0][runs[0].index("-vf") + 1]          # 2 s of frames skipped for autofocus
+assert len(controls) == 1 and "exposure_time_absolute=600" in controls[0][-1] and "white_balance_temperature=5200" in controls[0][-1]
 w.cam2_frame(max_age=0)
 assert len(runs) == 2                                                       # a fresh one when asked for
+
+# 1440p refused: 1080p
+sizes = []
+def no_1440(cmd, capture_output=True, timeout=None):
+    if cmd[0] == "v4l2-ctl":
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+    size = cmd[cmd.index("-video_size") + 1]
+    sizes.append(size)
+    if size == "2560x1440":
+        return subprocess.CompletedProcess(cmd, 1, b"", b"Invalid argument")
+    open(cmd[-1], "wb").write(b"\xff\xd8" + b"y" * 2000 + b"\xff\xd9")
+    return subprocess.CompletedProcess(cmd, 0, b"", b"")
+subprocess.run = no_1440
+assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8y") and sizes == ["2560x1440", "1920x1080"], sizes
+
+# no v4l2-ctl on the box: still a picture, with the camera's own settings
+def no_ctl(cmd, capture_output=True, timeout=None):
+    if cmd[0] == "v4l2-ctl":
+        raise FileNotFoundError("v4l2-ctl")
+    open(cmd[-1], "wb").write(b"\xff\xd8" + b"z" * 2000 + b"\xff\xd9")
+    return subprocess.CompletedProcess(cmd, 0, b"", b"")
+subprocess.run = no_ctl
+assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8z")
 
 # a failed or hung camera: the last good frame (under a minute old) or None, never an exception
 subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a[0], 1, b"", b"Device or resource busy")

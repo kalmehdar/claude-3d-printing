@@ -1876,12 +1876,12 @@ api("/api/info").then(i => { S.info = i;
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
   S.boot = i.boot;
   if (i.live_camera) { $("#camMode").hidden = false; camSet(camPref()); }
-  if (i.camera2) {   // the second camera on alm-01 (a UVC webcam on the printer's side): stills, one shared frame every 2 s
+  if (i.camera2) {   // the second camera on alm-01 (a UVC webcam on the printer's side): stills, one shared frame every 4 s
     $("#cam2Btn").hidden = false;
     $("#cam2Btn").onclick = () => { const b = openSheet("Top view", `<img id="cam2Img" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9" alt="The bed from above the front">
-        <p class="note" style="margin:10px 0 0">The second camera, above the front of the bed. A new picture every 2 seconds.</p>`);
+        <p class="note" style="margin:10px 0 0">The second camera, above the front of the bed. A new picture every few seconds.</p>`);
       const tick = () => { const el = b.querySelector("#cam2Img"); if (el) el.src = "/cam2.jpg?t=" + Date.now(); };
-      tick(); const t = setInterval(() => document.hidden || tick(), 2000); onSheetClose = () => clearInterval(t); };
+      tick(); const t = setInterval(() => document.hidden || tick(), 4000); onSheetClose = () => clearInterval(t); };
   }
   if (i.printer_screen) {   // the U1's touchscreen, shown read-only: a tap there could start or change a print
     $("#screenBtn").hidden = false;
