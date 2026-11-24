@@ -1188,10 +1188,9 @@ async function previewGcode(name) {
   onSheetClose = () => v.dispose();
   ensureMeta([name]).then(() => { const m = S.meta[name] || {};
     body.querySelector("#gvInfo").innerHTML = [m.estimated_time && `About <b>${hm(m.estimated_time)}</b>`, m.filament_weight_total && `<b>${Math.round(m.filament_weight_total)} g</b> of filament`, m.layer_height && `${m.layer_height} mm layers`, m.object_height && `${m.object_height} mm tall`, m.slicer && `sliced in ${esc(m.slicer)}`].filter(Boolean).join(" · ") || "No slicer details in this file."; });
-  let text;
-  try { const r = await fetch(M("/server/files/gcodes/" + name.split("/").map(enc).join("/"))); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text(); }
+  let g;   // Workshop's compact toolpath with every feature (4.3 MB for the ghost cap, not the 38 MB G-code)
+  try { const r = await fetch("/api/toolpath?all=1&file=" + enc(name)); if (!r.ok) throw new Error("HTTP " + r.status); g = decodeToolpath(await r.arrayBuffer()); }
   catch (e) { body.querySelector("#gvMsg").textContent = "Could not load the file: " + e.message; return; }
-  const g = parseGcode(text); text = null;
   if (!g.count) { body.querySelector("#gvMsg").textContent = "No extrusion moves found in this file."; return; }
   body.querySelector("#gvMsg").remove();
   const geo = new THREE.BufferGeometry();
@@ -1207,44 +1206,7 @@ async function previewGcode(name) {
   sl.oninput = show; only.onchange = show; show();
   body.querySelector("#gvLegend").innerHTML = [...g.tools].sort().map(t => `<span><i style="background:${S.colours[t] || DEFAULT_COLOURS[t % 4]}"></i>T${t}</span>`).join("");
 }
-function parseGcode(text) {
-  // Extrusion moves only, in file order; a new layer starts when extrusion happens at a new height.
-  const cols = S.colours.map(h => new THREE.Color(h || "#888"));
-  let cap = 1 << 18, pos = new Float32Array(cap * 6), col = new Float32Array(cap * 6), count = 0;
-  let x = 0, y = 0, z = 0, e = 0, absExtrude = true, absXYZ = true, tool = 0, layerZ = -1;
-  const layers = [], tools = new Set();
-  const grow = () => { cap *= 2; const p = new Float32Array(cap * 6); p.set(pos); pos = p; const c = new Float32Array(cap * 6); c.set(col); col = c; };
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    let l = lines[i]; const sc = l.indexOf(";"); if (sc >= 0) l = l.slice(0, sc); l = l.trim(); if (!l) continue;
-    const c0 = l.charCodeAt(0);
-    if (c0 === 84 /* T */) { const t = parseInt(l.slice(1), 10); if (t >= 0 && t < 16) tool = t; continue; }
-    if (c0 !== 71 && c0 !== 77) continue;
-    const w = l.split(/\s+/), cmd = w[0];
-    if (cmd === "M82") { absExtrude = true; continue; } if (cmd === "M83") { absExtrude = false; continue; }
-    if (cmd === "G90") { absXYZ = true; continue; } if (cmd === "G91") { absXYZ = false; continue; }
-    const absE = absXYZ && absExtrude;   // as in Klipper: G91 makes E relative too, G90 leaves M82/M83 alone
-    if (cmd === "G92") { for (const a of w) if (a[0] === "E") e = parseFloat(a.slice(1)); continue; }
-    if (cmd !== "G1" && cmd !== "G0" && cmd !== "G2" && cmd !== "G3") continue;
-    let nx = x, ny = y, nz = z, de = 0;
-    for (let k = 1; k < w.length; k++) { const a = w[k][0], val = parseFloat(w[k].slice(1)); if (isNaN(val)) continue;
-      if (a === "X") nx = absXYZ ? val : x + val; else if (a === "Y") ny = absXYZ ? val : y + val; else if (a === "Z") nz = absXYZ ? val : z + val;
-      else if (a === "E") { if (absE) { de = val - e; e = val; } else de = val; } }
-    if (de > 0 && (nx !== x || ny !== y)) {
-      if (Math.abs(nz - layerZ) > 0.005) { layers.push({z: nz, start: count}); layerZ = nz; }
-      if (count >= cap) grow();
-      const o = count * 6, cc = cols[tool] || cols[0]; tools.add(tool);
-      pos[o] = x; pos[o + 1] = y; pos[o + 2] = z; pos[o + 3] = nx; pos[o + 4] = ny; pos[o + 5] = nz;
-      for (let q = 0; q < 2; q++) { col[o + q * 3] = cc.r; col[o + q * 3 + 1] = cc.g; col[o + q * 3 + 2] = cc.b; }
-      count++;
-    }
-    x = nx; y = ny; z = nz;
-  }
-  return {pos: pos.subarray(0, count * 6), col: col.subarray(0, count * 6), count, layers, tools};
-}
-
-// Workshop's /api/toolpath (outer walls as int16 polylines, see toolpath() in workshop.py) as the segment arrays
-// parseGcode makes: {pos, col, count, layers: [{z, start}], tools}. 38 MB of G-code became 0.6 MB (24 Nov 2026).
+// Workshop's /api/toolpath (int16 polylines, see toolpath() in workshop.py) as the segment arrays the 3D views draw: {pos, col, count, layers: [{z, start}], tools}. 38 MB of G-code became 0.6 MB (24 Nov 2026).
 function decodeToolpath(buf) {
   const dv = new DataView(buf);
   if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== "WTP1") throw new Error("not a toolpath");

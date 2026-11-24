@@ -1546,12 +1546,13 @@ _toolpath = {}
 TOOLPATH_KEEP = (b"Outer wall", b"Overhang wall")
 
 
-def toolpath(file, read=None):
+def toolpath(file, read=None, everything=False):
     """The running print's shape for the live 3D view, small: outer and overhang walls only (every extrusion when the
     file has no ;TYPE: comments), points to 0.01 mm as int16, split into polylines. The page used to download and parse
     the whole G-code on every Now view during a print (38 MB for the 24 Nov ghost cap; this is 0.6 MB gzipped).
     Binary: b'WTP1', uint32 points, uint32 layers, int16 x,y,z per point, uint8 tool per point, uint8 1 where a
     polyline starts, float32 z per layer, uint32 first point per layer. Kept, gzipped, while the file is unchanged.
+    everything=True keeps every extrusion (infill, supports, tower) for the Files preview: 4.3 MB gzipped against 38 MB.
     Returns (raw bytes, gzipped bytes)."""
     import gzip
     import struct
@@ -1559,8 +1560,8 @@ def toolpath(file, read=None):
     if read is None:
         with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
             stamp = json.load(r)["result"].get("modified")
-        if _toolpath.get(file, (None,))[0] == stamp:
-            return _toolpath[file][1]
+        if _toolpath.get((file, everything), (None,))[0] == stamp:
+            return _toolpath[(file, everything)][1]
         read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=300)
     x = y = z = e = 0.0
     abs_e = abs_xyz = True
@@ -1570,7 +1571,7 @@ def toolpath(file, read=None):
     with read as f:
         for raw in f:
             if raw[:6] == b";TYPE:":
-                typed, keep, last = True, raw[6:].strip() in TOOLPATH_KEEP, None
+                typed, keep, last = True, everything or raw[6:].strip() in TOOLPATH_KEEP, None
                 continue
             line = raw.split(b";", 1)[0].strip()
             if not line:
@@ -1633,8 +1634,9 @@ def toolpath(file, read=None):
            + struct.pack(f"<{nl}f", *[a for a, _ in layers]) + struct.pack(f"<{nl}I", *[b for _, b in layers]))
     out = (raw, gzip.compress(raw, 6))
     if stamp is not None:
-        _toolpath.clear()   # ponytail: one file kept, the one printing
-        _toolpath[file] = (stamp, out)
+        if len(_toolpath) >= 4:   # ponytail: the printing file's outline and a few previews; oldest first out
+            _toolpath.pop(next(iter(_toolpath)))
+        _toolpath[(file, everything)] = (stamp, out)
     return out
 
 
@@ -2615,7 +2617,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not f or ".." in f:
                 return self.send(400, {"error": "give file"})
             try:
-                raw, gz = toolpath(f)
+                raw, gz = toolpath(f, everything=urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("all") == ["1"])
             except (OSError, ValueError, KeyError) as e:
                 return self.send(502, {"error": f"printer: {e}"})
             if "gzip" in (self.headers.get("Accept-Encoding") or ""):
