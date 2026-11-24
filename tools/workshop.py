@@ -867,6 +867,9 @@ def cam2_frame(max_age=4.0, wait=None, fresh_only=False):
     dev = cam2_device()
     if not dev:
         return None
+    live = CAM2_STREAM.latest()
+    if live:   # the live view holds the camera: its newest frame is the picture (720p, MJPEG)
+        return live
     if not _cam2_lock.acquire(timeout=-1 if wait is None else wait):
         return None
     try:
@@ -900,6 +903,92 @@ def cam2_frame(max_age=4.0, wait=None, fresh_only=False):
         return None if fresh_only else recent
     finally:
         _cam2_lock.release()
+
+
+class Cam2Stream:
+    """The top view live, as MJPEG (Khalid, 24 Nov): one ffmpeg reads the webcam's 720p MJPEG at 15 fps, passed through
+    without re-encoding, and every viewer gets its frames. It holds the camera (and _cam2_lock) while it runs, so stills
+    come from its latest frame meanwhile; it stops 10 s after the last viewer leaves and the camera is free again."""
+    IDLE = 10
+
+    def __init__(self):
+        self.cond = _threading.Condition()
+        self.frame, self.t, self.n = None, 0.0, 0
+        self.viewers, self.proc, self.running, self.last_viewer = 0, None, False, 0.0
+
+    def join(self):
+        with self.cond:
+            self.viewers += 1
+            self.last_viewer = time.time()
+            if not self.running:
+                self.running = True
+                _threading.Thread(target=self._run, daemon=True).start()
+
+    def leave(self):
+        with self.cond:
+            self.viewers -= 1
+            self.last_viewer = time.time()
+
+    def latest(self, max_age=1.0):
+        with self.cond:
+            return self.frame if self.running and self.frame and time.time() - self.t < max_age else None
+
+    def wait_frame(self, after, timeout=5):
+        """The next frame after frame number `after`: (number, jpeg) or (after, None) on timeout or stop."""
+        with self.cond:
+            self.cond.wait_for(lambda: self.n > after or not self.running, timeout)
+            return (self.n, self.frame) if self.n > after else (after, None)
+
+    def _run(self):
+        import subprocess
+        dev = cam2_device()
+        got = dev and _cam2_lock.acquire(timeout=30)   # wait for a still grab in progress, then hold the camera
+        try:
+            if got:
+                conf = cam2_settings()
+                try:
+                    subprocess.run(["v4l2-ctl", "-d", dev, "-c", CAM2_CONTROLS + f",focus_automatic_continuous=0,focus_absolute={conf['focus']}"],
+                                   capture_output=True, timeout=10)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+                self.proc = subprocess.Popen(["ffmpeg", "-loglevel", "error", "-f", "v4l2", "-input_format", "mjpeg", "-framerate", "15",
+                                              "-video_size", "1280x720", "-i", dev, "-c:v", "copy", "-f", "mjpeg", "pipe:1"],
+                                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                buf = b""
+                while True:
+                    chunk = self.proc.stdout.read(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while True:   # whole JPEGs: SOI ... EOI
+                        a = buf.find(b"\xff\xd8")
+                        z = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
+                        if a < 0 or z < 0:
+                            buf = buf[a:] if a > 0 else buf
+                            break
+                        with self.cond:
+                            self.frame, self.t, self.n = buf[a:z + 2], time.time(), self.n + 1
+                            self.cond.notify_all()
+                        buf = buf[z + 2:]
+                    with self.cond:
+                        idle = self.viewers <= 0 and time.time() - self.last_viewer > self.IDLE
+                    if idle:
+                        break
+        except OSError as e:
+            print("top view stream:", e, flush=True)
+        finally:
+            if self.proc:
+                self.proc.kill()
+                self.proc.wait()
+                self.proc = None
+            if got:
+                _cam2_lock.release()
+            with self.cond:
+                self.running = False
+                self.cond.notify_all()
+
+
+CAM2_STREAM = Cam2Stream()
 
 
 def cam2_refocus():
@@ -2601,6 +2690,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(200, r.read(), r.headers.get("Content-Type", "image/jpeg"))
             except OSError as e:
                 return self.send(502, {"error": f"camera: {e}"})
+        if p.startswith("/cam2/stream"):   # the top view live (Cam2Stream): MJPEG until the viewer goes
+            if not cam2_device():
+                return self.send(404, {"error": "no second camera"})
+            CAM2_STREAM.join()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                n, sent = 0, time.time()
+                while time.time() - sent < 15:   # no frame for 15 s: the camera has gone, so does the stream
+                    n, jpg = CAM2_STREAM.wait_frame(n)
+                    if jpg is None:
+                        if not CAM2_STREAM.running:
+                            break
+                        continue
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+                    sent = time.time()
+            except (BrokenPipeError, ConnectionResetError):
+                pass   # the viewer closed the sheet
+            finally:
+                CAM2_STREAM.leave()
+                self.close_connection = True
+            return
         if p.startswith("/cam2.jpg"):   # the second camera (see cam2_frame): shared frame, one device holder
             if not cam2_device():
                 return self.send(404, {"error": "no second camera"})

@@ -1878,10 +1878,13 @@ api("/api/info").then(i => { S.info = i;
   if (i.live_camera) { $("#camMode").hidden = false; camSet(camPref()); }
   if (i.camera2) {   // the second camera on alm-01 (a UVC webcam on the printer's side): stills, one shared frame every 4 s
     $("#cam2Btn").hidden = false;
-    $("#cam2Btn").onclick = () => { const b = openSheet("Top view", `<img id="cam2Img" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9" alt="The bed from above the front">
-        <p class="note" style="margin:10px 0 0">The second camera, above the front of the bed. A new picture every few seconds.</p>`);
-      const tick = () => { const el = b.querySelector("#cam2Img"); if (el) el.src = "/cam2.jpg?t=" + Date.now(); };
-      tick(); const t = setInterval(() => document.hidden || tick(), 4000); onSheetClose = () => clearInterval(t); };
+    $("#cam2Btn").onclick = () => { const b = openSheet("Top view", `<img id="cam2Img" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9" alt="The bed from above the front, live">
+        <p class="note" style="margin:10px 0 0">Live from the second camera, above the front of the bed. It stops when this closes.</p>`);
+      const el = b.querySelector("#cam2Img");
+      el.onerror = () => { el.onerror = null; el.src = "/cam2.jpg?t=" + Date.now(); };   // no stream: one still
+      el.src = "/cam2/stream?t=" + Date.now();
+      onSheetClose = () => { el.removeAttribute("src"); el.src = ""; };   // closes the stream, so the camera is freed
+    };
   }
   if (i.printer_screen) {   // the U1's touchscreen, shown read-only: a tap there could start or change a print
     $("#screenBtn").hidden = false;
