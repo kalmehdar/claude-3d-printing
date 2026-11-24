@@ -161,12 +161,19 @@ def pale(colour):
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > 200
 
 
+GLUE = ("PETG on the smooth plate: put a thin layer of glue stick (Pritt Stick) where the part sits, then slice again with "
+        "glue=yes. Without it PETG can tear the plate's coating.")
+
+
 def slice_parts(d, parts, req):
     import make_3mf
     import orca
     heads, material = loaded_heads(), ""
     head_note = None
-    if heads:   # a tool changer that reports its filament: put each colour on the head holding it
+    project = len(parts) == 1 and parts[0][1].lower().endswith(".3mf")   # its own colours: orca.rehome_3mf maps them
+    if heads and project:
+        material = ",".join(h["material"] for h in heads)
+    elif heads:   # a tool changer that reports its filament: put each colour on the head holding it
         mapping, missing = make_3mf.match_heads([c for _, _, c in parts], [h["colour"] for h in heads])
         if missing and not req.get("allow_substitute"):
             return 409, {"error": "Not loaded on any head: " + ", ".join(missing) + ". Load it, or slice anyway with the nearest colour.",
@@ -188,9 +195,8 @@ def slice_parts(d, parts, req):
     sets.append("curr_bed_type=" + PLATES[on])   # slice for the plate that is really on
     used = {h["material"] for h in heads or [] if h.get("material")} if not head_note else \
            {heads[int(n["head"][1:])]["material"] for n in head_note}
-    if on == "smooth" and any("petg" in m.lower() for m in used) and not req.get("glue"):
-        return 409, {"error": "PETG on the smooth plate: put a thin layer of glue stick (Pritt Stick) where the part sits, "
-                              "then slice again with glue=yes. Without it PETG can tear the plate's coating.", "plate": on}
+    if on == "smooth" and not project and any("petg" in m.lower() for m in used) and not req.get("glue"):
+        return 409, {"error": GLUE, "plate": on}   # a 3MF's own colours are known only after slicing: checked in _slice_into
     out = tempfile.mkdtemp(prefix="workshop-")
     try:
         return _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, make_3mf, orca)
@@ -206,15 +212,23 @@ def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, ma
             data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
             p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
             open(p3, "wb").write(data)
-        s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out)
+        s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out,
+                        heads=[h["colour"] or "" for h in heads] if heads else None,
+                        substitute=bool(req.get("allow_substitute")))
     except SystemExit as e:   # orca.py and make_3mf stop with a plain message
         return 422, {"error": str(e.code), "hint": "Slicing needs OrcaSlicer (ORCA_CLI) and a printer setup "
                      f"named {CFG['profile']!r} (see tools/orca.py)."}
     if s.get("error") or not s.get("gcode"):
         return 422, {"error": s.get("error", "no G-code")}
+    if heads and len(parts) == 1 and parts[0][1].lower().endswith(".3mf") and not req.get("glue") and plate()["plate"] == "smooth":
+        # the heads this 3MF really uses (review, 24 Nov: every loaded head used to count); all of them when it kept its own
+        used = [heads[int(m["head"][1:])] for m in s.get("model_colours") or []] or heads
+        if any("petg" in (h.get("material") or "").lower() for h in used):
+            return 409, {"error": GLUE, "plate": "smooth"}
     name = f"{safe_name(d['id'])}-{preset}.gcode"
     result = {"time": s["time"], "grams": s["grams"], "total_g": s["total_g"], "changes": s["changes"],
-              "preset": preset, "settings": s["settings"], "file": name, "heads": head_note}
+              "preset": preset, "settings": s["settings"], "file": name,
+              "heads": head_note or [{"part": "model colour " + m["colour"], "colour": m["colour"], "head": m["head"]} for m in s.get("model_colours", [])] or None}
     if req.get("upload", True):
         upload_gcode(s["gcode"], name)
         result["uploaded"] = True

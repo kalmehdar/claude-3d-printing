@@ -342,6 +342,120 @@ def made_for(path):
     return m.group(1) if m else ""
 
 
+def remap_paint(code, states):
+    """One triangle's paint_color (OrcaSlicer/Bambu TriangleSelector string) with each painted filament renumbered.
+    states: {old filament number: new}; 0 (unpainted, takes the part's filament) is never changed. The hex string is
+    the bit stream backwards; each node is a nibble: low 2 bits split sides (children = sides + 1), high 2 bits the
+    special side, or for a leaf the state, where 0b11 means 3 + the following nibbles (a 15 reads on)."""
+    nib, out, i = [int(c, 16) for c in reversed(code)], [], 0
+
+    def node():
+        nonlocal i
+        c = nib[i]
+        i += 1
+        if c & 3:
+            out.append(c)
+            for _ in range((c & 3) + 1):
+                node()
+            return
+        n = c >> 2
+        if n == 3:
+            while True:
+                x = nib[i]
+                i += 1
+                n += x
+                if x != 15:
+                    break
+        n = states.get(n, n)
+        if n < 3:
+            out.append(n << 2)
+        else:
+            out.append(0b1100)
+            n -= 3
+            while n >= 15:
+                out.append(15)
+                n -= 15
+            out.append(n)
+
+    node()
+    out += nib[i:]
+    return "".join("%X" % x for x in reversed(out))
+
+
+def paint_states(code):
+    """The filament numbers painted in one paint_color string (0, unpainted, left out)."""
+    seen = {}
+    remap_paint(code, _Seen(seen))
+    return set(seen) - {0}
+
+
+class _Seen(dict):
+    """A remap table that keeps every state looked up and changes none."""
+    def __init__(self, into):
+        super().__init__()
+        self.into = into
+
+    def get(self, k, default=None):
+        self.into[k] = True
+        return default
+
+
+# the model's choices only; gaps and interface layers follow our preset's layer height (24 Nov 2026: Bambu's 0.265 mm top
+# gap on 0.16 mm layers gave tree supports "Potentially lost branch")
+CARRY = ("enable_support", "support_type", "support_on_build_plate_only", "enable_prime_tower")
+
+
+def rehome_3mf(path, tmp, heads, substitute=False, materials=None):
+    """A 3MF saved for another printer (Bambu H2D, X2D, A1), sliced for this one with its colours kept: its printer
+    settings are dropped (OrcaSlicer fails on them, see flatten_3mf), each of its filaments goes to the loaded head
+    nearest in colour (painted triangles and whole parts both), and its support and prime-tower choices come along.
+    heads: the colour on each head ('' or None when empty); materials: each head's filament (petg, pla-snapspeed): colours
+    go to heads of the commonest material first, so black goes to black PETG before a nearer black in PLA. Returns (new path, carried settings, [(colour, head)])."""
+    import make_3mf
+    with zipfile.ZipFile(path) as z:
+        project = json.loads(z.read("Metadata/project_settings.config"))
+        cols = project.get("filament_colour") or ["#808080"]
+        used = {1}
+        for n in z.namelist():
+            if n.lower().endswith(".config"):
+                used |= {int(x) for x in re.findall(r'key="extruder" value="(\d+)"', z.read(n).decode("utf-8", "replace"))}
+        # the material most heads hold (PETG on 3 of 4 on 24 Nov): the model's colours go there first, leaving an odd head
+        # out (T3's PLA, kept for support contact). The project's own filament types are its author's printer, not ours.
+        kinds = [(m or "").lower().split("-")[0] for m in materials or []]
+        main = max(set(kinds), key=kinds.count) if kinds else ""
+        states, missing = {}, []
+        for k, c in enumerate(cols, 1):
+            same = [h if h and kinds and kinds[i] == main else None for i, h in enumerate(heads)]
+            mapping, miss = make_3mf.match_heads([c], same) if any(same) else ({}, [c])
+            if miss:   # no close colour in that material (a PLA project on PETG heads): the nearest colour on any head
+                mapping, miss = make_3mf.match_heads([c], [h or None for h in heads])
+            states[k] = mapping[c.lower()] + 1
+            missing += miss
+        dst = os.path.join(tmp, "rehomed-" + os.path.basename(path))
+        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as out:
+            for item in z.infolist():
+                n = item.filename
+                if n in ("Metadata/project_settings.config", "Metadata/slice_info.config", "Metadata/filament_sequence.json"):
+                    continue
+                data = z.read(n)
+                if n.lower().endswith(".model"):
+                    for code in set(re.findall(rb'paint_color="([0-9A-Fa-f]+)"', data)):
+                        used |= paint_states(code.decode())
+                    data = re.sub(rb'paint_color="([0-9A-Fa-f]+)"',
+                                  lambda m: b'paint_color="' + remap_paint(m.group(1).decode(), states).encode() + b'"', data)
+                elif n == "Metadata/model_settings.config":
+                    data = re.sub(r'(key="extruder" value=")(\d+)"', lambda m: m.group(1) + str(states.get(int(m.group(2)), 1)) + '"',
+                                  data.decode("utf-8", "replace")).encode()
+                out.writestr(item, data)
+    missing = [c for k, c in enumerate(cols, 1) if c in missing and k in used]
+    if missing and not substitute:
+        os.remove(dst)
+        sys.exit("Not loaded on any head: " + ", ".join(missing) + " (from the model's own colours). Load it, or slice "
+                 "anyway with the nearest colour.")
+    carried = {k: str(project[k]) for k in CARRY if k in project and not isinstance(project[k], list)}
+    return dst, carried, [(c, states[k] - 1) for k, c in enumerate(cols, 1) if k in used]
+
+
 def flatten_3mf(path, tmp, centre):
     """One binary STL of everything on a 3MF's build plate, laid out as its author placed it, centred on `centre` (x, y)
     and dropped to z=0. For projects saved for another printer: OrcaSlicer applies their printer settings and fails
@@ -398,7 +512,7 @@ def flatten_3mf(path, tmp, centre):
     return dst
 
 
-def slice_(models, printer, preset="standard", material="", sets=(), out=None, timeout=900):
+def slice_(models, printer, preset="standard", material="", sets=(), out=None, timeout=900, heads=None, substitute=False):
     """Slice; returns the summary dict (also written to out/summary.json)."""
     out = os.path.abspath(out or tempfile.mkdtemp(prefix="orca-"))
     os.makedirs(out, exist_ok=True)
@@ -414,8 +528,14 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         area = [tuple(float(v) for v in xy.split("x")) for xy in machine.get("printable_area") or ["0x0", "256x256"]]
         centre = (sum(x for x, _ in area) / len(area), sum(y for _, y in area) / len(area))
         own = (machine.get("printer_model") or "").lower()
+        carried, kept = {}, []
         for i, m in enumerate(models):
             if m.lower().endswith(".3mf") and made_for(m) and made_for(m).lower() != own:
+                if heads:   # a tool changer that reports its colours: keep the model's colours and supports
+                    models[i], c, k = rehome_3mf(m, tmp, heads, substitute, [x.strip() for x in material.split(",")] if material else None)
+                    carried.update(c)
+                    kept += k
+                    continue
                 print(f"{os.path.basename(m)} was saved for {made_for(m)}: slicing its shapes only, in one colour", file=sys.stderr)
                 models[i] = flatten_3mf(m, tmp, centre)
         process = json.load(open(os.path.join(folder, "process.json"), encoding="utf-8"))
@@ -424,7 +544,7 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         if preset not in PRESETS:
             sys.exit(f"no preset {preset!r}: {', '.join(PRESETS)}")
         keys = set(machine) | set(process) | {k for d in fil_data for k in d}
-        overrides = {**PRESETS[preset], **parse_sets(sets, keys | PRESET_KEYS)}
+        overrides = {**PRESETS[preset], **{k: v for k, v in carried.items() if k in keys | PRESET_KEYS}, **parse_sets(sets, keys | PRESET_KEYS)}
         if overrides.get("alternate_extra_wall") == "1" and overrides.get("sparse_infill_pattern", process.get("sparse_infill_pattern")) == "lightning":
             overrides["alternate_extra_wall"] = "0"   # Orca: the extra wall breaks with lightning infill
             print("alternate extra wall turned off: it does not work with lightning infill", file=sys.stderr)
@@ -439,7 +559,8 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         name = os.path.splitext(os.path.basename(models[0]))[0]
         for old in glob.glob(os.path.join(out, "*.gcode")):
             os.remove(old)
-        cmd = [orca_cli(), "--slice", "0", "--load-settings", f"{paths[0]};{paths[1]}", "--load-filaments", ";".join(paths[2:]),
+        # --allow-newer-file: 3MFs saved by a newer Bambu Studio (24 Nov 2026: an X2D project would not load without it)
+        cmd = [orca_cli(), "--allow-newer-file", "--slice", "0", "--load-settings", f"{paths[0]};{paths[1]}", "--load-filaments", ";".join(paths[2:]),
                "--outputdir", out, "--export-3mf", f"{name}-sliced.3mf"] + models
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -454,8 +575,14 @@ def slice_(models, printer, preset="standard", material="", sets=(), out=None, t
         os.remove(gcode[0])
         sys.exit(f"the bed temperature came out at 0 for {plate.group(1) if plate else 'this plate'}: "
                  "set curr_bed_type to the printer's real plate (e.g. --set curr_bed_type=\"Textured PEI Plate\")")
+    said = " ".join((r.stdout + r.stderr).split())
     s = stats(text) if gcode else {
-        "error": "OrcaSlicer wrote nothing: " + " ".join((r.stdout + r.stderr).split())[-600:] + " (open the model in the app to see why)"}
+        "error": "OrcaSlicer wrote nothing: " + said[-600:] + (
+            " Tree supports could not reach part of the model at these settings: slice with the standard or quality preset"
+            " (24 Nov 2026: a painted X2D figure failed on figure, sliced on standard)." if "lost branch" in said
+            else " (open the model in the app to see why)")}
+    if kept:
+        s["model_colours"] = [{"colour": c, "head": f"T{h}"} for c, h in kept]
     s.update({"printer": machine.get("name", printer), "preset": preset, "materials": [d.get("name") for d in fil_data],
               "settings": overrides, "project": os.path.join(out, f"{name}-sliced.3mf"), "gcode": gcode[0] if gcode else None})
     json.dump(s, open(os.path.join(out, "summary.json"), "w", encoding="utf-8"), indent=1)
