@@ -49,7 +49,14 @@ done.clear()
 w.alert_change("printing", {**base, "state": "paused", "message": ""})
 w.alert_change("printing", {**base, "state": "paused"})
 assert not done.wait(0.5) and not asked
-# resuming and pausing again from paused does not run it twice for the same pause
-w.alert_change("paused", {**base, "state": "paused", "message": "x"})
-assert not done.wait(0.3)
+# the U1 may keep its exception after a RESUME: a later pause in the same run (a person's, or the photo watch's) with the
+# same message must not run the doctor again; a new run (another photo folder) may
+reason = "Paused by the printer's own detector: spaghetti."
+w.alert_change("printing", {**base, "state": "paused", "message": reason})   # same file, folder None, message: seen
+assert not done.wait(0.5) and not asked
+import glob  # noqa: E402
+had = set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*")))
+w.alert_change("printing", {**base, "state": "paused", "message": reason}, folder="ghost-0000AB")   # a new run
+assert done.wait(5) and len(asked) == 1
+assert set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*"))) == had, "this pause left a snapshot folder behind"
 print("pause triage check passed")
