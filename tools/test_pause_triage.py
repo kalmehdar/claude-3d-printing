@@ -59,4 +59,14 @@ had = set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*")))
 w.alert_change("printing", {**base, "state": "paused", "message": reason}, folder="ghost-0000AB")   # a new run
 assert done.wait(5) and len(asked) == 1
 assert set(glob.glob(os.path.join(tempfile.gettempdir(), "doctor-*"))) == had, "this pause left a snapshot folder behind"
+# the run ends: its entries go, so a reprint (folder None again before its first layer photo) is looked at
+asked.clear()
+done.clear()
+w.alert_change("paused", {**base, "state": "cancelled"})
+assert not any(k[0] == "ghost.gcode" for k in w._doctored), w._doctored
+done.wait(5)   # the cancel's own doctor run
+asked.clear()
+done.clear()
+w.alert_change("printing", {**base, "state": "paused", "message": reason})
+assert done.wait(5) and len(asked) == 1
 print("pause triage check passed")
