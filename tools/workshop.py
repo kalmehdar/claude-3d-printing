@@ -520,10 +520,124 @@ CAL_TESTS = {   # test -> the slicer profile key its result belongs in (skills/p
     "flow-ratio": "filament_flow_ratio", "retraction": "filament_retraction_length", "other": ""}
 
 
+CAL_PLANS = os.path.join(os.path.dirname(CAL_LOG), "calibration-tests.json")   # file -> the plan caltest.build made for it
+PROFILE_KEYS = {"pressure-advance": {"pressure_advance": "{v}", "enable_pressure_advance": "1"},
+                "flow-ratio": {"filament_flow_ratio": "{v}"},
+                "temperature": {"nozzle_temperature": "{v}", "nozzle_temperature_initial_layer": "{v}"}}
+
+
+def cal_plans():
+    try:
+        return json.load(open(CAL_PLANS, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def profile_file(material):
+    import orca
+    path = os.path.join(orca.printer_dir(CFG["profile"]), f"filament-{material}.json")
+    if not re.fullmatch(r"[\w.-]+", material or "") or not os.path.isfile(path):
+        raise ValueError(f"no filament profile {material!r} in the slicer setup")
+    return path
+
+
+def profile_value(material, key):
+    v = json.load(open(profile_file(material), encoding="utf-8")).get(key)
+    return (v[0] if isinstance(v, list) else v) if v not in (None, [], "") else None
+
+
+def cal_test(req, who):
+    """One-tap calibration test (tools/caltest.py) for one head: built, sliced for that head's filament, the per-piece
+    settings put in, uploaded. Never starts it. The plan is kept so the person's answer ('piece 6') becomes a value."""
+    import caltest
+    import orca
+    test = str(req.get("test", ""))
+    if test not in caltest.TESTS:
+        return 400, {"error": "test is " + ", ".join(caltest.TESTS)}
+    try:
+        head = int(req.get("head", -1))
+    except (TypeError, ValueError):
+        head = -1
+    heads = loaded_heads()
+    if not heads or not 0 <= head < len(heads) or not heads[head].get("colour"):
+        return 409, {"error": "pick a head that has filament in it (T0 to T3)"}
+    mat = heads[head]["material"]
+    cur = profile_value(mat, caltest.TESTS[test]["key"])
+    if cur is None:
+        return 409, {"error": f"the {mat} profile has no {caltest.TESTS[test]['key']} to start from"}
+    kw = {k: float(req[k]) for k in ("start", "step") if req.get(k) not in (None, "")}
+    if req.get("count"):
+        kw["count"] = int(req["count"])
+    try:
+        data, plan = caltest.build(test, head, cur, bed=CFG.get("bed", 270), **kw)
+    except ValueError as e:
+        return 400, {"error": str(e)}
+    on = plate()["plate"]
+    if on == "smooth" and "petg" in mat and not req.get("glue"):
+        return 409, {"error": "PETG on the smooth plate: put a thin layer of glue stick down, then make it again with glue=yes.", "plate": on}
+    out = tempfile.mkdtemp(prefix="workshop-cal-")
+    try:
+        p3 = os.path.join(out, "cal.3mf")
+        open(p3, "wb").write(data)
+        try:
+            s = orca.slice_([p3], CFG["profile"], preset="standard", material=",".join(h["material"] for h in heads),
+                            sets=caltest.TESTS[test]["sets"] + ["curr_bed_type=" + PLATES[on]], out=out)
+        except SystemExit as e:
+            return 422, {"error": str(e.code)}
+        if s.get("error") or not s.get("gcode"):
+            return 422, {"error": s.get("error", "no G-code")}
+        try:
+            g = caltest.patch(open(s["gcode"], encoding="utf-8", errors="replace").read(), plan)
+        except ValueError as e:
+            return 422, {"error": str(e)}
+        name = f"cal-{test}-T{head}-{safe_name(mat)}.gcode"
+        gp = os.path.join(out, name)
+        open(gp, "w", encoding="utf-8").write(g)
+        upload_gcode(gp, name)
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+    plan.update(material=mat, file=name, t=time.time(), who=who, time=s["time"], grams=s["total_g"])
+    plans = cal_plans()
+    plans[name] = plan
+    os.makedirs(os.path.dirname(CAL_PLANS), exist_ok=True)
+    json.dump(plans, open(CAL_PLANS + ".part", "w", encoding="utf-8"), indent=1)
+    os.replace(CAL_PLANS + ".part", CAL_PLANS)
+    record(f"made calibration test: {test} on T{head} ({mat})", name, who=who)
+    return 200, plan
+
+
+def save_to_profile(test, material, value, who):
+    """Write a calibration answer into the filament's slicing profile, keeping the old file beside the photos."""
+    keys = PROFILE_KEYS.get(test)
+    if not keys:
+        raise ValueError("only pressure-advance, flow-ratio and temperature go into the profile from here")
+    float(value)   # a number, or ValueError
+    path = profile_file(material)
+    d = json.load(open(path, encoding="utf-8"))
+    os.makedirs(CAL_PHOTOS, exist_ok=True)
+    shutil.copy(path, os.path.join(CAL_PHOTOS, time.strftime("%Y%m%d-%H%M%S") + f"-before-{os.path.basename(path)}"))
+    old = {k: d.get(k) for k in keys}
+    for k, v in keys.items():
+        v = v.format(v=value)
+        d[k] = [v] * max(1, len(d[k])) if isinstance(d.get(k), list) else [v]
+    json.dump(d, open(path + ".part", "w", encoding="utf-8"), indent=4)
+    os.replace(path + ".part", path)
+    record(f"profile {material}: " + ", ".join(f"{k} {old[k]} -> {d[k][0]}" for k in keys), test, who=who)
+    return {k: d[k][0] for k in keys}
+
+
 def calibration(entry=None, who="?"):
     """Calibration results, newest first; with entry, record one (and a camera photo of the test print) first."""
     if entry is not None:
         test, value = str(entry.get("test", "")), str(entry.get("value", "")).strip()[:40]
+        plan = cal_plans().get(str(entry.get("file", ""))) if entry.get("file") else None
+        if entry.get("file") and not plan:
+            raise ValueError("no calibration test with that file name")
+        if plan:   # the person names the best piece; its value comes from the plan
+            import caltest
+            test, value = plan["test"], caltest.answer(plan, entry.get("piece", 0))
+            entry.setdefault("filament", plan["material"])
+            entry["note"] = (f"piece {int(entry.get('piece'))} of {plan['file']}; " + str(entry.get("note") or "")).strip("; ")
         if test not in CAL_TESTS:
             raise ValueError("test is one of " + ", ".join(CAL_TESTS))
         if not value:
@@ -539,6 +653,8 @@ def calibration(entry=None, who="?"):
             row["photo"] = "/calibration-photo/" + name
         except (OSError, ValueError):
             pass   # a result without a photo is still a result
+        if entry.get("save"):   # into the slicing profile, so the next slice uses it
+            row["saved"] = save_to_profile(test, plan["material"] if plan else str(entry.get("material", "")), value, who)
         os.makedirs(os.path.dirname(CAL_LOG), exist_ok=True)
         with open(CAL_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
@@ -2226,7 +2342,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(201, calibration(r if isinstance(r, dict) else {}, who=actor(self))[0])
                 except ValueError as e:
                     return self.send(400, {"error": str(e)})
-            return self.send(200, {"tests": CAL_TESTS, "results": calibration()})
+            return self.send(200, {"tests": CAL_TESTS, "results": calibration(), "made": sorted(cal_plans().values(), key=lambda x: -x["t"])[:12]})
+        if p == "/api/calibration-test" and self.command == "POST":   # {test, head[, start, step, count, glue]}: built and uploaded, never started
+            try:
+                r = json.loads(self.body() or b"{}")
+                code, out = cal_test(r if isinstance(r, dict) else {}, actor(self))
+            except (ValueError, TypeError) as e:
+                return self.send(400, {"error": str(e)})
+            except OSError as e:
+                return self.send(502, {"error": f"printer: {e}"})
+            return self.send(code, out)
         if p.startswith("/api/activity"):
             import printer
             try:

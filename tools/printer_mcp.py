@@ -154,13 +154,29 @@ def t_layer_photos(a):
 
 
 def t_calibration(a):
-    if a.get("value"):
-        r = http("POST", "/api/calibration", {k: a.get(k, "") for k in ("test", "value", "filament", "note")})
+    if a.get("value") or a.get("piece"):
+        r = http("POST", "/api/calibration", {k: a[k] for k in ("test", "value", "filament", "note", "file", "piece", "save", "material") if a.get(k) not in (None, "")})
         return f'Recorded {r["test"]} = {r["value"]} for {r["filament"] or "the loaded filament"}' + (" with a photo of the print." if r.get("photo") else ".") + (
-            f' It belongs in the profile key {r["key"]}.' if r.get("key") else "")
-    rows = http("GET", "/api/calibration")["results"][:20]
+            " Saved into the slicing profile: " + ", ".join(f"{k} = {v}" for k, v in r["saved"].items()) + "." if r.get("saved")
+            else f' It belongs in the profile key {r["key"]}; pass save=true to write it.' if r.get("key") else "")
+    got = http("GET", "/api/calibration")
+    made = got.get("made") or []
+    rows = got["results"][:20]
+    if made:
+        rows_made = "\n".join(f'{m["file"]}: {m["test"]} on T{m["head"]} ({m["material"]}), pieces ' + ", ".join(f'{p["n"]}={p["value"]:g}' for p in m["pieces"])
+                               + f'; pick {m["read"]}' for m in made[:6])
+    else:
+        rows_made = ""
     return "\n".join(f'{time.strftime("%d %b %H:%M", time.localtime(x["t"]))}  {x["test"]} = {x["value"]}  {x.get("filament", "")}  ({x["who"]})'
-                     + (f'  key {x["key"]}' if x.get("key") else "") + (f'  - {x["note"]}' if x.get("note") else "") for x in rows) or "No calibration results yet."
+                     + (f'  key {x["key"]}' if x.get("key") else "") + (f'  - {x["note"]}' if x.get("note") else "") for x in rows) + (
+        "\n\nTests made:\n" + rows_made if rows_made else "") or "No calibration results yet."
+
+
+def t_calibration_test(a):
+    r = http("POST", "/api/calibration-test", {k: a[k] for k in ("test", "head", "start", "step", "count", "glue") if a.get(k) not in (None, "")}, timeout=900)
+    return (f'Made {r["file"]} on the printer (not started): {r["test"]} for T{r["head"]} {r["material"]}, {r["time"]}, {r["grams"]} g. Pieces: '
+            + ", ".join(f'{p["n"]} = {p["value"]:g}' for p in r["pieces"]) + f'. After it prints, ask the person for {r["read"]}, then '
+            f'printer_calibration with file and piece (save=true to write it into the profile). Start it like any print: bed clear and a snapshot first.')
 
 
 def t_speed(a):
@@ -552,7 +568,17 @@ TOOLS = [
      {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
     ("printer_calibration", "Calibration results (print-calibration skill): with no value, list them; with test and value, record the value the person picked from a test print, with a camera photo of it.",
      {"test": {"type": "string", "enum": ["temperature", "max-flow", "pressure-advance", "flow-ratio", "retraction", "other"]},
-      "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"}}, t_calibration),
+      "value": {"type": "string", "description": "the value picked, e.g. 240"}, "filament": {"type": "string"}, "note": {"type": "string"},
+      "file": {"type": "string", "description": "a test made by printer_calibration_test: give piece instead of value"},
+      "piece": {"type": "integer", "description": "the numbered piece the person picked"},
+      "save": {"type": "boolean", "description": "also write it into the filament's slicing profile (the old profile is kept); only when the person agrees"},
+      "material": {"type": "string", "description": "with save and a value (no file): the profile name, e.g. petg"}}, t_calibration),
+    ("printer_calibration_test", "Make a one-tap calibration test for one head and put it on the printer (never starts it): pressure-advance "
+     "(8 boxes, one per PA value), flow-ratio (9 tiles round the profile's flow) or temperature (5 bands, 5 C apart from 10 above the "
+     "profile). Each piece is numbered; after printing the person says which piece is best and printer_calibration records it.",
+     {"test": {"type": "string", "enum": ["pressure-advance", "flow-ratio", "temperature"]}, "head": {"type": "integer", "minimum": 0, "maximum": 3},
+      "start": {"type": "number"}, "step": {"type": "number"}, "count": {"type": "integer", "minimum": 2, "maximum": 12},
+      "glue": {"type": "boolean", "description": "PETG on the smooth plate only: the person confirmed glue stick is on"}}, t_calibration_test, ["test", "head"]),
     ("printer_requests", "Print requests between the two of us: with no arguments, the open ones; with what (and qty, colour, note), ask for a print; with id and state (taken, done, dropped), move one along.",
      {"what": {"type": "string"}, "qty": {"type": "integer"}, "colour": {"type": "string"}, "note": {"type": "string"},
       "id": {"type": "integer"}, "state": {"type": "string", "enum": ["open", "taken", "done", "dropped"]}}, t_requests),
