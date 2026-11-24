@@ -1,0 +1,64 @@
+"""The live 3D view's small toolpath: outer walls only, polylines, layers; and the page's decoder reads it back.
+python tools/test_toolpath.py  (no printer; Node, when installed, runs the page's own decodeToolpath)"""
+import io
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import workshop as w  # noqa: E402
+
+g = b"""M83
+T1
+;TYPE:Outer wall
+G1 X10 Y10 Z0.2 F600
+G1 X20 Y10 E1
+G1 X20 Y20 E1
+;TYPE:Sparse infill
+G1 X30 Y30 E5
+;TYPE:Outer wall
+G1 X20 Y20
+G1 X10 Y20 E1
+G1 X10 Y10 Z0.4
+G1 X5 Y10 E1 ; second layer
+G1 X5 Y5 E-1
+G1 X0 Y5 E0
+"""
+raw, gz = w.toolpath("t.gcode", read=io.BytesIO(g))
+n, nl = struct.unpack_from("<II", raw, 4)
+xyz = struct.unpack_from(f"<{3 * n}h", raw, 12)
+tools, starts = raw[12 + 6 * n:12 + 7 * n], raw[12 + 7 * n:12 + 8 * n]
+lz = struct.unpack_from(f"<{nl}f", raw, 12 + 8 * n)
+lp = struct.unpack_from(f"<{nl}I", raw, 12 + 8 * n + 4 * nl)
+pts = [tuple(v / 100 for v in xyz[i:i + 3]) for i in range(0, 3 * n, 3)]
+# infill is left out; the wall after it is a new polyline (its start point repeats); retracts and travel draw nothing
+assert pts == [(10, 10, .2), (20, 10, .2), (20, 20, .2), (20, 20, .2), (10, 20, .2), (10, 10, .4), (5, 10, .4)], pts
+assert list(starts) == [1, 0, 0, 1, 0, 1, 0] and set(tools) == {1}, (starts, tools)
+assert [round(z, 2) for z in lz] == [0.2, 0.4] and list(lp) == [0, 5], (lz, lp)
+assert raw[:4] == b"WTP1" and len(gz) < len(raw) + 40
+
+# absolute extrusion with G92 resets; a file without ;TYPE: keeps every extrusion
+ab = w.toolpath("a.gcode", read=io.BytesIO(b"M82\nG92 E0\nG1 X0 Y0 Z0.2\nG1 X5 Y0 E2\nG92 E0\nG1 X5 Y5 E1\nG1 X9 Y5 E1\n"))[0]
+assert struct.unpack_from("<I", ab, 4)[0] == 3, "two extrusions, one polyline (the second E1 after it is no move of plastic)"
+
+node = shutil.which("node")
+if node:   # the page's own decoder: segments and layer starts as the 3D view uses them
+    html = open(os.path.join(os.path.dirname(__file__), "workshop.html"), encoding="utf-8").read()
+    fn = re.search(r"function decodeToolpath\(buf\) \{.*?\n\}\n", html, re.S).group(0)
+    js = (fn + "\nconst THREE = {Color: class { constructor(h) { this.r = 1; this.g = 0; this.b = 0; } }};\n"
+          "const S = {colours: ['#fff', '#000']};\n"
+          "const b = require('fs').readFileSync(process.argv[2]); const g = decodeToolpath(b.buffer.slice(b.byteOffset, b.byteOffset + b.length));\n"
+          "console.log(JSON.stringify({count: g.count, layers: g.layers, first: Array.from(g.pos.slice(0, 6)), tools: [...g.tools]}));\n")
+    d = tempfile.mkdtemp()
+    open(os.path.join(d, "t.bin"), "wb").write(raw)
+    open(os.path.join(d, "t.js"), "w").write(js)
+    out = json.loads(subprocess.run([node, os.path.join(d, "t.js"), os.path.join(d, "t.bin")], capture_output=True, text=True, check=True).stdout)
+    assert out["count"] == 4 and out["tools"] == [1], out                        # 7 points, 3 polylines: 4 segments
+    assert [l["start"] for l in out["layers"]] == [0, 3], out                    # layer 2 starts after 3 segments
+    assert [round(v, 2) for v in out["first"]] == [10, 10, 0.2, 20, 10, 0.2], out
+print("toolpath check passed" + ("" if node else " (no Node: decoder not run)"))

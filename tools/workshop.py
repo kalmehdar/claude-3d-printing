@@ -291,6 +291,7 @@ def loaded_heads():
 
 
 ADVICE = [   # printer messages seen on the U1, and what the person should do about them
+    (r"failed to return to park position|malfunction after parking", "A head did not go back into its dock after a tool change, so the printer stopped it. Look at the camera and the printer's screen before resuming: plastic caught on that head or its dock keeps it from parking."),
     (r"filament runout", "A head ran out of filament, or its new spool is only parked at the feeder. Load it from the printer's screen, then cancel and restart the print."),
     (r"state mismatch|unload_fail|load_fail", "A feeder is in an unexpected state. Check that head on the printer's screen."),
     (r"Probe samples exceed tolerance", "The bed probe got uneven readings, often from something on the plate. Check the bed is clear."),
@@ -1541,6 +1542,102 @@ def tool_changes(file, read=None):
     return out
 
 
+_toolpath = {}
+TOOLPATH_KEEP = (b"Outer wall", b"Overhang wall")
+
+
+def toolpath(file, read=None):
+    """The running print's shape for the live 3D view, small: outer and overhang walls only (every extrusion when the
+    file has no ;TYPE: comments), points to 0.01 mm as int16, split into polylines. The page used to download and parse
+    the whole G-code on every Now view during a print (38 MB for the 24 Nov ghost cap; this is 0.6 MB gzipped).
+    Binary: b'WTP1', uint32 points, uint32 layers, int16 x,y,z per point, uint8 tool per point, uint8 1 where a
+    polyline starts, float32 z per layer, uint32 first point per layer. Kept, gzipped, while the file is unchanged.
+    Returns (raw bytes, gzipped bytes)."""
+    import gzip
+    import struct
+    stamp = None
+    if read is None:
+        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
+            stamp = json.load(r)["result"].get("modified")
+        if _toolpath.get(file, (None,))[0] == stamp:
+            return _toolpath[file][1]
+        read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=300)
+    x = y = z = e = 0.0
+    abs_e = abs_xyz = True
+    tool, keep, typed, last = 0, False, False, None
+    pts, tools, starts, layers = [], bytearray(), bytearray(), []
+    clamp = lambda v: max(-32768, min(32767, round(v * 100)))   # noqa: E731
+    with read as f:
+        for raw in f:
+            if raw[:6] == b";TYPE:":
+                typed, keep, last = True, raw[6:].strip() in TOOLPATH_KEEP, None
+                continue
+            line = raw.split(b";", 1)[0].strip()
+            if not line:
+                continue
+            c = line[:1]
+            if c == b"T" and line[1:2].isdigit():
+                tool, last = int(line[1:].split()[0]) & 15, None
+                continue
+            if c not in (b"G", b"M"):
+                continue
+            w = line.split()
+            cmd = w[0]
+            if cmd in (b"M82", b"M83"):
+                abs_e = cmd == b"M82"
+                continue
+            if cmd in (b"G90", b"G91"):
+                abs_xyz = cmd == b"G90"
+                continue
+            if cmd == b"G92":
+                for a in w[1:]:
+                    if a[:1] == b"E":
+                        e = float(a[1:] or 0)
+                continue
+            if cmd not in (b"G0", b"G1", b"G2", b"G3"):
+                continue
+            nx, ny, nz, de = x, y, z, 0.0
+            for a in w[1:]:
+                k = a[:1]
+                try:
+                    v = float(a[1:])
+                except ValueError:
+                    continue
+                if k == b"X":
+                    nx = v if abs_xyz else x + v
+                elif k == b"Y":
+                    ny = v if abs_xyz else y + v
+                elif k == b"Z":
+                    nz = v if abs_xyz else z + v
+                elif k == b"E":   # as in Klipper: G91 makes E relative too
+                    if abs_xyz and abs_e:
+                        de, e = v - e, v
+                    else:
+                        de = v
+            if de > 0 and (nx != x or ny != y) and (keep or not typed):
+                if last != (x, y, z):   # a new polyline starts where this move starts
+                    if not layers or abs(z - layers[-1][0]) > 0.005:
+                        layers.append((z, len(tools)))
+                    pts += (clamp(x), clamp(y), clamp(z))
+                    tools.append(tool)
+                    starts.append(1)
+                pts += (clamp(nx), clamp(ny), clamp(nz))
+                tools.append(tool)
+                starts.append(0)
+                last = (nx, ny, nz)
+            elif nx != x or ny != y or nz != z:
+                last = None
+            x, y, z = nx, ny, nz
+    n, nl = len(tools), len(layers)
+    raw = (b"WTP1" + struct.pack("<II", n, nl) + struct.pack(f"<{3 * n}h", *pts) + bytes(tools) + bytes(starts)
+           + struct.pack(f"<{nl}f", *[a for a, _ in layers]) + struct.pack(f"<{nl}I", *[b for _, b in layers]))
+    out = (raw, gzip.compress(raw, 6))
+    if stamp is not None:
+        _toolpath.clear()   # ponytail: one file kept, the one printing
+        _toolpath[file] = (stamp, out)
+    return out
+
+
 def frames(job=""):
     """The layer photos printer.py watch saved: the jobs newest first, or one job's photos in order."""
     import printer
@@ -2513,6 +2610,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, files_meta(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("f", [])))
             except (OSError, ValueError, KeyError) as e:
                 return self.send(502, {"error": f"printer: {e}"})
+        if p.startswith("/api/toolpath"):   # ?file=: the live 3D view's shape, small and binary (see toolpath)
+            f = urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("file", [""])[0]
+            if not f or ".." in f:
+                return self.send(400, {"error": "give file"})
+            try:
+                raw, gz = toolpath(f)
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"printer: {e}"})
+            if "gzip" in (self.headers.get("Accept-Encoding") or ""):
+                return self.send(200, gz, "application/octet-stream", {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+            return self.send(200, raw, "application/octet-stream")
         if p.startswith("/api/tool-changes"):   # ?file=: where the head changes, for "tool change 12 of 40" on the page
             f = urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("file", [""])[0]
             if not f or ".." in f:
