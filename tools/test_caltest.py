@@ -81,3 +81,15 @@ for bad in ({"file": "nope.gcode", "piece": 1}, {"file": plan["file"], "piece": 
     except ValueError:
         pass
 print("calibration test check passed")
+
+# a profile that lives in git (alm-01's Almehdar checkout) is not edited: the change waits for a pull request
+import subprocess  # noqa: E402
+subprocess.run(["git", "init", "-q", prof], check=True)
+subprocess.run(["git", "-C", prof, "add", "filament-petg.json"], check=True)
+before = open(os.path.join(prof, "filament-petg.json")).read()
+plan.update(t=1)
+json.dump({plan["file"]: plan}, open(w.CAL_PLANS, "w"))
+row = w.calibration({"file": plan["file"], "piece": 7, "save": True}, who="Khalid")[0]
+assert row["saved"]["pending_git"] and row["saved"]["filament_flow_ratio"] == "0.97", row
+assert open(os.path.join(prof, "filament-petg.json")).read() == before
+print("git-tracked profile check passed")

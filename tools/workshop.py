@@ -606,6 +606,16 @@ def cal_test(req, who):
     return 200, plan
 
 
+def git_tracked(path):
+    """True when the profile file is part of a git checkout (alm-01's /opt/almehdar), so changes go through a pull request."""
+    import subprocess
+    try:
+        return subprocess.run(["git", "-C", os.path.dirname(path), "ls-files", "--error-unmatch", os.path.basename(path)],
+                              capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def save_to_profile(test, material, value, who):
     """Write a calibration answer into the filament's slicing profile, keeping the old file beside the photos."""
     keys = PROFILE_KEYS.get(test)
@@ -614,6 +624,11 @@ def save_to_profile(test, material, value, who):
     float(value)   # a number, or ValueError
     path = profile_file(material)
     d = json.load(open(path, encoding="utf-8"))
+    if git_tracked(path):   # alm-01 slices from the Almehdar repo: an edit here would drift from git and block the next pull
+        want = {k: v.format(v=value) for k, v in keys.items()}
+        record(f"profile change waiting: {material} " + ", ".join(f"{k} -> {v}" for k, v in want.items()), test, who=who)
+        return {"pending_git": True, "material": material, **want,
+                "next": f"workshop_profile filament={material} with these values opens the pull request; Workshop slices with it once merged and pulled"}
     os.makedirs(CAL_PHOTOS, exist_ok=True)
     shutil.copy(path, os.path.join(CAL_PHOTOS, time.strftime("%Y%m%d-%H%M%S") + f"-before-{os.path.basename(path)}"))
     old = {k: d.get(k) for k in keys}

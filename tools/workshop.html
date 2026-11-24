@@ -1410,7 +1410,7 @@ function renderWizard(r) {
   const answered = m => r.results.find(x => (x.note || "").includes(m.file) && x.t > m.t);
   $("#calWizard").innerHTML = made.length ? `<div class="list">${made.map(m => { const a = answered(m), on = files.includes(m.file);
     return `<div class="ctrow">${issueHtml({icon: a ? "done" : "progress", id: "T" + m.head, title: `${esc(CT_WORD[m.test] || m.test)} · ${esc(m.material)}`,
-      detail: a ? `picked ${esc(a.value)}${a.saved ? ", saved to the profile" : ""}` : `print it, then tap ${esc(m.read)}`,
+      detail: a ? `picked ${esc(a.value)}${a.saved ? a.saved.pending_git ? ", profile change waiting for a pull request" : ", saved to the profile" : ""}` : `print it, then tap ${esc(m.read)}`,
       meta: [esc(m.time || ""), m.grams ? m.grams + " g" : "", on ? "" : "not on the printer any more"],
       acts: on && !a ? `<button class="btn sm" data-calq="${esc(m.file)}">Queue it</button>` : ""})}
       ${a ? "" : `<div class="pieces" role="group" aria-label="Best piece">${m.pieces.map(p => `<button class="btn sm" data-ctfile="${esc(m.file)}" data-ctn="${p.n}" title="${p.value}"><b>${p.n}</b><small>${p.value}</small></button>`).join("")}</div>`}</div>`; }).join("")}</div>`
@@ -1421,9 +1421,11 @@ $("#calWizard").addEventListener("click", e => {
   if (q) addToQueue(q.dataset.calq);
   if (!b) return;
   const m = (S.calR.made || []).find(x => x.file === b.dataset.ctfile), p = m.pieces.find(x => x.n === +b.dataset.ctn);
-  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo, and written into the ${m.material} slicing profile (it is ${m.current} now). The old profile is kept.`,
+  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo, then the ${m.material} slicing profile changes from ${m.current} (straight away, or as a pull request where the profiles live in git).`,
     "Save to profile", async () => { try { const r = await post("/api/calibration", {file: m.file, piece: p.n, save: true});
-      toast(`Saved: ${Object.entries(r.saved || {}).map(([k, v]) => k + " " + v).join(", ")}`); loadCalibration(); } catch (err) { toast(err.message, true); } });
+      const sv = r.saved || {};
+      toast(sv.pending_git ? `Recorded. Claude opens the ${sv.material} profile change for you to merge.` : `Saved: ${Object.entries(sv).map(([k, v]) => k + " " + v).join(", ")}`);
+      loadCalibration(); } catch (err) { toast(err.message, true); } });
 });
 function headOptions() {
   const tc = (S.status || {}).print_task_config || {};

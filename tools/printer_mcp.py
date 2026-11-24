@@ -157,7 +157,10 @@ def t_calibration(a):
     if a.get("value") or a.get("piece"):
         r = http("POST", "/api/calibration", {k: a[k] for k in ("test", "value", "filament", "note", "file", "piece", "save", "material") if a.get(k) not in (None, "")})
         return f'Recorded {r["test"]} = {r["value"]} for {r["filament"] or "the loaded filament"}' + (" with a photo of the print." if r.get("photo") else ".") + (
-            " Saved into the slicing profile: " + ", ".join(f"{k} = {v}" for k, v in r["saved"].items()) + "." if r.get("saved")
+            f' The profile lives in git here: call the almehdar-workshop MCP\'s workshop_profile for {r["saved"]["material"]} with '
+            + ", ".join(f"{k} = {v}" for k, v in r["saved"].items() if k not in ("pending_git", "material", "next")) + " (who = the person) to open the pull request."
+            if (r.get("saved") or {}).get("pending_git")
+            else " Saved into the slicing profile: " + ", ".join(f"{k} = {v}" for k, v in r["saved"].items()) + "." if r.get("saved")
             else f' It belongs in the profile key {r["key"]}; pass save=true to write it.' if r.get("key") else "")
     got = http("GET", "/api/calibration")
     made = got.get("made") or []
