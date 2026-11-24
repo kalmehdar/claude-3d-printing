@@ -1873,7 +1873,7 @@ def files_meta(names):
         with moonraker("GET", "/server/files/list?root=gcodes", timeout=15) as r:
             mods = {f["path"]: f.get("modified") for f in json.load(r)["result"]}
         _list_cache[:] = [time.time(), mods]
-    want = [n for n in dict.fromkeys(names) if n in mods][:100]
+    want = [n for n in dict.fromkeys(names) if n in mods][:100]   # the page asks for its newest 60; past 100 the rest stay unknown
 
     def one(n):
         key = (n, mods[n])

@@ -1053,7 +1053,7 @@ function thumbUrl(name, m) {
 }
 async function ensureMeta(names) {   // one /api/meta answer for every file still unknown (was one request per file)
   const want = [...new Set(names.filter(n => !S.meta[n]))]; if (!want.length) return;
-  let got = {}; try { got = await api("/api/meta?" + want.map(n => "f=" + enc(n)).join("&")); } catch (e) {}
+  let got; try { got = await api("/api/meta?" + want.map(n => "f=" + enc(n)).join("&")); } catch (e) { return; }   // left unknown: asked again next time
   for (const n of want) S.meta[n] = got[n] || {};
 }
 // The file printing (or paused) now gets Preview only: no second Print, no Delete under a running job (22 Nov audit)
