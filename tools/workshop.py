@@ -786,12 +786,61 @@ def ask_claude(content, schema, effort="low", max_tokens=4000):
     return v
 
 
-def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None, before=None):
+_cam2 = {"t": 0.0, "jpg": None}
+_cam2_lock = _threading.Lock()   # only one process can hold the UVC camera: every grab goes through here, one at a time
+CAM2_LABEL = "Second camera, above the front of the bed looking down at the plate, at the same moment:"
+
+
+def cam2_device():
+    """The second camera: --camera2, else /dev/video0 when it is there (alm-01 CT 113, 24 Nov 2026: a Verbatim 4K UVC
+    webcam on the printer's side); None when there is none or --camera2 none."""
+    dev = CFG.get("camera2")
+    if dev == "none":
+        return None
+    dev = dev or "/dev/video0"
+    return dev if os.path.exists(dev) else None
+
+
+def cam2_frame(max_age=2.0):
+    """A JPEG from the second camera, or None. One ffmpeg at a time holds the device; a frame under max_age seconds old is
+    shared, so several viewers and the photo watch never queue up behind each other. The camera's first frames are dark
+    while its exposure settles, so six are read and the last kept (copied as MJPEG, not re-encoded)."""
+    dev = cam2_device()
+    if not dev:
+        return None
+    with _cam2_lock:
+        if _cam2["jpg"] and time.time() - _cam2["t"] < max_age:
+            return _cam2["jpg"]
+        out = os.path.join(tempfile.gettempdir(), "workshop-cam2.jpg")
+        try:
+            import subprocess
+            r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "v4l2", "-input_format", "mjpeg",
+                                "-video_size", "1920x1080", "-i", dev, "-frames:v", "6", "-c:v", "copy", "-update", "1", out],
+                               capture_output=True, timeout=20)
+            if r.returncode == 0 and os.path.getsize(out) > 1000:
+                _cam2.update(t=time.time(), jpg=open(out, "rb").read())
+            else:
+                print("second camera:", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
+        except (OSError, ValueError) as e:
+            print("second camera:", e, flush=True)
+        except Exception as e:   # noqa: BLE001 - a hung camera (TimeoutExpired) must not take a check down with it
+            print("second camera:", e, flush=True)
+        return _cam2["jpg"] if _cam2["jpg"] and time.time() - _cam2["t"] < 60 else None
+
+
+def cam2_arg(max_age=2.0):
+    """{"front": jpg} for look_at_photo when the second camera gave a picture, else {} (the call is as before)."""
+    jpg = cam2_frame(max_age)
+    return {"front": jpg} if jpg else {}
+
+
+def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None, before=None, front=None):
     """One Claude API call: {verdict, problem, confidence, reason} for a camera frame, or raises OSError/ValueError.
     plan: PNG bytes of the first layer's planned paths (the first-layer check), sent as a second picture.
     prompt and schema replace the in-print check (the finished-print look uses its own).
     before: (jpg, layer) of the last frame the watch passed, sent first so a part that snapped or fell off between checks
-    shows as a change (22 Nov 2026: a single photo at layer 61 was judged fine with a snapped pillar lying on the plate)."""
+    shows as a change (22 Nov 2026: a single photo at layer 61 was judged fine with a snapped pillar lying on the plate).
+    front: JPEG bytes from the second camera at the same moment (cam2_frame), sent after the main picture and labelled."""
     import base64
     keys = api_keys()
     if not keys:
@@ -803,6 +852,8 @@ def look_at_photo(jpg, layer, plan=None, prompt=None, schema=None, before=None):
                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(before[0], "rb").read()).decode()}},
                    {"type": "text", "text": f"Now, layer {layer}:"}] if before else []),
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(jpg, "rb").read()).decode()}},
+                *([{"type": "text", "text": CAM2_LABEL},
+                   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(front).decode()}}] if front else []),
                 *([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(plan).decode()}}] if plan else []),
                 {"type": "text", "text": prompt or PHOTO_PROMPT.format(layer=layer) + (FIRST_LAYER_TEXT if plan else "")}]}]}
     res, last = None, None
@@ -877,7 +928,8 @@ def finish_look(file, wait=20):
             os.makedirs(folder, exist_ok=True)
             photo = row["photo"] = os.path.join(folder, time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w.-]", "_", os.path.basename(file or "print")) + ".jpg")
             printer.snap(photo)
-        v = look_at_photo(photo, None, prompt=FINISH_PROMPT.format(file=os.path.basename(file or "the print")), schema=FINISH_SCHEMA)
+        v = look_at_photo(photo, None, prompt=FINISH_PROMPT.format(file=os.path.basename(file or "the print")), schema=FINISH_SCHEMA,
+                          **cam2_arg())
         row.update(v)
         flaws = ", ".join(f.replace("_", " ") for f in v["flaws"])
         record(f"looked at the finished print: {v['quality']}" + (f" ({flaws})" if flaws else ""), file, who="photo watch")
@@ -981,6 +1033,10 @@ def print_doctor(file, reason, photos=8, now=False):
     except (OSError, ValueError):
         pass
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(p, "rb").read()).decode()}} for p in shots]
+    front = cam2_frame()
+    if front:
+        content += [{"type": "text", "text": CAM2_LABEL.replace("at the same moment", "now")},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(front).decode()}}]
     content.append({"type": "text", "text": DOCTOR_PROMPT.format(reason=reason, settings=settings or "(none found)", notes="\n".join(notes[-12:]) or "(none)")})
     row = {"t": time.time(), "file": file, "reason": reason, "photos": [os.path.basename(p) for p in shots]}
     try:
@@ -1039,7 +1095,7 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         pass
     try:
         prompt = PHOTO_PROMPT.format(layer=layer) + extra + (FIRST_LAYER_TEXT if plan else "") + (HEAD_CHANGE_TEXT if head_change else "")
-        v = look_at_photo(photo, layer, plan, prompt=prompt, before=before)
+        v = look_at_photo(photo, layer, plan, prompt=prompt, before=before, **cam2_arg())
         log({"photo": photo, "first_layer": bool(plan), "head_change": head_change, **v})
         sure = 0.8 if before else 0.85   # a change against a frame that passed is firmer evidence than one photo alone
         if not (v["verdict"] == "pause" and v["problem"] in PAUSE_ON and v["confidence"] >= sure):
@@ -1049,7 +1105,7 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
-        v2 = look_at_photo(second, layer, plan, prompt=prompt, before=before)
+        v2 = look_at_photo(second, layer, plan, prompt=prompt, before=before, **cam2_arg(max_age=0))   # fresh, like the second photo
         log({"photo": second, "second_look": True, **v2})
         if not (v2["verdict"] == "pause" and v2["problem"] in PAUSE_ON and v2["confidence"] >= sure):
             return
@@ -2436,6 +2492,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(200, r.read(), r.headers.get("Content-Type", "image/jpeg"))
             except OSError as e:
                 return self.send(502, {"error": f"camera: {e}"})
+        if p.startswith("/cam2.jpg"):   # the second camera (see cam2_frame): shared frame, one device holder
+            if not cam2_device():
+                return self.send(404, {"error": "no second camera"})
+            jpg = cam2_frame()
+            return self.send(200, jpg, "image/jpeg") if jpg else self.send(503, {"error": "the second camera did not give a picture"})
         if p == "/api/designs":
             return self.send(200, designs())
         if p == "/api/boot":   # cheap: the page asks every 30 s and reloads when Workshop restarted
@@ -2465,7 +2526,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 pass
             conf = printer_conf()
             push = (f'{conf.get("ntfy_server", "https://ntfy.sh").rstrip("/")}/{conf["ntfy_topic"]}' if conf.get("ntfy_topic") else None)
-            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "live_relay": CFG.get("live_relay"), "printer_screen": screen, "push": push, "boot": BOOT,
+            return self.send(200, {"printer": CFG["printer"], "profile": CFG["profile"], "slicer": slicer, "live_camera": live, "live_relay": CFG.get("live_relay"), "printer_screen": screen, "camera2": bool(cam2_device()), "push": push, "boot": BOOT,
                                    "presets": getattr(orca, "PRESET_WORDS", {}), "prices": filament_prices(CFG.get("register"))})
         m = re.fullmatch(r"/gallery-photo/([\w-]+\.jpg)", p)
         if m:
@@ -2812,6 +2873,7 @@ def main():
     ap.add_argument("--printer", default=os.environ.get("PRINTER_HOST"), help="printer address (or PRINTER_HOST)")
     ap.add_argument("--moonraker-port", type=int, default=7125)
     ap.add_argument("--camera", help="camera still path or URL (default: the snapshot Moonraker lists)")
+    ap.add_argument("--camera2", help="a second camera on this machine, a V4L2 device (default /dev/video0 when present; 'none' for none)")
     ap.add_argument("--bench", action="append", help="a bench.json (repeat for more); default examples/bench.json")
     ap.add_argument("--profile", default="u1", help="tools/orca.py printer setup for slicing")
     ap.add_argument("--bind", default="0.0.0.0")
@@ -2828,7 +2890,7 @@ def main():
     if not a.printer:
         sys.exit("give --printer <address> (or set PRINTER_HOST)")
     benches = [os.path.realpath(os.path.expanduser(b)) for b in (a.bench or [os.path.join(REPO, "examples", "bench.json")])]
-    CFG.update(config_backup=a.config_backup and os.path.expanduser(a.config_backup), print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, benches=benches,
+    CFG.update(config_backup=a.config_backup and os.path.expanduser(a.config_backup), print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, camera2=a.camera2, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], live_relay=a.live_relay, bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
     if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only

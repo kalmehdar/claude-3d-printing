@@ -149,11 +149,25 @@ def t_status(_):
     return "\n".join(lines)
 
 
-def t_snapshot(_):
-    jpg = http("GET", "/cam.jpg?t=" + str(time.time()), raw=True, timeout=20)
-    return [{"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
-            {"type": "text", "text": f"Camera, {time.strftime('%H:%M:%S')}. The camera sits low at bed level: it shows the plate "
-                                     "and the head well, but a thin leftover part can hide."}]
+def t_snapshot(a):
+    which = (a or {}).get("camera") or "both"
+    out = []
+    if which in ("printer", "both"):
+        jpg = http("GET", "/cam.jpg?t=" + str(time.time()), raw=True, timeout=20)
+        out += [{"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
+                {"type": "text", "text": f"Printer camera, {time.strftime('%H:%M:%S')}. It sits low at bed level: it shows the plate "
+                                         "and the head well, but a thin leftover part can hide."}]
+    if which in ("top", "both"):
+        try:
+            jpg = http("GET", "/cam2.jpg?t=" + str(time.time()), raw=True, timeout=30)
+            out += [{"type": "image", "data": base64.b64encode(jpg).decode(), "mimeType": "image/jpeg"},
+                    {"type": "text", "text": "Top view (second camera, above the front of the bed looking down): the plate's surface, "
+                                             "so a flat leftover part shows here when the printer camera misses it."}]
+        except RuntimeError as e:
+            if which == "top":
+                raise
+            out.append({"type": "text", "text": f"(No top view: {e}.)"})
+    return out
 
 
 def t_layer_photos(a):
@@ -626,7 +640,8 @@ TOOLS = [
      "error, started), when it reaches a layer, or after the minutes given (default 5, at most 15), with the status then.",
      {"layer": {"type": "integer", "minimum": 1, "description": "return once the print reaches this layer"},
       "minutes": {"type": "number", "description": "longest wait, up to 15"}}, t_wait),
-    ("printer_snapshot", "A fresh picture from the camera inside the printer. Look at it before every start (the plate must be on and empty) and to check a print.", {}, t_snapshot),
+    ("printer_snapshot", "Fresh pictures of the printer: the camera inside it (low, at bed level) and the top view (a second camera above the front of the bed, looking down). Look before every start (the plate must be on and empty) and to check a print. Both by default.",
+     {"camera": {"type": "string", "enum": ["both", "printer", "top"], "description": "which camera; both by default"}}, t_snapshot),
     ("printer_layer_photos", "Photos Workshop saved during a print, one per layer: spread across the job and ending at the newest. Use to see how a long or overnight print went without a live look.",
      {"count": {"type": "integer", "description": "how many photos, 1 to 8 (default 4)"}, "job": {"type": "string", "description": "a past print's name; default the latest"}}, t_layer_photos),
     ("printer_calibration", "Calibration results (print-calibration skill): with no value, list them; with test and value, record the value the person picked from a test print, with a camera photo of it.",

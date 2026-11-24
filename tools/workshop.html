@@ -391,7 +391,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
             <div class="actions" id="jobActions"></div>
           </div>
           <div class="card cam" id="camCard"><div class="camview"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="cam2Btn" hidden aria-label="The second camera, above the front of the bed">Top view</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
             <div class="pip" id="l3Card" hidden><div class="viewer" id="l3"></div><span class="stamp" id="l3Stamp">3D</span>
               <div class="camtools"><button class="btn sm" id="l3Swap" aria-pressed="false" aria-label="Show the 3D view large">Large</button><button class="btn sm" id="l3Reset" aria-label="Back to the starting view">Reset</button></div></div></div>
           <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
@@ -1876,6 +1876,13 @@ api("/api/info").then(i => { S.info = i;
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
   S.boot = i.boot;
   if (i.live_camera) { $("#camMode").hidden = false; camSet(camPref()); }
+  if (i.camera2) {   // the second camera on alm-01 (a UVC webcam on the printer's side): stills, one shared frame every 2 s
+    $("#cam2Btn").hidden = false;
+    $("#cam2Btn").onclick = () => { const b = openSheet("Top view", `<img id="cam2Img" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9" alt="The bed from above the front">
+        <p class="note" style="margin:10px 0 0">The second camera, above the front of the bed. A new picture every 2 seconds.</p>`);
+      const tick = () => { const el = b.querySelector("#cam2Img"); if (el) el.src = "/cam2.jpg?t=" + Date.now(); };
+      tick(); const t = setInterval(() => document.hidden || tick(), 2000); onSheetClose = () => clearInterval(t); };
+  }
   if (i.printer_screen) {   // the U1's touchscreen, shown read-only: a tap there could start or change a print
     $("#screenBtn").hidden = false;
     $("#screenBtn").onclick = () => openSheet("Printer screen", `<div style="position:relative;aspect-ratio:16/10;border-radius:10px;overflow:hidden;background:#000">
