@@ -41,6 +41,7 @@ assert len(runs) == 1 and runs[0][runs[0].index("-i") + 1] == dev, runs    # fiv
 assert runs[0][runs[0].index("-video_size") + 1] == "2560x1440" and runs[0][runs[0].index("-frames:v") + 1] == "1"
 assert "select=gte(n\\,60)" in runs[0][runs[0].index("-vf") + 1]          # 2 s of frames skipped for autofocus
 assert len(controls) == 1 and "exposure_time_absolute=600" in controls[0][-1] and "white_balance_temperature=5200" in controls[0][-1]
+w._cam2["fail_t"] = 0
 w.cam2_frame(max_age=0)
 assert len(runs) == 2                                                       # a fresh one when asked for
 
@@ -56,6 +57,7 @@ def no_1440(cmd, capture_output=True, timeout=None):
     open(cmd[-1], "wb").write(b"\xff\xd8" + b"y" * 2000 + b"\xff\xd9")
     return subprocess.CompletedProcess(cmd, 0, b"", b"")
 subprocess.run = no_1440
+w._cam2["fail_t"] = 0
 assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8y") and sizes == ["2560x1440", "1920x1080"], sizes
 
 # no v4l2-ctl on the box: still a picture, with the camera's own settings
@@ -65,16 +67,37 @@ def no_ctl(cmd, capture_output=True, timeout=None):
     open(cmd[-1], "wb").write(b"\xff\xd8" + b"z" * 2000 + b"\xff\xd9")
     return subprocess.CompletedProcess(cmd, 0, b"", b"")
 subprocess.run = no_ctl
+w._cam2["fail_t"] = 0
 assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8z")
 
 # a failed or hung camera: the last good frame (under a minute old) or None, never an exception
-subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a[0], 1, b"", b"Device or resource busy")
-assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8")
+tries = []
+def busy(cmd, *a, **k):
+    tries.append(cmd[0])
+    return subprocess.CompletedProcess(cmd, 1, b"", b"Device or resource busy")
+subprocess.run = busy
+assert w.cam2_frame(max_age=0).startswith(b"\xff\xd8")               # the last good frame for a viewer
+assert w.cam2_frame(max_age=0, fresh_only=True) is None                 # never labelled 'same moment' when stale
+n = len(tries)
+for _ in range(5):
+    w.cam2_frame(max_age=0)
+assert len(tries) == n, "grabbed again during the back-off"            # a dead camera is left alone for 30 s
+assert w.cam2_arg(max_age=0) == {}                                      # the watch's second look: no stale top view
+w._cam2["fail_t"] = time.time() - w.CAM2_BACKOFF - 1
+w.cam2_frame(max_age=0)
+assert len(tries) > n                                                   # and tried again after it
 def hang(*a, **k):
     raise subprocess.TimeoutExpired(a[0], 20)
 subprocess.run = hang
-w._cam2["t"] = time.time() - 120
+w._cam2.update(t=time.time() - 120, fail_t=0)
 assert w.cam2_frame(max_age=0) is None
+
+# the photo watch waits at most its timeout for a viewer's grab, then goes on without the top view
+w._cam2.update(t=0, fail_t=0)
+w._cam2_lock.acquire()                                                  # a slow grab holds the camera
+t0 = time.time()
+assert w.cam2_frame(wait=0.3) is None and time.time() - t0 < 2
+w._cam2_lock.release()
 
 # none configured, or switched off
 w.CFG["camera2"] = "none"

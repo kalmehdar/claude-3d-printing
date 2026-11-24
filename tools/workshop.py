@@ -811,16 +811,27 @@ CAM2_SIZES = ("2560x1440", "1920x1080")   # 1440p (Khalid), 1080p if the camera 
 CAM2_FILTER = "select=gte(n\\,60),hqdn3d=1.5:1.5:0:0,unsharp=5:5:0.5:5:5:0"   # skip 2 s so autofocus settles; light clean-up
 
 
-def cam2_frame(max_age=4.0):
+CAM2_BACKOFF = 30   # seconds after a failed grab with no new attempt: a hung webcam must not hold every caller in turn
+
+
+def cam2_frame(max_age=4.0, wait=None, fresh_only=False):
     """A JPEG from the second camera, or None. One ffmpeg at a time holds the device; a frame under max_age seconds old is
     shared, so several viewers and the photo watch never queue up behind each other. Each grab sets the camera's controls,
-    skips 2 s of frames for autofocus and keeps one at 1440p (1080p as a fallback), lightly denoised and sharpened."""
+    skips 2 s of frames for autofocus and keeps one at 1440p (1080p as a fallback), lightly denoised and sharpened.
+    After a failure nobody grabs again for CAM2_BACKOFF seconds (the last good frame, under a minute old, is returned).
+    wait: seconds to wait for another caller's grab (None waits); when it runs out, None. fresh_only: None unless this
+    call's own grab succeeded (a picture labelled 'at the same moment' must be from now)."""
     dev = cam2_device()
     if not dev:
         return None
-    with _cam2_lock:
+    if not _cam2_lock.acquire(timeout=-1 if wait is None else wait):
+        return None
+    try:
+        recent = _cam2["jpg"] if _cam2["jpg"] and time.time() - _cam2["t"] < 60 else None
         if _cam2["jpg"] and time.time() - _cam2["t"] < max_age:
             return _cam2["jpg"]
+        if time.time() - _cam2.get("fail_t", 0) < CAM2_BACKOFF:
+            return None if fresh_only else recent
         out = os.path.join(tempfile.gettempdir(), "workshop-cam2.jpg")
         try:
             import subprocess
@@ -835,19 +846,22 @@ def cam2_frame(max_age=4.0):
                                     "-video_size", size, "-i", dev, "-vf", CAM2_FILTER, "-frames:v", "1", "-q:v", "2", out],
                                    capture_output=True, timeout=25)
                 if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 1000:
-                    _cam2.update(t=time.time(), jpg=open(out, "rb").read())
-                    break
+                    _cam2.update(t=time.time(), jpg=open(out, "rb").read(), fail_t=0)
+                    return _cam2["jpg"]
                 print(f"second camera ({size}):", r.stderr.decode(errors="replace").strip()[-200:], flush=True)
-        except (OSError, ValueError) as e:
-            print("second camera:", e, flush=True)
         except Exception as e:   # noqa: BLE001 - a hung camera (TimeoutExpired) must not take a check down with it
             print("second camera:", e, flush=True)
-        return _cam2["jpg"] if _cam2["jpg"] and time.time() - _cam2["t"] < 60 else None
+        _cam2["fail_t"] = time.time()
+        return None if fresh_only else recent
+    finally:
+        _cam2_lock.release()
 
 
 def cam2_arg(max_age=4.0):
-    """{"front": jpg} for look_at_photo when the second camera gave a picture, else {} (the call is as before)."""
-    jpg = cam2_frame(max_age)
+    """{"front": jpg} for look_at_photo when the second camera gave a picture, else {} (the call is as before). The photo
+    watch and the doctor wait at most 5 s for a viewer's grab and skip the top view rather than queue behind it; with
+    max_age=0 the picture must be this moment's (fresh_only)."""
+    jpg = cam2_frame(max_age, wait=5, fresh_only=max_age == 0)
     return {"front": jpg} if jpg else {}
 
 
@@ -1050,7 +1064,7 @@ def print_doctor(file, reason, photos=8, now=False):
     except (OSError, ValueError):
         pass
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(p, "rb").read()).decode()}} for p in shots]
-    front = cam2_frame()
+    front = cam2_frame(wait=5)
     if front:
         content += [{"type": "text", "text": CAM2_LABEL.replace("at the same moment", "now")},
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(front).decode()}}]
@@ -2910,6 +2924,8 @@ def main():
     CFG.update(config_backup=a.config_backup and os.path.expanduser(a.config_backup), print_log=a.print_log and os.path.expanduser(a.print_log), register=a.register and os.path.expanduser(a.register), url=f"http://{a.bind if a.bind != '0.0.0.0' else lan_ip()}:{a.port}/", printer=a.printer, moonraker=f"http://{a.printer}:{a.moonraker_port}", camera=a.camera, camera2=a.camera2, benches=benches,
                profile=a.profile, verbose=a.verbose, allow_hosts=[h.lower() for h in a.allow_host], live_relay=a.live_relay, bed=json.load(open(benches[0], encoding="utf-8")).get("bed", 256))
     import threading
+    if a.preview and not a.camera2:   # a second copy would fight the live Workshop for /dev/video0 (EBUSY)
+        CFG["camera2"] = "none"
     if not a.preview:   # the watcher takes photos, pauses on failures and writes the print log: one copy only
         threading.Thread(target=watch_alerts, daemon=True).start()   # the console scrolls away in minutes; keep warnings
     class Server(http.server.ThreadingHTTPServer):
