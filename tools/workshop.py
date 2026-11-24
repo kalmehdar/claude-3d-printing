@@ -534,10 +534,120 @@ CAL_TESTS = {   # test -> the slicer profile key its result belongs in (skills/p
     "flow-ratio": "filament_flow_ratio", "retraction": "filament_retraction_length", "other": ""}
 
 
+CAL_PLANS = os.path.join(os.path.dirname(CAL_LOG), "calibration-tests.json")   # file -> the plan caltest.build made for it
+PROFILE_KEYS = {"pressure-advance": {"pressure_advance": "{v}", "enable_pressure_advance": "1"},
+                "flow-ratio": {"filament_flow_ratio": "{v}"},
+                "temperature": {"nozzle_temperature": "{v}", "nozzle_temperature_initial_layer": "{v}"}}
+
+
+def cal_plans():
+    try:
+        return json.load(open(CAL_PLANS, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def profile_file(material):
+    import orca
+    path = os.path.join(orca.printer_dir(CFG["profile"]), f"filament-{material}.json")
+    if not re.fullmatch(r"[\w.-]+", material or "") or not os.path.isfile(path):
+        raise ValueError(f"no filament profile {material!r} in the slicer setup")
+    return path
+
+
+def profile_value(material, key):
+    v = json.load(open(profile_file(material), encoding="utf-8")).get(key)
+    return (v[0] if isinstance(v, list) else v) if v not in (None, [], "") else None
+
+
+def cal_test(req, who):
+    """One-tap calibration test (tools/caltest.py) for one head: built, sliced for that head's filament, the per-piece
+    settings put in, uploaded. Never starts it. The plan is kept so the person's answer ('piece 6') becomes a value."""
+    import caltest
+    import orca
+    test = str(req.get("test", ""))
+    if test not in caltest.TESTS:
+        return 400, {"error": "test is " + ", ".join(caltest.TESTS)}
+    try:
+        head = int(req.get("head", -1))
+    except (TypeError, ValueError):
+        head = -1
+    heads = loaded_heads()
+    if not heads or not 0 <= head < len(heads) or not heads[head].get("colour"):
+        return 409, {"error": "pick a head that has filament in it (T0 to T3)"}
+    mat = heads[head]["material"]
+    cur = profile_value(mat, caltest.TESTS[test]["key"])
+    if cur is None:
+        return 409, {"error": f"the {mat} profile has no {caltest.TESTS[test]['key']} to start from"}
+    kw = {k: float(req[k]) for k in ("start", "step") if req.get(k) not in (None, "")}
+    if req.get("count"):
+        kw["count"] = int(req["count"])
+    try:
+        data, plan = caltest.build(test, head, cur, bed=CFG.get("bed", 270), **kw)
+    except ValueError as e:
+        return 400, {"error": str(e)}
+    on = plate()["plate"]
+    if on == "smooth" and "petg" in mat and not req.get("glue"):
+        return 409, {"error": "PETG on the smooth plate: put a thin layer of glue stick down, then make it again with glue=yes.", "plate": on}
+    out = tempfile.mkdtemp(prefix="workshop-cal-")
+    try:
+        p3 = os.path.join(out, "cal.3mf")
+        open(p3, "wb").write(data)
+        try:
+            s = orca.slice_([p3], CFG["profile"], preset="standard", material=",".join(h["material"] for h in heads),
+                            sets=caltest.TESTS[test]["sets"] + ["curr_bed_type=" + PLATES[on]], out=out)
+        except SystemExit as e:
+            return 422, {"error": str(e.code)}
+        if s.get("error") or not s.get("gcode"):
+            return 422, {"error": s.get("error", "no G-code")}
+        try:
+            g = caltest.patch(open(s["gcode"], encoding="utf-8", errors="replace").read(), plan)
+        except ValueError as e:
+            return 422, {"error": str(e)}
+        name = f"cal-{test}-T{head}-{safe_name(mat)}.gcode"
+        gp = os.path.join(out, name)
+        open(gp, "w", encoding="utf-8").write(g)
+        upload_gcode(gp, name)
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+    plan.update(material=mat, file=name, t=time.time(), who=who, time=s["time"], grams=s["total_g"])
+    plans = cal_plans()
+    plans[name] = plan
+    os.makedirs(os.path.dirname(CAL_PLANS), exist_ok=True)
+    json.dump(plans, open(CAL_PLANS + ".part", "w", encoding="utf-8"), indent=1)
+    os.replace(CAL_PLANS + ".part", CAL_PLANS)
+    record(f"made calibration test: {test} on T{head} ({mat})", name, who=who)
+    return 200, plan
+
+
+def save_to_profile(test, material, value, who):
+    """A calibration answer as a profile change waiting for a pull request. Workshop never writes a profile: on alm-01
+    they are the Almehdar repo's workshop/profiles, and an edit there drifts from git and can block the next pull
+    (independent review, 24 Nov 2026: failing open on a git error was a P0). The change goes through the
+    almehdar-workshop MCP's workshop_profile, or by hand on a laptop's own setup."""
+    keys = PROFILE_KEYS.get(test)
+    if not keys:
+        raise ValueError("only pressure-advance, flow-ratio and temperature go into the profile from here")
+    float(value)   # a number, or ValueError
+    profile_file(material)   # the profile exists
+    want = {k: v.format(v=value) for k, v in keys.items()}
+    record(f"profile change waiting: {material} " + ", ".join(f"{k} -> {v}" for k, v in want.items()), test, who=who)
+    return {"pending_git": True, "material": material, **want,
+            "next": f"workshop_profile filament={material} with these values opens the pull request; Workshop slices with it once merged and pulled"}
+
+
 def calibration(entry=None, who="?"):
     """Calibration results, newest first; with entry, record one (and a camera photo of the test print) first."""
     if entry is not None:
         test, value = str(entry.get("test", "")), str(entry.get("value", "")).strip()[:40]
+        plan = cal_plans().get(str(entry.get("file", ""))) if entry.get("file") else None
+        if entry.get("file") and not plan:
+            raise ValueError("no calibration test with that file name")
+        if plan:   # the person names the best piece; its value comes from the plan
+            import caltest
+            test, value = plan["test"], caltest.answer(plan, entry.get("piece", 0))
+            entry.setdefault("filament", plan["material"])
+            entry["note"] = (f"piece {int(entry.get('piece'))} of {plan['file']}; " + str(entry.get("note") or "")).strip("; ")
         if test not in CAL_TESTS:
             raise ValueError("test is one of " + ", ".join(CAL_TESTS))
         if not value:
@@ -553,6 +663,8 @@ def calibration(entry=None, who="?"):
             row["photo"] = "/calibration-photo/" + name
         except (OSError, ValueError):
             pass   # a result without a photo is still a result
+        if entry.get("save"):   # into the slicing profile, so the next slice uses it
+            row["saved"] = save_to_profile(test, plan["material"] if plan else str(entry.get("material", "")), value, who)
         os.makedirs(os.path.dirname(CAL_LOG), exist_ok=True)
         with open(CAL_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
@@ -1366,6 +1478,36 @@ def make_timelapse(folder):
         printer.timelapse(folder)
     except Exception as e:   # never take the watcher down over a video
         print("timelapse failed for", folder, e, flush=True)
+
+
+_changes = {}
+
+
+def tool_changes(file, read=None):
+    """Byte offsets in a G-code file where the head really changes (a T line naming another head), so the page can say how
+    many tool changes are done and left from virtual_sdcard.file_position. Read once per file and kept while it is unchanged."""
+    if read is None:
+        with moonraker("GET", "/server/files/metadata?filename=" + urllib.parse.quote(file), timeout=10) as r:
+            stamp = json.load(r)["result"].get("modified")
+        if _changes.get(file, (None,))[0] == stamp:
+            return _changes[file][1]
+        read = moonraker("GET", "/server/files/gcodes/" + urllib.parse.quote(file), timeout=120)
+    else:
+        stamp = None
+    offsets, head, at = [], None, 0
+    with read as f:
+        for line in f:
+            if line[:1] == b"T" and line[1:2].isdigit():
+                t = line.split(None, 1)[0]
+                if head is not None and t != head:
+                    offsets.append(at)
+                head = t
+            at += len(line)
+    out = {"total": len(offsets), "offsets": offsets}
+    if stamp is not None:
+        _changes.clear()   # ponytail: one file kept, the one printing; a dict per file if the queue view wants them too
+        _changes[file] = (stamp, out)
+    return out
 
 
 def frames(job=""):
@@ -2263,7 +2405,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(201, calibration(r if isinstance(r, dict) else {}, who=actor(self))[0])
                 except ValueError as e:
                     return self.send(400, {"error": str(e)})
-            return self.send(200, {"tests": CAL_TESTS, "results": calibration()})
+            return self.send(200, {"tests": CAL_TESTS, "results": calibration(), "made": sorted(cal_plans().values(), key=lambda x: -x["t"])[:12]})
+        if p == "/api/calibration-test" and self.command == "POST":   # {test, head[, start, step, count, glue]}: built and uploaded, never started
+            try:
+                r = json.loads(self.body() or b"{}")
+                code, out = cal_test(r if isinstance(r, dict) else {}, actor(self))
+            except (ValueError, TypeError) as e:
+                return self.send(400, {"error": str(e)})
+            except OSError as e:
+                return self.send(502, {"error": f"printer: {e}"})
+            return self.send(code, out)
         if p.startswith("/api/activity"):
             import printer
             try:
@@ -2277,6 +2428,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             return self.send(200, out)
+        if p.startswith("/api/tool-changes"):   # ?file=: where the head changes, for "tool change 12 of 40" on the page
+            f = urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("file", [""])[0]
+            if not f or ".." in f:
+                return self.send(400, {"error": "give file"})
+            try:
+                return self.send(200, tool_changes(f))
+            except (OSError, ValueError, KeyError) as e:
+                return self.send(502, {"error": f"printer: {e}"})
         if p.startswith("/api/frames"):
             return self.send(200, frames(urllib.parse.parse_qs(urllib.parse.urlsplit(p).query).get("job", [""])[0]))
         m = re.fullmatch(r"/frames/([\w.-]+)/([\w-]+\.(jpg|mp4))", p)

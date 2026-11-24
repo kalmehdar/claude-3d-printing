@@ -185,6 +185,10 @@ dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
 .viewer .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);padding:20px;text-align:center}
 .why{margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent);display:grid;gap:4px;font-size:13.5px}
 .why b{color:var(--warn)}
+.ctrow .pieces{display:flex;flex-wrap:wrap;gap:6px;padding:2px 12px 12px 44px}
+.ctrow .pieces .btn{min-width:52px;min-height:44px;flex-direction:column;gap:0;line-height:1.1}
+.ctrow .pieces small{color:var(--dim);font-size:10.5px}
+@media (max-width:640px){.ctrow .pieces{padding-left:12px}}
 .layerbar{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:12px}
 .layerbar input{width:100%;accent-color:var(--accent)}
 input[type=range]{accent-color:var(--accent)}
@@ -487,6 +491,24 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
           <div class="card"><h2>Watch</h2><div class="ctrls"><button class="btn" id="wCam">Live camera</button><button class="btn" id="wScreen">Printer screen</button><button class="btn" id="wLapse">Timelapses</button></div></div>
           <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
           <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
+          <details class="card fold" id="calHistCard" open><summary><h2>Calibration</h2></summary>
+        <p class="note">Make a test for one head, print it, then tap the number of the best piece. It is recorded with a photo, and
+          Claude opens the change to that filament's slicing profile as a pull request.</p>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin:12px 0 4px">
+          <select id="ctTest" aria-label="Which test"><option value="pressure-advance">Pressure advance (8 boxes)</option>
+            <option value="flow-ratio">Flow ratio (9 tiles)</option><option value="temperature">Temperature (5 bands)</option></select>
+          <select id="ctHead" aria-label="Which head"></select>
+          <button class="btn primary" id="ctMake">Make test</button></div>
+        <p class="note" id="ctNote" style="margin:4px 0 0">Slicing takes a minute or two. It goes on the printer, not started.</p>
+        <div id="calWizard" style="margin:12px 0 14px"></div>
+        <p class="note" style="margin:0 0 6px">Other tests (max flow, retraction): record the value by hand.</p>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+          <select id="calTest" aria-label="Which test"></select>
+          <input id="calFil" placeholder="Filament, e.g. SUNLU PETG white" aria-label="Filament" style="min-width:180px">
+          <input id="calVal" placeholder="Value picked, e.g. 240" aria-label="Value picked" style="width:150px">
+          <input id="calNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
+          <button class="btn primary" id="calSave">Record</button></div>
+        <div class="list" id="calList"></div></details>
         </div>
       </div>
     </section>
@@ -498,17 +520,7 @@ pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;pa
       <details class="card fold" id="tlCard" hidden style="margin-bottom:16px"><summary><h2>Printer timelapses</h2></summary><div id="tlBox"></div></details>
       <details class="card fold" id="costCard" hidden style="margin-bottom:16px"><summary><h2>Filament and cost</h2></summary><div id="costBox"></div></details>
       <details class="card fold" id="accCard" hidden style="margin-bottom:16px"><summary><h2>Slicer against the printer</h2></summary><div class="note" id="accInfo"></div></details>
-      <details class="card fold" id="calHistCard" style="margin-bottom:16px"><summary><h2>Calibration</h2></summary>
-        <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
-          value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
-        <div id="calWizard" style="margin:12px 0 14px"></div>
-        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-          <select id="calTest" aria-label="Which test"></select>
-          <input id="calFil" placeholder="Filament, e.g. SUNLU PETG white" aria-label="Filament" style="min-width:180px">
-          <input id="calVal" placeholder="Value picked, e.g. 240" aria-label="Value picked" style="width:150px">
-          <input id="calNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
-          <button class="btn primary" id="calSave">Record</button></div>
-        <div class="list" id="calList"></div></details>
+
     </section>
   </main>
 </div>
@@ -575,7 +587,7 @@ function go(t) {
   tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
   document.querySelectorAll("main>section").forEach(s => s.hidden = s.id !== "tab-" + t);
   $("#title").textContent = TITLES[t]; history.replaceState(null, "", "#" + t);
-  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, printer: loadPrinter, history: loadHistory}[t] || (() => {}))();
+  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, printer: () => { loadPrinter(); loadCalibration(); }, history: loadHistory}[t] || (() => {}))();
 }
 document.querySelectorAll(".tabbtn").forEach(b => b.onclick = () => go(b.dataset.tab));
 
@@ -584,7 +596,7 @@ const focusOn = (t, sel) => { go(t); setTimeout(() => { const el = $(sel); if (e
 const COMMANDS = [
   ["Go to", "Now", "G N", () => go("now")], ["Go to", "Queue", "G Q", () => go("queue")],
   ["Go to", "Files on the printer", "G F", () => go("files")], ["Go to", "Designs", "G D", () => go("designs")],
-  ["Go to", "Printer", "G P", () => go("printer")], ["Go to", "History", "G H", () => go("history")],
+  ["Go to", "Printer", "G P", () => go("printer")], ["Do", "Make a calibration test", "", () => focusOn("printer", "#ctTest")], ["Go to", "History", "G H", () => go("history")],
   ["Do", "Ask for a print", "", () => focusOn("queue", "#rqWhat")],
   ["Do", "Search designs", "", () => focusOn("designs", "#dSearch")],
   ["Do", "Search files", "", () => focusOn("files", "#fSearch")],
@@ -701,7 +713,7 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "pause_resume", "machine_state_manager"];
+const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "virtual_sdcard", "pause_resume", "machine_state_manager"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
@@ -778,7 +790,13 @@ function render() {
   const est = (S.meta[ps.filename] || {}).estimated_time;
   $("#jobFile").textContent = (ps.filename || "Nothing printing").replace(/\.gcode$/i, ""); $("#jobFile").title = ps.filename || "";
   const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
-  $("#kLayer").textContent = (info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "") + (active && pal.enable ? ` · pauses at layer ${pal.layer}` : "");
+  // tool changes done and left: offsets of each real head change in the file, against how far the printer has read it
+  if (!active) S.tcFor = null;   // a new job reads the offsets again, even for the same file name re-sliced (review, 24 Nov)
+  if (active && ps.filename && S.tcFor !== ps.filename) { S.tcFor = ps.filename; S.tc = null; api("/api/tool-changes?file=" + encodeURIComponent(ps.filename)).then(r => { S.tc = r; render(); }).catch(() => {}); }
+  const tc2 = active && S.tc && S.tc.total ? S.tc : null, pos = (s.virtual_sdcard || {}).file_position || 0;
+  const done = tc2 ? tc2.offsets.filter(o => o < pos).length : 0;
+  $("#kLayer").textContent = [info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "",
+    tc2 ? `tool change ${done} of ${tc2.total}` : "", active && pal.enable ? `pauses at layer ${pal.layer}` : ""].filter(Boolean).join(" · ");
   let left = null;
   let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
@@ -1365,7 +1383,6 @@ async function openDesign(key) {
 async function loadHistory() {
   loadCosts(); loadTimelapses(); loadGallery();
   try {
-    loadCalibration();
     await loadAccuracy();
     if (!FR.jobs) await loadFrames();
     const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
@@ -1407,46 +1424,40 @@ async function loadAccuracy() {
     against the slicer (prints with colour changes use more). Finish times on the Now page are corrected by these.`;
 }
 function accFor(j) { return ACC && ACC.jobs.find(a => a.file === j.filename && Math.abs((a.t || 0) - (j.end_time || j.start_time || 0)) < 5); }
-// the calibration wizard: the four tests in order (print-calibration skill), the test file on the printer, done or not for this filament
-const CAL_STEPS = [["temperature", "cal-temp", "the block with clean overhangs and the least stringing"],
-  ["max-flow", "cal-maxflow", "the highest speed before the surface turns rough"],
-  ["pressure-advance", "cal-pa", "the line or corner that is sharpest, with no bulge or gap"],
-  ["flow-ratio", "cal-flow", "the smoothest top, with no gaps and no ridges"]];
+// one-tap tests (tools/caltest.py): each made test with its numbered pieces; a tap on a number records it and saves it to the profile
+const CT_WORD = {"pressure-advance": "Pressure advance", "flow-ratio": "Flow ratio", "temperature": "Temperature"};
 function renderWizard(r) {
-  const fil = ($("#calFil").value || "").trim().toLowerCase();
-  const files = (S.files || []).map(f => f.path);
-  const done = t => r.results.find(x => x.test === t && (!fil || (x.filament || "").toLowerCase() === fil));
-  const next = CAL_STEPS.findIndex(([t]) => !done(t));
-  $("#calWizard").innerHTML = `<div class="list">${CAL_STEPS.map(([t, prefix, pick], i) => { const d = done(t), f = files.find(p => p.startsWith(prefix));
-    return issueHtml({icon: d ? "done" : i === next ? "progress" : "queued", id: `${i + 1}`, title: esc(CAL_WORDS[t] || t),
-      detail: d ? `picked ${esc(d.value)}${d.key ? " for " + esc(d.key) : ""}` : i === next ? `print it, then pick ${pick}` : "",
-      meta: [f ? esc(f) : "no test file on the printer yet", r.tests[t] ? `sets ${esc(r.tests[t])}` : ""],
-      acts: (f && !d ? `<button class="btn sm" data-calq="${esc(f)}">Queue it</button>` : "") + (!d ? `<button class="btn sm ghost" data-calrec="${esc(t)}">Record</button>` : "")}); }).join("")}</div>
-    <p class="note" style="margin:8px 0 0">${next < 0 ? "All four done for this filament: the values go into its slicing profile next (Claude opens that as a pull request)." :
-      "One test at a time, in this order. A test file missing? Claude makes it in Snapmaker Orca's Calibration menu at the temperature you picked."}</p>`;
+  const made = r.made || [], files = (S.files || []).map(f => f.path);
+  const answered = m => r.results.find(x => (x.note || "").includes(m.file) && x.t > m.t);
+  $("#calWizard").innerHTML = made.length ? `<div class="list">${made.map(m => { const a = answered(m), on = files.includes(m.file);
+    return `<div class="ctrow">${issueHtml({icon: a ? "done" : "progress", id: "T" + m.head, title: `${esc(CT_WORD[m.test] || m.test)} · ${esc(m.material)}`,
+      detail: a ? `picked ${esc(a.value)}${a.saved ? ", profile change waiting for a pull request" : ""}` : `print it, then tap ${esc(m.read)}`,
+      meta: [esc(m.time || ""), m.grams ? m.grams + " g" : "", on ? "" : "not on the printer any more"],
+      acts: on && !a ? `<button class="btn sm" data-calq="${esc(m.file)}">Queue it</button>` : ""})}
+      ${a ? "" : `<div class="pieces" role="group" aria-label="Best piece">${m.pieces.map(p => `<button class="btn sm" data-ctfile="${esc(m.file)}" data-ctn="${p.n}" title="${p.value}"><b>${p.n}</b><small>${p.value}</small></button>`).join("")}</div>`}</div>`; }).join("")}</div>`
+    : `<div class="empty">No tests made yet.</div>`;
 }
 $("#calWizard").addEventListener("click", e => {
-  const q = e.target.closest("[data-calq]"), rec = e.target.closest("[data-calrec]");
+  const q = e.target.closest("[data-calq]"), b = e.target.closest("[data-ctfile]");
   if (q) addToQueue(q.dataset.calq);
-  if (rec && rec.dataset.calrec === "temperature" && towerBands()) return pickBand();
-  if (rec) { $("#calTest").value = rec.dataset.calrec; $("#calVal").focus(); }
+  if (!b) return;
+  const m = (S.calR.made || []).find(x => x.file === b.dataset.ctfile), p = m.pieces.find(x => x.n === +b.dataset.ctn);
+  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo. Claude then opens a pull request changing the ${m.material} slicing profile from ${m.current}; Workshop slices with it once it is merged.`,
+    "Record", async () => { try { const r = await post("/api/calibration", {file: m.file, piece: p.n, save: true});
+      const sv = r.saved || {};
+      toast(`Recorded. Claude opens the ${sv.material || m.material} profile change for you to merge.`);
+      loadCalibration(); } catch (err) { toast(err.message, true); } });
 });
-// the temperature tower's bands, from the newest cal-temp-<filament>-<hot>-<cool> file: hottest at the bottom, 5 °C a band (Orca's tower)
-function towerBands() {
-  const f = (S.files || []).map(x => x.path).find(p => /^cal-temp-[a-z]+-\d{3}-\d{3}/i.test(p)); if (!f) return null;
-  const [, hot, cool] = f.match(/-(\d{3})-(\d{3})/).map(Number), out = [];
-  for (let t = Math.min(hot, cool); t <= Math.max(hot, cool); t += 5) out.push(t);   // top of the tower first
-  return {file: f, bands: out};
+function headOptions() {
+  const tc = (S.status || {}).print_task_config || {};
+  $("#ctHead").innerHTML = [0, 1, 2, 3].map(i => `<option value="${i}">T${i} ${esc([(tc.filament_type || [])[i], (tc.filament_sub_type || [])[i]].filter(v => v && v !== "NONE").join(" "))}</option>`).join("");
 }
-function pickBand() {
-  const {file, bands} = towerBands();
-  const body = openSheet("Which band of the tower?", `<div class="two"><div><img src="/cam.jpg?t=${Date.now()}" alt="The printer right now" style="width:100%;border-radius:10px"></div>
-      <div><p class="note" style="margin-top:0">From ${esc(file)}. Pick the band with clean overhangs, the least stringing and no blobs. Top of the tower is the coolest.</p>
-      <div class="list">${bands.map((t, i) => `<button class="btn" data-band="${t}" style="width:100%;justify-content:space-between;margin-bottom:6px"><span>${i === 0 ? "Top" : i === bands.length - 1 ? "Bottom" : "Band " + (bands.length - i)}</span><b>${t} °C</b></button>`).join("")}</div></div></div>`);
-  body.addEventListener("click", e => { const b = e.target.closest("[data-band]"); if (!b) return;
-    $("#calTest").value = "temperature"; $("#calVal").value = b.dataset.band; closeSheet(); $("#calSave").focus();
-    toast(`${b.dataset.band} °C filled in: press Record to save it with a photo`); });
-}
+$("#ctMake").onclick = async () => {
+  const btn = $("#ctMake"); btn.disabled = true; $("#ctNote").textContent = "Slicing the test…";
+  try { const r = await post("/api/calibration-test", {test: $("#ctTest").value, head: +$("#ctHead").value});
+    $("#ctNote").textContent = `${r.file} is on the printer: ${r.time}, ${r.grams} g. Start it from Files or the queue when the bed is clear.`; S.files = null; loadCalibration();
+  } catch (e) { $("#ctNote").textContent = e.message; toast(e.message, true); } finally { btn.disabled = false; }
+};
 async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
   if (!S.files || !S.files.length) { try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); } catch (e) {} }
@@ -1458,7 +1469,7 @@ async function loadCalibration() {
       title: `${esc(CAL_WORDS[x.test] || x.test)}: ${esc(x.value)}`, detail: [x.key, x.note].filter(Boolean).map(esc).join(" · "),
       meta: [esc(x.filament || ""), esc(x.who), short(x.t), x.photo ? `<i class="mini" style="background-image:url('${esc(x.photo)}')"></i>` : ""]})).join("")
     : `<div class="empty">No calibration results yet.</div>`;
-  renderWizard(r); $("#calFil").oninput = () => renderWizard(r);
+  S.calR = r; renderWizard(r); if (!$("#ctHead").options.length) headOptions();
 }
 $("#calSave").onclick = async () => {
   try { await post("/api/calibration", {test: $("#calTest").value, value: $("#calVal").value, filament: $("#calFil").value, note: $("#calNote").value});
