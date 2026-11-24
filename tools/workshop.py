@@ -166,7 +166,10 @@ def slice_parts(d, parts, req):
     import orca
     heads, material = loaded_heads(), ""
     head_note = None
-    if heads:   # a tool changer that reports its filament: put each colour on the head holding it
+    project = len(parts) == 1 and parts[0][1].lower().endswith(".3mf")   # its own colours: orca.rehome_3mf maps them
+    if heads and project:
+        material = ",".join(h["material"] for h in heads)
+    elif heads:   # a tool changer that reports its filament: put each colour on the head holding it
         mapping, missing = make_3mf.match_heads([c for _, _, c in parts], [h["colour"] for h in heads])
         if missing and not req.get("allow_substitute"):
             return 409, {"error": "Not loaded on any head: " + ", ".join(missing) + ". Load it, or slice anyway with the nearest colour.",
@@ -206,7 +209,9 @@ def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, ma
             data, _ = make_3mf.build(parts, d["name"], CFG["bed"], heads=[h["colour"] for h in heads] if heads else None)
             p3 = os.path.join(out, safe_name(d["id"]) + ".3mf")
             open(p3, "wb").write(data)
-        s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out)
+        s = orca.slice_([p3], CFG["profile"], preset=preset, material=material, sets=sets, out=out,
+                        heads=[h["colour"] or "" for h in heads] if heads else None,
+                        substitute=bool(req.get("allow_substitute")))
     except SystemExit as e:   # orca.py and make_3mf stop with a plain message
         return 422, {"error": str(e.code), "hint": "Slicing needs OrcaSlicer (ORCA_CLI) and a printer setup "
                      f"named {CFG['profile']!r} (see tools/orca.py)."}
@@ -214,7 +219,8 @@ def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, ma
         return 422, {"error": s.get("error", "no G-code")}
     name = f"{safe_name(d['id'])}-{preset}.gcode"
     result = {"time": s["time"], "grams": s["grams"], "total_g": s["total_g"], "changes": s["changes"],
-              "preset": preset, "settings": s["settings"], "file": name, "heads": head_note}
+              "preset": preset, "settings": s["settings"], "file": name,
+              "heads": head_note or [{"part": "model colour " + m["colour"], "colour": m["colour"], "head": m["head"]} for m in s.get("model_colours", [])] or None}
     if req.get("upload", True):
         upload_gcode(s["gcode"], name)
         result["uploaded"] = True
