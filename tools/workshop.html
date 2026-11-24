@@ -988,7 +988,14 @@ function bedCheck(filename, viaQueue) {
   btn.onclick = async () => {
     btn.disabled = true;
     try {
-      if (viaQueue) await post(M("/server/job_queue/start")); else await post(M("/printer/print/start?filename=" + enc(filename)));
+      const start = checked => api(viaQueue ? M("/server/job_queue/start") : M("/printer/print/start?filename=" + enc(filename)),
+        {method: "POST", headers: checked ? {"X-Plate-Checked": "1"} : {}});
+      try { await start(false); }
+      catch (e) {   // the top-view check thinks something is on the plate: show both views, a person decides
+        if (!/top-view check/.test(e.message)) throw e;
+        return confirmSheet("Something on the plate?", e.message, "It is empty: start", async () => {
+          await start(true); toast(viaQueue ? "Queue started" : "Print started"); go("now"); poll(); });
+      }
       toast(viaQueue ? "Queue started" : "Print started"); closeSheet(); go("now"); poll();
     } catch (e) { toast(e.message, true); btn.disabled = false; }
   };

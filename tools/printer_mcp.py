@@ -29,9 +29,9 @@ _who = threading.local()   # Workshop's /mcp sets the caller per request (many p
 VERSION = "1.0.0"
 
 
-def http(method, path, body=None, raw=False, timeout=60):
+def http(method, path, body=None, raw=False, timeout=60, headers=None):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"X-Workshop": "1", "X-Workshop-User": getattr(_who, "user", None) or USER}
+    headers = {"X-Workshop": "1", "X-Workshop-User": getattr(_who, "user", None) or USER, **(headers or {})}
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
@@ -308,7 +308,10 @@ def t_start(a):
     if short and not a.get("filament_ok"):   # a spool that runs out mid-print spoils the part
         raise RuntimeError("Not started: " + "; ".join(short) + ". Tell the person; start anyway only if they say so (filament_ok=true).")
     http("POST", "/api/bed")   # the person said the bed is empty: Workshop logs it, and its bed check lets the start through
-    mr("POST", "/printer/print/start?filename=" + q(a["filename"]))
+    if a.get("plate_checked"):   # the top-view check refused, the person looked again and said it is empty
+        http("POST", "/moonraker/printer/print/start?filename=" + q(a["filename"]), headers={"X-Plate-Checked": "1"})
+    else:
+        mr("POST", "/printer/print/start?filename=" + q(a["filename"]))
     return f'Started {a["filename"]}. Watch the first layers with printer_snapshot.'
 
 
@@ -682,7 +685,8 @@ TOOLS = [
       "queue": {"type": "boolean", "description": "also add it to the job queue"}, "allow_substitute": {"type": "boolean"}}, t_slice, ["design"]),
     ("printer_start", "Start printing a file now. Only when the person has said the bed is empty (bed_clear) and printer_snapshot shows an empty plate. The printer also refuses if a head the file uses is not loaded or the file would leave the bed cold.",
      {"filename": {"type": "string"}, "bed_clear": {"type": "boolean", "description": "true only if the person said the bed is empty"},
-      "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
+      "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"},
+      "plate_checked": {"type": "boolean", "description": "only after Workshop's top-view check refused: the person looked at the plate again and said it is empty"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
     ("printer_resume", "Resume a paused print, including one the printer's spaghetti detector paused. Refused, with the reason, "
      "until the printer will really take it. After the printer's own detector paused it, Workshop refuses unless person_checked: "

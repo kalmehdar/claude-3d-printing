@@ -709,7 +709,7 @@ API_KEY_FILE = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-print
 PHOTO_LOG = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "photo-checks.jsonl")
 PHOTO_MODEL = "claude-opus-5-5"
 PHOTO_EVERY = 10          # layers between checks, after the first-layer check at layer 2 (25 until 22 Nov: Khalid, use the credit)
-PAUSE_ON = {"spaghetti", "detached", "nozzle_blob"}   # clear failures only; cosmetic faults never pause a print
+PAUSE_ON = {"spaghetti", "detached", "nozzle_blob", "tower_fallen"}   # clear failures only; cosmetic faults never pause a print
 PHOTO_PROMPT = """This is a photo from the camera inside a Snapmaker U1 3D printer, taken during a print at layer {layer}.
 The camera sits low at the front, at bed level: it sees the build plate edge-on and the white tool head above it. Glare,
 reflections, the dark textured plate, parked tool heads at the back and motion blur are normal.
@@ -718,12 +718,16 @@ Decide whether the print has clearly failed in a way that gets worse if it keeps
 - spaghetti: loose tangles or strands of plastic where the part should be, or extruding into the air
 - detached: the part has come off the plate, moved, or been knocked over
 - nozzle_blob: a lump of plastic stuck around the nozzle or the tool head
+- tower_fallen: the prime tower (the square tower beside the parts that takes the purge between colours) has fallen,
+  snapped or been knocked over; a loose tower gets dragged into the parts
 Anything else (stringing, rough surfaces, a small blob on the plate, things you cannot see clearly) is not a failure.
+If there is a top-view picture (a second camera above the front of the bed, looking down), use it with the first: it
+sees tangles on the plate and a fallen tower that the low camera can miss. A failure must be clear in at least one view.
 
 Say pause only when you are sure from what you can see. When unsure or the view is unclear, say ok and lower confidence."""
 PHOTO_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict", "problem", "confidence", "reason"],
                 "properties": {"verdict": {"type": "string", "enum": ["ok", "pause"]},
-                               "problem": {"type": "string", "enum": ["none", "spaghetti", "detached", "nozzle_blob", "other"]},
+                               "problem": {"type": "string", "enum": ["none", "spaghetti", "detached", "nozzle_blob", "tower_fallen", "other"]},
                                "confidence": {"type": "number"}, "reason": {"type": "string"}}}
 
 
@@ -756,10 +760,48 @@ HEAD_CHANGE_TEXT = """
 A tool head change happened just before this photo. Also look for a blob or string of the previous colour left on the part,
 or a line that did not start; only a clear failure counts, as above."""
 FIRST_LAYER_TEXT = """
-The second picture is a top-down drawing of what the slicer planned for the first layer (blue lines, front edge at the
-bottom, 50 mm grid). Compare it with the photo: is there plastic on the plate where the plan has it, and has anything
+The last picture is a top-down drawing of what the slicer planned for the first layer (blue lines, front edge at the
+bottom, 50 mm grid). If there is a top-view picture, it is the best view of the first layer: check it for gaps, lines
+that have not stuck, and plastic where the plan has none. Compare it with the photo: is there plastic on the plate where the plan has it, and has anything
 been dragged, lifted or left out? A first layer is thin and the camera sees it edge-on, so only call detached when a part
 or line has clearly lifted, moved or is missing; anything you cannot see clearly is ok with lower confidence."""
+
+
+PLATE_PROMPT = """Two pictures of a Snapmaker U1 3D printer's build plate, just before a print starts: first from the low camera
+at bed level, then from a camera above the front of the bed looking down. A person has said the plate is empty. Is there
+anything on the plate (a finished part, leftover plastic, a tool, a scrap of filament, a fallen prime tower)? The dark
+textured plate, its markings, glare, reflections and parked tool heads at the back are normal and are not objects.
+verdict: empty, not_empty, or unsure when the views are unclear. Say not_empty only when you can point at the object."""
+PLATE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict", "confidence", "reason"],
+                "properties": {"verdict": {"type": "string", "enum": ["empty", "not_empty", "unsure"]},
+                               "confidence": {"type": "number"}, "reason": {"type": "string"}}}
+PLATE_REFUSE = 0.8   # refuse a start only when Claude is this sure something is on the plate
+
+
+def plate_check():
+    """Extra evidence before a start, never instead of the person's word or the snapshot rule: with the top view, Claude
+    looks for anything on the plate. Returns the reason to refuse, or None (also on any error, no camera or no key:
+    the person's word and the existing checks stand on their own)."""
+    import base64
+    import printer
+    top = cam2_frame(max_age=0, wait=10, fresh_only=True)
+    if not top or not api_keys():
+        return None
+    try:
+        printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
+        wake_camera()
+        with urllib.request.urlopen(printer.camera_url(), timeout=10) as r:
+            low = r.read()
+        img = lambda b: {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(b).decode()}}   # noqa: E731
+        v = ask_claude([img(low), img(top), {"type": "text", "text": PLATE_PROMPT}], PLATE_SCHEMA)
+    except Exception as e:   # noqa: BLE001
+        print("plate check:", e, flush=True)
+        return None
+    record(f"plate check before a start: {v['verdict']} ({v.get('confidence', 0):.2f})", v.get("reason", "")[:200], who="Claude")
+    if v["verdict"] == "not_empty" and v.get("confidence", 0) >= PLATE_REFUSE:
+        return ("the top-view check sees something on the plate: " + v.get("reason", "")[:200]
+                + ". Look at the plate; if it really is empty, start again and confirm (plate checked).")
+    return None
 
 
 def ask_claude(content, schema, effort="low", max_tokens=4000):
@@ -1299,7 +1341,8 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         if printer.status()["state"] != "printing":
             return
         moonraker("POST", "/printer/print/pause", timeout=10).read()
-        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}[v2["problem"]]
+        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle",
+                "tower_fallen": "the prime tower has fallen"}[v2["problem"]]
         record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
         printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
@@ -2611,6 +2654,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return "could not check the file's heads and bed; try again"
             if missing:
                 return "; ".join(missing)
+            if (self.headers.get("X-Plate-Checked") or "") != "1":   # a person looked again after a refusal: their word stands
+                why = plate_check()
+                if why:
+                    return why
         if self.command == "POST" and p.startswith(("/server/job_queue/job", "/printer/print/start")):
             try:
                 with moonraker("GET", "/server/job_queue/status", timeout=5) as r:
