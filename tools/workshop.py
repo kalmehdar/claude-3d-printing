@@ -453,6 +453,9 @@ def start_unload(head, action="unload"):
 _last_wake = [0.0]
 
 
+_doctored = set()   # (file, run folder, message) the print doctor has already looked at after a printer pause
+
+
 def alert_change(prev, s, folder=None):
     """Phone push (ntfy, if set in printer.json) when a print pauses, finishes or stops, whoever started it."""
     import printer
@@ -476,7 +479,11 @@ def alert_change(prev, s, folder=None):
         printer.push(*msg, click=CFG.get("url"))
         if s["state"] in ("complete", "cancelled", "error"):   # a part (or what's left of one) now sits on the bed
             bed("part waiting", who="", file=s.get("file") or "")
-        if s["state"] == "paused" and prev == "printing" and s.get("file") and s.get("message"):
+        key = (s.get("file"), folder, s.get("message"))
+        if s["state"] == "paused" and prev == "printing" and s.get("file") and s.get("message") and key not in _doctored:
+            # once per pause reason per run: the U1 may keep print_stats.exception after a RESUME, so a later pause by a
+            # person (or the photo watch) in the same run would otherwise read as the printer pausing itself again
+            _doctored.add(key)
             # the printer paused itself (its spaghetti detector, a runout, a head that failed to park): Claude reads the
             # layer photos and a fresh picture and pushes the likely cause and what to change. A person's pause, a pause
             # at a layer and the photo watch's own pause carry no message, so they never land here (the watch calls the
@@ -1042,9 +1049,11 @@ def print_doctor(file, reason, photos=8, now=False):
                           if (m := re.search(r"-layer(\d+)\.jpg$", f))))
         step = max(1, len(layered) // photos)
         shots = [p for _, p in layered[::step]][-photos:]
+    snapdir = None
     if now:
         try:
-            snap = os.path.join(tempfile.mkdtemp(prefix="doctor-"), "now.jpg")
+            snapdir = tempfile.mkdtemp(prefix="doctor-")
+            snap = os.path.join(snapdir, "now.jpg")
             printer.BASE, printer.CAMERA = CFG["moonraker"], CFG["camera"]
             printer.snap(snap)
             shots = shots[-(photos - 1):] + [snap]
@@ -1064,6 +1073,8 @@ def print_doctor(file, reason, photos=8, now=False):
     except (OSError, ValueError):
         pass
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(open(p, "rb").read()).decode()}} for p in shots]
+    if snapdir:   # the picture is in content now: no folder left behind per pause
+        shutil.rmtree(snapdir, ignore_errors=True)
     front = cam2_frame(wait=5)
     if front:
         content += [{"type": "text", "text": CAM2_LABEL.replace("at the same moment", "now")},
