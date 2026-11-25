@@ -95,6 +95,19 @@ The person can follow the same printer on `python tools/workshop.py --printer <a
 
 **Tool changers (Snapmaker U1, Prusa XL).** Each head keeps its own colour, so the `low-waste` preset's small prime tower is usually enough; check the first print for colour bleed. Group colours so the most-used one prints from the head with the freshest filament.
 
+**Painted multicolour 3MFs made for another printer** (MakerWorld, Bambu X1/H2D projects; 24 Nov 2026). `orca.py` flattens
+them to one colour, and the original fails in the CLI ("run found error"). Rebuild a clean 3MF: take the plate-1 object's
+mesh, apply its build transform, centre it on the bed with z from 0, and keep each triangle's `paint_color`, remapping the
+designer's slots to the loaded heads (Bambu codes: 4 = slot 1, 8 = slot 2, 0C/1C/2C = slots 3/4/5; split triangles nest the
+same codes, so decode the tree, never string-replace). Set the object's default `extruder` and a minimal
+`project_settings.config` (filament colours, support keys). Check the designer's colour list first: a grey only used on one
+shoe can map to white instead of a head you do not have. Workshop now does this (claude-3d-printing #35).
+
+**Figures on the U1.** The `figure` preset (0.16 mm, the gentle outer wall), PLA as the support interface under PETG
+(`support_interface_filament` = the PLA head, `support_top_z_distance` 0, `support_interface_spacing` 0, 3 interface layers),
+the tower as in print-troubleshooting I. PLA contact costs about 300 more swaps and 45 to 80 min on a ghost-sized figure.
+Whether a tool changer needs a tower at all is under test (a white/black block with no tower, 24 Nov).
+
 ## Habits that save prints (from experienced makers, Nov 2026)
 
 - **Dry PETG before it matters.** Damp PETG strings, blobs and fails, and a UK room sits at 40 to 50% humidity. Strings on a

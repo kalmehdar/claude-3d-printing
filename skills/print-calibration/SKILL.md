@@ -42,9 +42,29 @@ Before writing a key, confirm it exists for this printer: `python tools/orca.py 
 - **Pick one PA source per filament.** A PA value sent by the slicer overrides the measured one, and Snapmaker Orca sends it by default (the setting's exact name is unconfirmed). Either tune PA in OrcaSlicer and keep the slicer value, or rely on `FLOW_CALIBRATE` and stop the slicer sending PA. Forum users found the two disagree (PETG 0.033 measured against 0.051 by hand), so do not mix them.
 - `FLOW_CALIBRATE` heats and moves the head: it is a real job, not a probe. Run it only with the person's go and an empty bed, like a print.
 
-## Without the GUI
+## Without the GUI: numbered tests the person reads by eye (tested on the U1, 24 Nov 2026)
 
-Klipper's `TUNING_TOWER` turns any plain tower into a test, for example `TUNING_TOWER COMMAND=SET_PRESSURE_ADVANCE PARAMETER=ADVANCE START=0 FACTOR=.005` (PA = 0.005 x height in mm). Check the parameters against the Klipper G-code docs before you use them: these examples are from memory, not read from the docs.
+A tower read "at what height" makes the person measure. Print separate numbered pieces instead and ask "which number is best":
+one object per value, each with its number raised on a small tile, all sliced together, then a per-object command inserted
+after each `EXCLUDE_OBJECT_START NAME=<obj>` line in the G-code (Orca labels objects when `exclude_object` is on).
+
+| Test | Pieces | Inserted after each object's start | Read |
+| --- | --- | --- | --- |
+| Pressure advance | 8 chevrons (a 90 degree V, 10 mm tall, 1 wall, no infill, outer wall 100 mm/s) | `SET_PRESSURE_ADVANCE ADVANCE=0.0n` | the crispest V tip; a tie means the midpoint |
+| Flow ratio | 9 flat tiles (18 mm, 1.6 mm thick, 100% infill, 5 top layers) per colour | `M221 S<new/current x 100>`, and `M221 S100` after `EXCLUDE_OBJECT_END` | the smoothest top: lines flat and touching |
+| Temperature | one banded tower per colour (6 mm bands with a 10 mm bridge and a 45 degree overhang, the temperature raised on the front), printed by object | `M104 S<band>` at each band's first `;Z:` (M109 when a tower starts), and the slicer's own `M104/M109 S<profile temp>` lines rewritten to the band's | the band with the cleanest bridge and least string |
+
+- Put each object on the right head by writing the 3MF yourself (`model_settings.config` `extruder` per object), slicing
+  with all four materials: an STL sliced alone lands on T0.
+- The slicer still emits one `SET_PRESSURE_ADVANCE` for the profile value at the start; the per-object lines after it win.
+- Small pieces slow to the minimum layer time: an 8-chevron test estimated 24 min took about 30.
+- If the best piece is at the end of the range, rerun around it before saving (24 Nov: white flow picked 0.99, the top tile).
+- Results so far (SUNLU PETG on the U1): black pressure advance 0.07 (was 0.04), flow white 0.99 and black 0.98 (both were
+  0.95, under-extruding). White pressure advance and both temperatures not yet tested.
+- Workshop's one-tap calibration (claude-3d-printing #37) builds these and turns the person's answer into a profile pull request.
+
+Klipper's `TUNING_TOWER` also works (`TUNING_TOWER COMMAND=SET_PRESSURE_ADVANCE PARAMETER=ADVANCE START=0 FACTOR=.0025`, PA = 0.0025 x height),
+but the person has to measure a height, which is why the numbered pieces replaced it.
 
 ## Sources
 
