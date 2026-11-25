@@ -17,11 +17,15 @@ or one machine.
 3. **Ask the person, in one message:** printer model, nozzle size, plate type, what filament is on each head, whether the
    printer runs Klipper/Moonraker and where it is on the network, and whether they use Spoolman. Never guess these.
 4. **A slicer setup for their printer.** `python3 tools/orca.py printers` lists what exists. If theirs is missing, build one
-   with `orca.py new-printer` from the slicer's vendor profiles, then `orca.py adopt-gcode <a print that came out right>.gcode`
-   so start, end and tool-change G-code match what already works.
+   with `orca.py new-printer` from the slicer's vendor profiles, set the plate (`curr_bed_type`), then
+   `orca.py adopt-gcode <a print that came out right>.gcode` so start, end and tool-change G-code match what already works.
+   The full recipe for Bambu, Prusa, Creality, Voron and others is [printers.md](printers.md).
 5. **Klipper printers only: Workshop and the printer tools.** Run `python3 tools/workshop.py --printer <address>` on a machine
    next to the printer (home network or VPN only, never the open internet), then add the `printer` MCP server with the
    person's own name (`WORKSHOP_USER`), so every action is logged as theirs. Setup lines are in the README.
+   **Any other printer** (Bambu, PrusaLink, OctoPrint, stock Creality, plain Marlin): Claude slices and checks the file, then
+   tells the person how to send it and they start it at the printer. Never build or run an adapter to their printer's
+   network API; [printers.md](printers.md) section 2 has the hand-over for each.
 
 ## 2. Prove it works (the first job)
 
@@ -69,8 +73,11 @@ outer wall), `smooth`, `polished`, `lean`, `low-waste`, `grip`, `fine-text`. `py
 - **Wet PETG** strings and blobs whatever the settings: dry it first.
 - **A low camera** only shows large failures. Say so rather than calling a print fine from it.
 - **Snapmaker U1:** read [snapmaker-u1.md](snapmaker-u1.md) before the first print.
+- **A setup built from vendor profiles slices for the Cool Plate** until `curr_bed_type` is set: the bed can come out too cold
+  rather than 0 °C, which `orca.py` does not catch. Check the first `M140` in the G-code.
 
 ## 6. Done means
 
-The tools pass `doctor`, the person's printer has a working slicer setup, the test card slices with real time and grams,
-and, on a Klipper printer, Workshop answers and the printer tools show the person's name in the activity log.
+The tools pass `doctor`, the person's printer has a working slicer setup whose slice heats the bed for the plate they
+use, the test card slices with real time and grams, and, on a Klipper printer, Workshop answers and the printer tools show
+the person's name in the activity log. On any other printer, the person knows how to send a file (printers.md section 2).

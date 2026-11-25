@@ -17,6 +17,7 @@ something goes wrong.
 | --- | --- |
 | Design a part and see it before printing | The `print-workflow` skill and the Print Bench page |
 | Slice for your printer in plain words | `tools/orca.py` (`--preset figure`, `strong`, `fine-text`...) |
+| Use a Bambu, Prusa, Creality or other printer | [docs/printers.md](docs/printers.md): build a slicer setup from the maker's profiles and hand the file over; only Klipper printers are driven directly |
 | Print a painted multicolour model made for another printer | Workshop's 3MF import, which keeps the colours, supports and tower |
 | Run and watch a Klipper printer from your phone or the Claude app | Workshop and the `printer` MCP server |
 | Tune a filament without measuring anything | Numbered calibration tests: you tap the best piece |
