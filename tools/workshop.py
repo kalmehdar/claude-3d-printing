@@ -495,7 +495,10 @@ def alert_change(prev, s, folder=None):
             # (the key's folder is None before the first layer photo, so without this a reprint's pause could be skipped)
             for k in [k for k in _doctored if k[0] == s.get("file")]:
                 _doctored.discard(k)
-        if s["state"] in ("error", "cancelled") and s.get("file"):   # what went wrong, while the photos are fresh
+        # what went wrong, while the photos are fresh; not after a cancel before anything printed (24 Nov: two cancels
+        # during heating each cost a Claude call and a phone push diagnosing an empty plate)
+        printed = (s.get("printing_min") or 0) >= 1 or (s.get("filament_used_m") or 0) >= 0.2
+        if s.get("file") and (s["state"] == "error" or (s["state"] == "cancelled" and printed)):
             import threading
             threading.Thread(target=print_doctor, args=(s["file"], "the print " + ("stopped with an error: " + (s.get("message") or "") if s["state"] == "error" else "was cancelled")), daemon=True).start()
         if s["state"] == "complete":   # Claude looks at what came out (Khalid, 22 Nov: Claude does the jobs without being asked)
