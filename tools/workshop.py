@@ -27,6 +27,7 @@ import ipaddress
 import shutil
 import http.server
 import datetime
+import collections
 import json
 import os
 import re
@@ -1143,6 +1144,56 @@ OUTCOME = {"complete": "Completed", "cancelled": "Cancelled", "error": "Stopped 
 PRESET_IN_NAME = re.compile(r"-(draft|standard|strong|solid|fine|quality|polished|low-waste)\.gcode$")
 
 
+_outbox_lock = _threading.Lock()   # the print-end row and a laptop taking rows never interleave
+
+
+def table_rows(text):
+    """The data rows of the first markdown table that starts with '| Date |' (same rule as Almehdar's workshop-outbox.py)."""
+    out, inside = [], False
+    for line in text.split("\n"):
+        if line.startswith("| Date |"):
+            inside = True
+        elif inside and line.startswith("| ---"):
+            continue
+        elif inside and line.startswith("|"):
+            out.append(line)
+        elif inside:
+            break
+    return out
+
+
+def outbox(done=None):
+    """The print-register rows waiting in --print-log; with done (rows), take exactly those out once they are committed
+    elsewhere (Almehdar's register). Lets a laptop or Claude collect them over Workshop's API instead of root SSH."""
+    path = CFG.get("print_log")
+    if not path or not os.path.exists(path):
+        return {"rows": [], "note": "no print register is set (--print-log)"}
+    with _outbox_lock:
+        text = open(path, encoding="utf-8").read()
+        rows = table_rows(text)
+        if done is None:
+            return {"rows": rows}
+        # as many copies as were committed, oldest first: two identical rows (the same file failing twice in a day)
+        # where only one was read keep the other (review, 25 Nov)
+        take = collections.Counter(r for r in done if isinstance(r, str) and r in rows)
+        lines, removed = [], 0
+        for l in text.split("\n"):
+            if take[l] > 0 and l in rows:
+                take[l] -= 1
+                removed += 1
+            else:
+                lines.append(l)
+        write_atomic(path, "\n".join(lines))
+        return {"removed": removed, "rows": table_rows("\n".join(lines))}
+
+
+def write_atomic(path, text):
+    """Write a whole file so a reader (the SSH outbox reader, a cat) never sees it half written."""
+    with open(path + ".part", "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(path + ".part", path)
+
+
 def log_print(s, meta, use, folder=None):
     """Append a row to the print register (--print-log, a markdown table like the Almehdar repo's registers/prints.md).
     Columns: Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof?
@@ -1173,9 +1224,16 @@ def log_print(s, meta, use, folder=None):
     row = "| " + " | ".join(cell(v) for v in [time.strftime("%Y-%m-%d"), file, "?", ", ".join(heads) or "?",
                                                (m.group(1) if m else "?"), f"{sum(use.values()):.1f} (measured)" if use else "?",
                                                f'{s.get("printing_min") or 0:.0f} min', f"£{cost:.2f}" if cost else "?", outcome, "?"]) + " |"
-    lines.insert(end + 1, row)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines))
+    with _outbox_lock:   # read again under the lock: a laptop may have taken rows meanwhile
+        lines = open(path, encoding="utf-8").read().split("\n")
+        head = next((i for i, l in enumerate(lines) if l.startswith("| Date |")), None)
+        if head is None:
+            return None
+        end = head
+        while end + 1 < len(lines) and lines[end + 1].startswith("|"):
+            end += 1
+        lines.insert(end + 1, row)
+        write_atomic(path, "\n".join(lines))
     record("logged in the print register", file, who="Workshop")
     return row
 
@@ -2536,6 +2594,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 bed("clear", who=actor(self), file=b.get("file", ""))
                 record("took the part off the bed", b.get("file", ""), who=actor(self))
             return self.send(200, bed())
+        if p == "/api/outbox":   # GET the print-register rows waiting; POST {rows} takes exactly those out once committed
+            try:
+                if self.command == "POST":
+                    r = json.loads(self.body() or b"{}")
+                    out = outbox(done=(r.get("rows") if isinstance(r, dict) else None) or [])
+                    if out.get("removed"):
+                        record(f"took {out['removed']} print-register row{'s' if out['removed'] > 1 else ''} into the register", "", who=actor(self))
+                    return self.send(200, out)
+                return self.send(200, outbox())
+            except (ValueError, OSError) as e:
+                return self.send(400, {"error": str(e)})
         if p == "/api/plate":
             if self.command == "POST":   # {"plate": "smooth" | "textured"}: who swapped it is logged
                 try:
