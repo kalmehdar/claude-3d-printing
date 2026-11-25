@@ -18,6 +18,9 @@ class Req:
     def body(self):
         return self._body
 
+    def printer_busy(self):
+        return False
+
 
 tmp = tempfile.mkdtemp()
 w.BED = os.path.join(tmp, "bed.json")
@@ -31,8 +34,27 @@ assert "address" in guard(Req("POST", b'{"x": 1}'), "/server/job_queue/start")
 
 # an upload that would start itself is refused; a plain upload passes this check
 assert "start it" in guard(Req("POST", upload_print), "/server/files/upload")
+# a raw start command skips the bed, snapshot and heads checks: refused even on an idle printer
+for cmd in ("SDCARD_PRINT_FILE%20FILENAME%3Da.gcode", "M23%20a.gcode", "M24", "m32%20a.gcode"):
+    assert "Files or the queue" in guard(Req("POST"), "/printer/gcode/script?script=" + cmd), cmd
+import io  # noqa: E402
+real_mr, sent = w.moonraker, []
+w.moonraker = lambda m, path, **k: sent.append(path) or io.BytesIO(json.dumps({"result": {"status": {
+    "print_stats": {"state": "standby"}, "toolhead": {"homed_axes": "", "position": [0, 0, 0, 0]}}}}).encode())
+assert w.control({"action": "gcode", "command": "SDCARD_PRINT_FILE FILENAME=a.gcode"})[0] == 400
+assert not any("gcode/script" in x for x in sent), sent
+w.moonraker = real_mr
+# the heads check reads the one filename Moonraker starts
+assert "one file" in guard(Req("POST"), "/printer/print/start?xfilename=ok.gcode&filename=real.gcode")
+assert "one file" in guard(Req("POST"), "/printer/print/start?filename=a.gcode&filename=b.gcode")
 assert "start it" in guard(Req("POST", b"x"), "/server/files/upload?print=true")
-assert guard(Req("POST", upload_print.replace(b'name="print"\r\n\r\ntrue', b'name="root"\r\n\r\ngcodes')), "/server/files/upload") is None
+# Moonraker reads root and print from the form too: refused in any quoting (round review, 25 Nov: root=config in the
+# body would have written printer.cfg); a file-only upload passes
+for field in (b'name="root"', b"name=root", b"name='root'", b"name=print", b"name='print'", b'name = "print"'):
+    body = upload_print.replace(b'name="print"', field)
+    assert "no print or root" in guard(Req("POST", body), "/server/files/upload"), field
+plain = b'--x\r\nContent-Disposition: form-data; name="file"; filename="root.gcode"\r\n\r\nG1 ; name=print\r\n--x--\r\n'
+assert guard(Req("POST", plain), "/server/files/upload") is None
 
 # no start while the last print is still on the bed
 json.dump({"state": "part waiting", "file": "a.gcode"}, open(w.BED, "w"))

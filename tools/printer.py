@@ -6,7 +6,7 @@
     python printer.py send part.gcode [--queue]   upload (and add to the job queue); never starts anything
     python printer.py start part.gcode --bed-clear   start now; the flag says the bed was seen empty (camera or a person)
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
-    python printer.py pause | resume | cancel
+    python printer.py pause | resume [--person-checked] | cancel
     python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
     python printer.py load T2 | all               Snapmaker U1: load a head parked at its feeder into the head
@@ -780,6 +780,7 @@ def main():
     ap.add_argument("--bed-clear", action="store_true")
     ap.add_argument("--queue", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--person-checked", action="store_true", help="resume: a person looked at the part after a detector pause")
     ap.add_argument("--frames", default=FRAMES)
     ap.add_argument("--quiet", action="store_true", help="watch: no phone or Discord alerts (Workshop already sends them)")
     ap.add_argument("--level", default="info", choices=list(LEVEL))
@@ -864,6 +865,12 @@ def main():
         else:
             sys.exit("queue: list, add FILE, remove ID, start --bed-clear, hold")
     elif c in ("pause", "resume", "cancel"):
+        if c == "resume":   # the same rule as Workshop's Continue (round review, 25 Nov: this skipped it)
+            h = hold(query("print_stats", "pause_resume", "machine_state_manager"))
+            if not h["can_resume"]:
+                sys.exit("not resumed: " + h["waiting"])
+            if ((query("print_stats")["print_stats"].get("exception") or {}).get("id") == 532 and not a.person_checked):
+                sys.exit("not resumed: the printer's detector paused it. Look at the part, then: resume --person-checked")
         print(call(f"/printer/print/{c}", "POST"))
         record({"pause": "paused", "resume": "resumed", "cancel": "cancelled"}[c], status().get("file") or "")
     elif c == "speed":   # the screen's speed override (M220): safe mid-print, bounded so a typo can't wreck a job

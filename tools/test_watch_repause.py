@@ -22,6 +22,8 @@ w.record = lambda *a, **k: None
 w.print_doctor = lambda *a, **k: None
 w.moonraker = lambda method, path, **k: pauses.append(path) or __import__("io").BytesIO(b"{}")
 w.PHOTO_LOG = os.path.join(tempfile.mkdtemp(), "log.jsonl")
+w.WATCH_PAUSED_FILE = os.path.join(os.path.dirname(w.PHOTO_LOG), "watch-paused.json")
+w._WATCH_PAUSED.clear()
 run = tempfile.mkdtemp()
 
 
@@ -67,4 +69,16 @@ assert code == 200 and any("RESUME" in x for x in sent), body
 w._WATCH_PAUSED.clear()
 code, body = w.control({"action": "resume"})
 assert code == 200                                       # no watch pause in this run: a plain resume as before
+# the pause is kept on disk: a restart still needs person_checked for an unanswered watch pause
+w._WATCH_PAUSED.clear()
+w.watch_paused("run-x", ("spaghetti", 300, False))
+saved = json.load(open(w.WATCH_PAUSED_FILE))
+assert saved == {"run-x": ["spaghetti", 300, False]}, saved
+sent.clear()
+assert w.control({"action": "resume"})[0] == 409 and not any("RESUME" in x for x in sent)
+assert w.control({"action": "resume", "person_checked": True})[0] == 200
+assert json.load(open(w.WATCH_PAUSED_FILE))["run-x"][2] is True     # answered
+assert w.control({"action": "resume"})[0] == 200                     # a later pause in the run (magnets) resumes plainly
+w.watch_paused("run-x", drop=True)
+assert json.load(open(w.WATCH_PAUSED_FILE)) == {}
 print("watch repause: ok")

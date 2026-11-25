@@ -34,4 +34,18 @@ h.route()
 assert sent == [(200, {"result": "ok", "started": "seam test.gcode"})], sent
 assert ("DELETE", "/server/job_queue/job?job_ids=A1") in calls and ("POST", "/printer/print/start?filename=seam%20test.gcode") in calls, calls
 assert not any("job_queue/start" in p or "job_queue/pause" in p for _, p in calls), calls   # the queue never runs
+# start first, then take the job off the queue: a failed start keeps it (round review, 25 Nov)
+assert calls.index(("POST", "/printer/print/start?filename=seam%20test.gcode")) < calls.index(("DELETE", "/server/job_queue/job?job_ids=A1"))
+calls.clear()
+sent.clear()
+ok = w.moonraker
+def failing(method, path, **k):
+    if path.startswith("/printer/print/start"):
+        calls.append((method, path))
+        raise OSError("Klippy not ready")
+    return ok(method, path, **k)
+w.moonraker = failing
+h.route()
+assert sent[0][0] == 502 and not any(m == "DELETE" for m, _ in calls), (sent, calls)
+w.moonraker = ok
 print("queue start check passed")
