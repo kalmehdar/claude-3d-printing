@@ -1616,6 +1616,7 @@ def tool_changes(file, read=None):
     else:
         stamp = None
     offsets, head, at, tower, mm, conf = [], None, 0, False, {}, {}
+    remain = []   # [offset, slicer minutes left] from Orca's M73 P.. R.. lines: time left goes by these, not by bytes
     rel = False   # only relative extrusion (M83) is counted; Klipper starts absolute, and an M82 file would read as hundreds of grams
     with read as f:
         for line in f:
@@ -1631,6 +1632,10 @@ def tool_changes(file, read=None):
                 elif line.startswith((b"; filament_density", b"; filament_diameter")):
                     k, _, v = line[2:].decode("ascii", "replace").replace("=", ":").partition(":")
                     conf.setdefault(k.strip(), [float(x) for x in re.findall(r"[\d.]+", v)])
+            elif c == b"M" and line.startswith(b"M73 ") and b" R" in line:   # the slicer's minutes left from this point
+                m = re.search(rb" R(\d+)", line)
+                if m and (not remain or remain[-1][1] != int(m.group(1))):
+                    remain.append([at, int(m.group(1))])
             elif c == b"M" and line[:3] in (b"M82", b"M83") and not line[3:4].isdigit():
                 rel = line[:3] == b"M83"
             elif tower and rel and c == b"G" and b" E" in line:   # relative extrusion: a retract and its unretract cancel
@@ -1647,11 +1652,27 @@ def tool_changes(file, read=None):
         g = max(v, 0.0) * 3.14159265 * (dia / 2) ** 2 * dens / 1000
         if g >= 0.05:
             waste[k] = round(g, 1)
-    out = {"total": len(offsets), "offsets": offsets, "tower_g": round(sum(waste.values()), 1), "tower_by_head": waste}
+    out = {"total": len(offsets), "offsets": offsets, "tower_g": round(sum(waste.values()), 1), "tower_by_head": waste, "remain": remain}
     if stamp is not None:
         _changes.clear()   # ponytail: one file kept, the one printing; a dict per file if the queue view wants them too
         _changes[file] = (stamp, out)
     return out
+
+
+def time_left(tc, pos, duration):
+    """Seconds left, from the slicer's M73 minutes-left at the printer's file position, scaled by how much slower than
+    the slicer this print has really run so far. Bytes are not time: on the 24 Nov hoodie, 79% of the file was read but
+    the slicer had 28% of its time still to go. None until 15 slicer minutes are done (too early to scale)."""
+    r = (tc or {}).get("remain") or []
+    if not r or not duration:
+        return None
+    now = r[0][1]
+    for at, m in r:
+        if at > pos:
+            break
+        now = m
+    done = r[0][1] - now
+    return now * duration / done if done >= 15 else None
 
 
 _toolpath = {}
