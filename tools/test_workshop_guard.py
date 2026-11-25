@@ -39,7 +39,8 @@ import urllib.parse  # noqa: E402
 for cmd in ("SDCARD_PRINT_FILE FILENAME=a.gcode", "M23 a.gcode", "M24", "m32 a.gcode", "M 24", " m 23 a.gcode"):
     assert "Files or the queue" in guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote(cmd)), cmd
 # Klipper drops anything before the first letter ("0M24" runs M24, "N5 SAVE_CONFIG" saves): refused outright (#54 review)
-for cmd in ("0M24", "-m24", "1M23 a.gcode", "N5 SAVE_CONFIG", "5SAVE_CONFIG"):
+for cmd in ("0M24", "-m24", "1M23 a.gcode", "N5 SAVE_CONFIG", "5SAVE_CONFIG", "N SAVE_CONFIG", "N M24", "N- SDCARD_PRINT_FILE FILENAME=a",
+            "N1.0 FIRMWARE_RESTART", "n M500", "N 1 2 M502"):
     assert "prefix" in guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote(cmd)), cmd
 assert w.gcode_name("M 24") == "M24" and w.gcode_name("SET_LED LED=x WHITE=1") == "SET_LED" and w.gcode_name("g1 x5") == "G1"
 assert guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote("M500")) and guard(Req("POST"), "/printer/gcode/script?script=M%20500")
@@ -65,7 +66,11 @@ assert guard(Req("POST", plain), "/server/files/upload") is None
 for bad in (plain.replace(b'name="file"', b"name*=utf-8''print"),
             plain.replace(b'form-data; name="file"', b'form-data\r\n ; name="print"'),
             plain.replace(b'--x--', b'--x\r\nContent-Disposition: form-data; name="path"\r\n\r\nsub\r\n--x--'),
-            b"just bytes"):
+            b"just bytes",
+            plain.replace(b'name="file"', b'name="print"; name="file"'),      # Moonraker keeps the first name
+            plain.replace(b'name="file"', b'name="file"; name="print"'),      # Tornado keeps the last
+            plain.replace(b'name="file"', b'name=root; name="file"'),
+            plain.replace(b'name="file"', b'name="file"; root="config"')):
     assert "no print or root" in guard(Req("POST", bad), "/server/files/upload"), bad
 for q in ("?print=%74rue", "?%70rint=true", "?print=false", "?print"):
     assert "no print or root" in guard(Req("POST", plain), "/server/files/upload" + q), q

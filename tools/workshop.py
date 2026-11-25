@@ -439,8 +439,12 @@ UPLOAD_PART = re.compile(rb'(?im)^content-disposition:([^\r\n]*(?:\r?\n[ \t][^\r
 
 def upload_ok(body):
     heads = UPLOAD_PART.findall(body or b"")
-    return bool(heads) and all(b"\n" not in h and b"name*" not in h.lower()
-                               and re.search(rb';\s*name="file"\s*(;|$)', h) for h in heads)
+    def one_file_part(h):   # one line, no name*=, parameters only name (exactly once, "file") and filename
+        keys = [k.lower() for k in re.findall(rb';\s*([^=;\s]+)\s*=', h)]
+        return (b"\n" not in h and b"*" not in h and keys.count(b"name") == 1 and set(keys) <= {b"name", b"filename"}
+                and re.search(rb';\s*name="file"\s*(;|$)', h))
+    # two name parameters: Moonraker's parser keeps the first, Tornado the last (#54 review: name="print"; name="file")
+    return bool(heads) and all(one_file_part(h) for h in heads)
 
 
 def start_unload(head, action="unload"):
@@ -2089,12 +2093,13 @@ RAW_START_WHY = "start prints from Files or the queue, after the bed check, not 
 
 
 def gcode_name(line):
-    """The command Klipper will run, read the way its gcode.py does (upper case, the first run of letters plus what
-    follows up to the next letter): "M 24", "0M24" and "1M23 a.gcode" all run M24/M23 (#54 review). None when anything
-    but spaces comes before the first letter (line numbers included): refused rather than guessed."""
+    """The command name, read the way Klipper's gcode.py splits a line (upper case, the first run of letters plus what
+    follows up to the next letter), so "M 24" is checked as M24. None, and so refused, when anything but spaces comes
+    before the first letter or the line starts with N (a line number in Klipper, which then runs the next word).
+    Refusing more than Klipper would run is the safe side."""
     p = re.split(r"([A-Z_]+|[A-Z*/])", line.strip().upper())
-    if len(p) < 3 or p[0].strip() or (p[1] == "N" and p[2].strip().isdigit()):   # Klipper skips a leading N5 line number
-        return None
+    if len(p) < 3 or p[0].strip() or p[1] == "N":   # Klipper treats a leading N as a line number whatever follows it
+        return None                                   # ("N SAVE_CONFIG", "N- M24" run the next word): refuse, never guess
     return p[1] + p[2].strip()
 
 
