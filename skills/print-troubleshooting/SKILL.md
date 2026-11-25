@@ -56,9 +56,29 @@ Setting names are OrcaSlicer keys. Before you change one, confirm it exists for 
 
 **I. Tool changes and colours.** *Colour bleed*: the old colour tints the new one (purge too small, worst dark to light). *Ooze*: blobs or strings at changes (idle heads cooling and oozing). *Prime tower toppled or stringy*: the next change fails. Fix: raise purge for the problem colour pair, keep the prime tower, slow or widen it if it wobbles. Snapmaker U1 owners report a 25 mm wide tower and a smaller minimal purge cut waste, and a purge line for every head in use helps first layers; treat those as community tips to test, not settings to trust.
 
+*On the U1, 24 Nov 2026 (two ghost figures):*
+- **Tower snapped halfway:** PLA support-interface swaps built PLA layers into a PETG tower, and PLA barely bonds to PETG.
+  Fix: `wipe_tower_filament` = the main PETG head so the tower walls are always PETG, a cone base
+  (`wipe_tower_wall_type` cone, `wipe_tower_cone_angle` 20) and a 10 mm `prime_tower_brim_width`.
+- **Tower came off from the bottom** on the next print: the plate was overdue its wash. Wash before tall multicolour jobs.
+- **A fallen tower cannot be removed mid-print.** The tower is not a labelled object, so `EXCLUDE_OBJECT` cannot skip it,
+  and restarting from a layer means homing over the model. The purges then fall as strings; standing the loose tower back
+  up catches them in one place. Keep the nest below the model's height or the head can drag it across.
+- **The tower is placed in the 3MF**, not the profile: `wipe_tower_x` / `wipe_tower_y` in `Metadata/project_settings.config`.
+  Beside the model (about 20 mm away) cuts the long purge travels that strung across the bed.
+- `wipe_tower_no_sparse_layers` is refused for tall models next to the tower ("relative position ... No sparse layers").
+
 **J. PETG.** Strings and blobs (dry it; tune retraction), plastic gathering on the nozzle and being wiped onto the part (pause, clean), sticking too hard to smooth PEI (do not squash the first layer; a release layer such as glue stick helps; use the textured plate). Mostly forum knowledge: verify on the printer.
 
 **K. Bridges and overhangs.** Sagging strands in a bridge, rough or curled undersides. Causes: too long a span, too little cooling, bridge settings not applied. Fix: supports (`enable_support`), more bridge cooling, a slightly cooler nozzle; in the design, chamfer at 45° under ledges (see 3d-print-designer). Source: Simplify3D.
+
+**L. The printer paused itself (U1).** The screen shows "Possible Spaghetti Defect Detected" (exception 532): the
+printer's own camera saw strings, usually purge strings beside the part rather than a failure. Look at a fresh snapshot;
+if the part is clean, Continue (Workshop needs the person's check, `person_checked`). With the person's word it can be
+switched off for one print with `DEFECT_DETECTION_CONFIG NOODLE_ENABLE=0` and back on with `=1`; the setting persists on the
+printer, so switch it back. A pause with no message and the warning "extruder malfunction after parking, extruder failed to
+return to park position" means a head did not seat in its dock: check the dock for a caught string or blob with the heads
+cold. A RESUME through the API can time out while the heads reheat; read `print_stats` again before retrying.
 
 ## 4. Check the fix
 
