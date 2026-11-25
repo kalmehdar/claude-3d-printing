@@ -1,10 +1,27 @@
 # Claude 3D printing
 
+[![MIT licence](https://img.shields.io/badge/licence-MIT-informational)](LICENSE)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](#start-in-a-minute)
+[![Live demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://kalmehdar.github.io/claude-3d-printing/)
+
 ![Every example design, rendered in its print colours](docs/images/hero.jpg)
 
-**Design and upgrade 3D prints, and the electronics inside them, by talking to Claude Code.** Describe a part, or hand over an STL you downloaded. Claude writes it in OpenSCAD with every size as a named number, exports one print file per colour, checks the meshes, and shows everything on a page you can turn round on your phone, with the sizes drawn on, before a gram of filament is used.
+**Design, slice, print and fix 3D prints by talking to Claude.** Describe a part, or hand over an STL or a painted 3MF you
+downloaded. Claude writes it in OpenSCAD with every size as a named number, exports one print file per colour, checks the
+meshes, slices it for your printer and, if your printer runs Klipper, sends it, watches it layer by layer and tells you when
+something goes wrong.
 
-[**Live demo**](https://kalmehdar.github.io/claude-3d-printing/) · [Start in a minute](#start-in-a-minute) · [Hardware: circuits and PCBs](#hardware-circuits-boards-and-the-case-around-them) · [What to ask Claude](#ask-claude) · [Upgrade a print you already have](#upgrade-a-print-you-already-have) · [Add your own design](CONTRIBUTING.md)
+[**Live demo**](https://kalmehdar.github.io/claude-3d-printing/) · [Start in a minute](#start-in-a-minute) · [Set it up with your own Claude](#set-it-up-with-your-own-claude) · [Drive your printer](#drive-your-printer-from-the-claude-app) · [What to ask](#ask-claude) · [Add your own design](CONTRIBUTING.md)
+
+| You want to | Use |
+| --- | --- |
+| Design a part and see it before printing | The `print-workflow` skill and the Print Bench page |
+| Slice for your printer in plain words | `tools/orca.py` (`--preset figure`, `strong`, `fine-text`...) |
+| Print a painted multicolour model made for another printer | Workshop's 3MF import, which keeps the colours, supports and tower |
+| Run and watch a Klipper printer from your phone or the Claude app | Workshop and the `printer` MCP server |
+| Tune a filament without measuring anything | Numbered calibration tests: you tap the best piece |
+| Fix a print that went wrong | The `print-troubleshooting` skill |
+| Design the electronics inside a print | The `electronics-design`, `pcb-layout` and `enclosure-from-pcb` skills |
 
 ## Start in a minute
 
@@ -21,6 +38,26 @@
 3. Restart Claude Code in an empty folder and ask: *"Design a Gridfinity bin, 2 x 1, 42 mm tall, for M3 screws, with the label printed in white. My printer is a Bambu A1 with the AMS."*
 
 Claude asks anything it needs (your printer, caliper numbers for parts that must fit), then hands back the print files, a checked mesh, a Print Bench page and which file goes on which head.
+
+## Set it up with your own Claude
+
+Anyone can use this with their own Claude account; nothing here is tied to one person or one printer. The quickest way is to
+let Claude do the setup. Open Claude Code in an empty folder and paste:
+
+```text
+Set up https://github.com/kalmehdar/claude-3d-printing for me. Install it as a Claude Code plugin
+(/plugin marketplace add kalmehdar/claude-3d-printing, then /plugin install print-bench@print-bench),
+or clone it and copy skills/ and agents/ into ~/.claude/ if plugins are off. Then run
+python3 tools/c3dp.py doctor and install whatever it says is missing (OpenSCAD snapshot, OrcaSlicer,
+Blender is optional). Ask me my printer model, nozzle size, plate and loaded filaments, and whether
+it runs Klipper/Moonraker. If it does, set up Workshop and the printer MCP server as in the README.
+Read docs/for-claude.md before doing anything else, and finish with a test-card slice for my printer.
+```
+
+Claude follows [docs/for-claude.md](docs/for-claude.md): what to install, the rules it keeps (no print starts without your
+"the bed is clear" and a fresh camera picture, no fit size guessed, no profile changed without telling you), and a first job
+to prove it works. Using the Claude desktop app instead of Claude Code? See [Design and slice from the Claude app](#design-and-slice-from-the-claude-app)
+and [Drive your printer from the Claude app](#drive-your-printer-from-the-claude-app): two MCP servers, standard library only.
 
 ## Examples
 
@@ -48,7 +85,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `tools/mesh_audit.py` | Runs inside Blender: non-manifold edges, inside-out meshes, pieces, thin walls, bed fit, and printability notes: steep overhang area and the longest bridge, with the fix |
 | `tools/param_sets.py` | Named size sets beside a design (`model.json`, the file OpenSCAD's Customizer reads): Cat6 or USB for the cable clip, 1x1 or 2x2 for a bin. `check --render` builds every set |
 | `tools/fit.py` | Your printer's measured fits (slide and press clearance from the fit card, the M3 heat-set insert hole from the insert card, the print-in-place hinge gap from the hinge card), so every design uses them instead of a material guess |
-| `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, quality, polished, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
+| `tools/orca.py` | Drives OrcaSlicer in plain words: `slice part.stl --printer u1 --preset strong --set infill=30 supports=on` gives time and grams; presets draft, standard, strong, solid, fine, quality, polished, lean, low-waste; `open` shows the result in the app; `add-material` and `install` put your printer, filaments and presets in the app's menus ; `new-printer` builds a printer setup from a slicer's vendor profiles and `adopt-gcode` takes the start/end G-code from a known-good print |
 | `tools/slice_stats.py` | Slices every bench design with OrcaSlicer's command line and records real print time and grams per printer in `slice-stats.json`; the bench shows them with a printer switch |
 | `tools/printer_mcp.py` | Printer tools for the Claude desktop app and Claude Code (an MCP server, standard library only): status, camera picture, layer photos from past and overnight prints, designs, slice and send, start (needs the person's "bed is empty"), pause, resume, cancel, queue, unload, set filament, light, history, warnings, activity. Each person runs it in their own Claude app against Workshop, so their own Claude account does the work and the activity log shows their name. Setup in the file's docstring |
 | `tools/printer.py` | Drives a Klipper/Moonraker printer from the command line: status with loaded filament, camera frame, send, start only after `--bed-clear`, queue, pause/cancel, light, and `watch` (a camera frame per layer until the job ends). The `print-workflow` skill uses it to send, start, watch and log prints |

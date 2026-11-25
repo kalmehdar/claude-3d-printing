@@ -55,11 +55,25 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .pill.printing{color:var(--ok)} .pill.paused{color:var(--warn)} .pill.error{color:var(--bad)} .pill.complete{color:var(--info)}
 .spacer{flex:1}
 [hidden]{display:none!important}
-.grid{display:grid;gap:14px;align-content:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-content:start}
 .now{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .card h2{font-size:12.5px;font-weight:500;color:var(--dim);margin:0 0 12px;letter-spacing:0}
-.cam{position:relative;padding:0;overflow:hidden;background:#000;aspect-ratio:16/9}
+.cam{position:relative;padding:0;overflow:hidden;background:#000}
+.camview{position:relative;aspect-ratio:16/9}   /* the video keeps its own box; the 3D view sits under it, never on it (23 Nov) */
+.pip{position:relative;aspect-ratio:16/9;overflow:hidden;border-top:1px solid rgba(255,255,255,.1);background:#0b0c0e}
+.pip.full{position:absolute;inset:0;aspect-ratio:auto;border:0;z-index:2}
+.pip .viewer{height:100%;border-radius:0}
+.fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary h2{margin:0}
+.fold>summary::after{content:"Show";font-size:12px;color:var(--dim)}
+.fold[open]>summary::after{content:"Hide"}
+.fold[open]>summary{margin-bottom:10px}
+.pip .stamp{position:absolute;left:6px;bottom:6px;font-size:10.5px;color:#fff;background:rgba(0,0,0,.6);padding:1px 6px;border-radius:5px}
+.pip .camtools{position:absolute;right:6px;top:6px;display:flex;gap:4px}
+.pip .camtools .btn{min-height:26px;padding:0 8px;font-size:11.5px;background:rgba(16,17,19,.75)}
+@media (max-width:520px){.cam .pip .camtools{left:auto;right:4px;top:4px;flex-wrap:nowrap} .cam .pip .camtools .btn{min-height:24px;padding:0 7px;font-size:11px}}
 .cam img{width:100%;height:100%;object-fit:cover;display:block}
 .cam .stamp{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:#fff;background:rgba(0,0,0,.6);padding:2px 7px;border-radius:5px;font-variant-numeric:tabular-nums}
 .cam .camtools{position:absolute;right:8px;top:8px;display:flex;gap:6px}
@@ -83,13 +97,28 @@ main{padding:0 28px 40px;max-width:1320px;width:100%;min-width:0}
 .btn.sm{height:26px;padding:0 8px;font-size:12.5px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .btn svg{width:14px;height:14px}
-.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.slot{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r2);padding:10px 8px;text-align:center;min-width:0}
-.slot.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-.swatch{width:26px;height:26px;border-radius:50%;margin:0 auto 6px;border:1px solid rgba(255,255,255,.18)}
-.slot b{display:block;font-size:12.5px;font-weight:500} .slot span{display:block;font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.temps{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
-.temp{background:var(--panel2);border-radius:var(--r2);padding:7px 10px}
+.chead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.chead h2{margin:0}
+.temps{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}.temps b{color:var(--text);font-weight:500}
+.slots{display:grid;gap:1px;margin:0 -8px}
+.slot{position:relative;display:grid;grid-template-columns:12px minmax(0,1fr) auto 52px;align-items:center;gap:2px 12px;padding:8px;border-radius:var(--r2);min-width:0}
+.slot:hover,.slot:focus-within{background:var(--hover)}
+.slot.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--accent)}
+.swatch{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.38)}
+.hname{min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hname b{font-weight:600;margin-right:4px}
+.hname small{display:block;font-size:11.5px;color:var(--dim);white-space:normal;line-height:1.35}.hname small .state{display:inline-block;white-space:nowrap;margin-left:6px}
+.htemp{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right}.htemp.hot{color:var(--text)}.htemp small{color:var(--faint)}
+.hg{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right}.hg.warn{color:var(--warn)}
+.hacts{grid-column:2/-1;display:none;gap:4px;flex-wrap:wrap;padding-top:4px}
+.slot:hover .hacts,.slot:focus-within .hacts{display:flex}
+@media (hover:none){.hacts{display:flex}}
+
+
+
+
+
+@media (hover:none){.btn,.btn.sm{min-height:44px;padding:0 14px}}   /* fingers, not a mouse: 44 px everywhere (22 Nov audit) */
+
+
 .temp span{display:block;color:var(--faint);font-size:11.5px} .temp b{font-weight:500;font-variant-numeric:tabular-nums}
 /* lists are one bordered box with hairline rows, not a stack of cards */
 .list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel)}
@@ -124,6 +153,25 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 .stat{background:transparent;border:0;border-right:1px solid var(--line);border-radius:0;padding:12px 14px}
 .stat span{color:var(--faint);font-size:11.5px;display:block} .stat b{font-size:19px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .empty{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line2);border-radius:var(--r)}
+.qcard,.rqcard{margin-bottom:16px}
+.gal{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}@media (max-width:640px){.gal{grid-template-columns:1fr 1fr}}
+.warnnote{color:var(--warn);border:1px solid rgba(240,191,76,.35);background:rgba(240,191,76,.06);margin-top:10px}
+#kFil small{display:block;font-size:12px;font-weight:400;color:var(--dim);margin-top:2px}
+@media (max-width:640px){.dtools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"s s v" "b st g";gap:8px}.dtools #dSearch{grid-area:s;min-width:0}#dBench{grid-area:b}#dState{grid-area:st}#dGroup{grid-area:g}.dtools select{min-width:0;width:100%;padding:0 6px}.dtools .seg{grid-area:v;justify-self:stretch}.dtools .seg .btn{flex:1}}
+#fanRow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 20px}.fanline{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px}.fanline>span:first-child{color:var(--dim);font-size:13px}
+@media (max-width:640px){#fanRow{grid-template-columns:1fr}}
+.lockmsg{display:none;margin:12px 0 0}#ctlCard.busy .lockmsg{display:block}#ctlCard.busy .mv{display:none}
+@media (max-width:640px){.ftools{flex-wrap:nowrap}.ftools input[type=search]{min-width:0}.ftools #fRefresh{flex:none;width:38px;padding:0}.drop{padding:12px 14px;font-size:13px}}
+.qcard .chead,.rqcard .chead{align-items:center;flex-wrap:wrap}.qcard .chead .spacer{flex:1}
+#planNote:empty{display:none}#planNote{margin:0 0 10px}
+.foot{font-size:12px;color:var(--faint);margin:10px 0 0}.chead .foot{margin:0}
+.rqform{display:grid;grid-template-columns:minmax(0,2fr) 64px minmax(0,1fr) minmax(0,1.4fr) auto;grid-template-areas:"what qty col note ask";gap:8px;margin:4px 0 10px}
+.rqform input{height:30px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:0 9px;min-width:0}
+#rqWhat{grid-area:what}#rqQty{grid-area:qty}#rqColour{grid-area:col}#rqNote{grid-area:note}#rqAdd{grid-area:ask}
+@media (max-width:640px){.rqform{grid-template-columns:minmax(0,1fr) 64px;grid-template-areas:"what what" "col qty" "note ask"}.rqform input{height:38px;font-size:16px}#rqAdd{min-height:38px}}
+.qcard .list,.rqcard .list{border:0;border-radius:0}
+.qcard .list>.empty,.rqcard .list>.empty{border:0!important;padding:10px 0 0;text-align:left;font-size:13px}
+
 .drop{display:block;cursor:pointer;border:1px dashed var(--line2);border-radius:var(--r);padding:14px;text-align:center;color:var(--dim);margin-bottom:12px;background:var(--panel)}
 .drop:hover,.drop.over{border-color:var(--accent);color:var(--text)}
 /* sheets */
@@ -135,6 +183,14 @@ dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
 .viewer{position:relative;background:radial-gradient(circle at 50% 30%,#1a1b20,#0b0c0e);border-radius:var(--r);height:min(56vh,520px);overflow:hidden;touch-action:none}
 .viewer canvas{display:block;width:100%!important;height:100%!important;position:absolute;inset:0}
 .viewer .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);padding:20px;text-align:center}
+.why{margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent);display:grid;gap:4px;font-size:13.5px}
+.why b{color:var(--warn)}
+.ctrow .pieces{display:flex;flex-wrap:wrap;gap:6px;padding:2px 12px 12px 44px}
+.ctrow .pieces .btn{min-width:52px;min-height:44px;flex-direction:column;gap:0;line-height:1.1}
+.ctrow .pieces small{color:var(--dim);font-size:10.5px}
+@media (max-width:640px){.ctrow .pieces{padding-left:12px}}
+@media (max-width:640px){#tab-printer>.grid.now{display:flex;flex-direction:column-reverse}}   /* phones: watching (live, detector, spools, calibration) before the controls */
+#detCard .seg .btn[aria-pressed="true"]{background:var(--accent);color:#fff}
 .layerbar{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:12px}
 .layerbar input{width:100%;accent-color:var(--accent)}
 input[type=range]{accent-color:var(--accent)}
@@ -156,11 +212,12 @@ input[type=range]{accent-color:var(--accent)}
 .banner.bad{border-color:rgba(235,93,93,.4)}.banner.bad::before{background:var(--bad)}
 .banner.good::before{background:var(--ok)}
 .banner small{display:block;font-weight:400;color:var(--dim);margin-top:2px}
+.banner{flex-wrap:wrap}.banner>div{flex:1 1 240px;min-width:0}   /* buttons drop under the words when narrow */
 .alert{border-left:2px solid var(--warn);padding:8px 12px;background:transparent}
 .alert b{display:block;font-size:13px;font-weight:500}.alert span{font-size:12px;color:var(--dim)}
 .act{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px}
 .act time{color:var(--faint);font-variant-numeric:tabular-nums}
-.slot .state{font-size:11px;font-weight:500;margin-top:2px}
+.slot .state{font-size:11px;font-weight:500}
 .slot .state.in{color:var(--ok)}.slot .state.parked{color:var(--warn)}.slot .state.empty{color:var(--faint)}
 textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);padding:9px 11px;resize:vertical;min-height:72px}
 .job.running{border-color:var(--info)}.job .q{font-weight:500}.job .a{white-space:pre-wrap;margin-top:6px}
@@ -178,6 +235,9 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .issue .acts{display:flex;gap:4px;opacity:0;transition:opacity .1s}
 .issue:hover .acts,.issue:focus-within .acts{opacity:1}
 @media (hover:none){.issue .acts{opacity:1}}
+@media (hover:hover) and (max-width:640px){.issue .acts{opacity:1}}   /* a narrow window with a mouse: the buttons have their own line, so show it (it was a blank band per row) */
+@media (hover:none){:is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid] .acts{display:none} :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{content:"\203A";color:var(--faint);font-size:18px;line-height:1}}   /* touch screens, phone or iPad: tap the row, its sheet or panel has every button (23 Nov) */
+@media (hover:hover) and (min-width:641px){.issue{position:relative}.issue .acts{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding-left:16px;background:linear-gradient(90deg,transparent,var(--hover) 16px)}}   /* buttons float over the row on hover, so meta columns line up */
 .ghead{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;background:var(--panel2);font-size:12.5px;font-weight:500;color:var(--text)}
 .ghead .si{width:14px;height:14px}
 .ghead b{color:var(--faint);font-weight:500}
@@ -187,7 +247,8 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .issue .ttl{flex-wrap:wrap;row-gap:2px}
   .issue .ttl small{flex-basis:100%;white-space:normal}
   .issue .meta{grid-column:2/-1;grid-row:2;flex-wrap:wrap;gap:4px 12px}
-  .issue .acts{grid-column:3;grid-row:1}
+  .issue .acts{grid-column:2/-1;grid-row:3;justify-content:flex-start;flex-wrap:wrap}   /* buttons on their own line under the name: full file names, every button kept (22 Nov audit) */
+  :is(#fCards,#dCards,#hList,#tlBox) .issue[data-pid]::after{grid-column:3;grid-row:1}
 }
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
 .seg .btn{border:0;border-radius:0;background:none;height:28px}
@@ -198,7 +259,7 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 .jhead .fname{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .jhead .si{width:15px;height:15px;display:block}
 .jpct{font-size:20px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.jbar{--p:0;height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:12px}
+.jbar{--p:0;height:4px;border-radius:2px;background:var(--panel2);overflow:hidden;margin-top:12px}
 .jbar i{display:block;height:100%;width:calc(var(--p) * 1%);background:var(--accent);border-radius:3px;transition:width .6s ease}
 .jbar.paused i{background:var(--warn)} .jbar.done i{background:var(--ok)}
 .jsub{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--dim);margin:7px 0 14px;font-variant-numeric:tabular-nums}
@@ -209,8 +270,29 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 @media (max-width:520px){.jkv{grid-template-columns:repeat(2,minmax(0,1fr))} .jspeed{margin-left:0}}
 .hstat{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.hstat{display:none}}
-.pushrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:12.5px}
+@media (max-width:520px){#updated{display:none} .top{flex-wrap:nowrap} .top .btn.ghost{padding:0 6px} .camview>.camtools{left:6px;right:6px;top:6px;gap:4px;overflow-x:auto;flex-wrap:nowrap;justify-content:safe flex-end;scrollbar-width:none} .camview>.camtools .btn{flex:none;min-height:30px;padding:0 6px;font-size:11px}}   /* phone: camera buttons on one slim row   /* phone: one header row, camera buttons that fit */
+.pushrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px;font-size:12px;color:var(--dim)}.pushrow b{color:var(--text);font-weight:500}.pushrow .pacts{display:flex;gap:4px;flex:none}
 #pushHide{color:var(--dim)}
+/* Printer tab */
+.ctrls{display:flex;flex-wrap:wrap;gap:6px}
+.sub{margin:14px 0 6px;font-size:12.5px;color:var(--dim)}
+.jog{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.jog .pad{display:grid;grid-template-columns:repeat(3,52px);gap:6px}
+.jog .pad .btn,.jog .zcol .btn{min-height:44px;justify-content:center}
+.jog .zcol{display:flex;flex-direction:column;gap:6px}
+.jog .steps{display:flex;gap:4px}
+.jog .steps .btn[aria-pressed="true"]{background:var(--accent,#5e6ad2);color:#fff}
+pre.console{background:#0b0c0e;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;line-height:1.45;white-space:pre-wrap;margin:0}
+.spark{display:grid;grid-template-columns:120px 1fr 64px;gap:8px;align-items:center;font-size:12.5px;margin:4px 0}
+.spark svg{width:100%;height:28px}
+.mesh{display:grid;gap:2px;margin:4px 0 10px}
+.mesh i{display:grid;place-items:center;aspect-ratio:1.4;border-radius:3px;font:500 10.5px ui-monospace,Menlo,monospace;color:#fff;font-style:normal}
+.tchart{width:100%;height:150px;display:block}
+.tlegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--dim);margin-top:6px}
+.tlegend b{font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
+.ctable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.ctable th{text-align:left;color:var(--faint);font-weight:500;padding:4px 0}
+.ctable td{padding:5px 0;border-top:1px solid var(--line)}
 /* activity feed: initial badge, event, time on the right */
 .feed{display:flex;flex-direction:column}
 .fday{font-size:11.5px;color:var(--faint);padding:8px 0 4px}
@@ -245,10 +327,10 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
 #cmdkList button span{color:var(--faint);font-size:12px;margin-left:auto}
 #cmdkList .grp{font-size:11.5px;color:var(--faint);padding:8px 12px 4px}
 @media (max-width:900px){
-  .app{grid-template-columns:1fr}
+  .app{grid-template-columns:minmax(0,1fr)}   /* 1fr let a wide card push the page past a phone (22 Nov audit) */
   nav.side{position:fixed;bottom:0;left:0;right:0;top:auto;height:calc(var(--tab) + env(safe-area-inset-bottom));padding:6px 6px env(safe-area-inset-bottom);flex-direction:row;border-right:0;border-top:1px solid var(--line);background:rgba(13,14,16,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:20;gap:0}
   .brand,.jump,.navlabel,.sidefoot,.tabbtn .key{display:none}
-  .tabbtn{flex-direction:column;gap:3px;font-size:10.5px;height:auto;padding:6px 2px;justify-content:center;min-height:52px;position:relative}
+  .tabbtn{flex-direction:column;gap:3px;font-size:10.5px;height:auto;padding:6px 2px;justify-content:center;min-height:52px;position:relative;flex:1 1 0;min-width:0}   /* six equal tabs fit 375 px (History was cut off) */
   .tabbtn:hover{background:none}
   .tabbtn[aria-current=page]{background:none;color:var(--text)}
   .tabbtn svg{width:20px;height:20px}
@@ -265,7 +347,6 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
   .job{grid-template-columns:1fr;justify-items:center;text-align:center}
   .row{grid-template-columns:40px 1fr}
   .row .acts{grid-column:1/-1;justify-content:flex-start}
-  .slots{grid-template-columns:repeat(2,1fr)}
   .top h1::before{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -283,103 +364,171 @@ textarea{width:100%;border-radius:var(--r2);border:1px solid var(--line2);backgr
     <button class="tabbtn" data-tab="queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="count" id="qCount" hidden></span><span class="key">G Q</span></button>
     <button class="tabbtn" data-tab="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg>Files<span class="key">G F</span></button>
     <button class="tabbtn" data-tab="designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Designs<span class="key">G D</span></button>
+    <button class="tabbtn" data-tab="printer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="9" rx="2"/><path d="M7 18v3h10v-3"/><path d="M17 13h.01"/></svg>Printer<span class="key">G P</span></button>
     <button class="tabbtn" data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 8v4l3 2"/></svg>History<span class="key">G H</span></button>
     <div class="sidefoot">Press <kbd>?</kbd> for shortcuts</div>
   </nav>
   <main>
-    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="hstat" id="hStat"></span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
+    <div class="top"><h1 id="title">Now</h1><span class="pill" id="statePill">Connecting</span><span class="hstat" id="hStat"></span><span class="spacer"></span><span class="note" id="updated"></span><button class="btn sm ghost" id="alertBtn" title="A sound and a pop-up on this computer when a print finishes or pauses">Alerts off</button><button class="btn sm ghost" id="whoBtn" title="Who is using Workshop">You: ?</button></div>
     <div class="banner" id="banner" hidden></div>
 
     <section id="tab-now">
       <div class="grid now">
         <div class="grid">
-          <div class="card cam"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
-            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button></div></div>
           <div class="card" id="jobCard">
             <div class="jhead"><span id="jIcon"></span><div class="fname" id="jobFile">Nothing printing</div><span class="chip" id="jPreset" hidden></span>
               <span class="spacer"></span><b class="jpct" id="pct">-</b></div>
             <div class="jbar" id="ring" role="progressbar" aria-label="Print progress"><i></i></div>
             <div class="jsub"><span id="ringSub">idle</span><span id="kLayer"></span></div>
             <div class="warm" id="warm" hidden></div>
+            <div class="why" id="why" role="status" hidden></div>
             <div class="kv jkv">
               <div><span>Time left</span><b id="kLeft">-</b></div>
               <div><span>Finishes</span><b id="kEnd">-</b></div>
               <div><span>Printing for</span><b id="kDur">-</b></div>
-              <div><span>Filament</span><b id="kFil">-</b></div>
+              <div><span id="kFilL">Filament</span><b id="kFil">-</b></div>
             </div>
             <div class="actions" id="jobActions"></div>
           </div>
-          <div class="card" id="framesCard" hidden><h2>Layer photos</h2>
-            <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
-            <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
-            <div class="note" id="frInfo"></div>
-            <div class="note" id="pwInfo" hidden></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><select id="frJob" aria-label="Which print" hidden></select>
-              <button class="btn sm" id="frPlay" hidden>Play timelapse</button><a class="btn sm ghost" id="frSave" hidden download>Download video</a></div></div>
+          <div class="card cam" id="camCard"><div class="camview"><img id="camImg" alt="Live camera inside the printer"><span class="stamp" id="camStamp">Camera</span>
+            <div class="camtools"><button class="btn sm" id="lightBtn" aria-pressed="false">Light</button><button class="btn sm" id="camFull" aria-label="Full screen camera">Full screen</button><button class="btn sm" id="screenBtn" hidden aria-label="The printer's own screen">Screen</button><button class="btn sm" id="viewBed" title="Raise the bed to the camera so the plate is in view (idle only)">Bed into view</button><button class="btn sm" id="camMode" hidden aria-label="Switch between live video and stills">Stills</button></div></div>
+            <div class="pip" id="l3Card" hidden><div class="viewer" id="l3"></div><span class="stamp" id="l3Stamp">3D</span>
+              <div class="camtools"><button class="btn sm" id="l3Swap" aria-pressed="false" aria-label="Show the 3D view large">Large</button><button class="btn sm" id="l3Reset" aria-label="Back to the starting view">Reset</button></div></div></div>
+          <div class="card" id="lastCard" hidden><h2>Last print</h2><div id="lastBox"></div></div>
         </div>
         <div class="grid" style="align-content:start">
-          <div class="card"><h2>Filament loaded</h2><div class="slots" id="slots"></div><div class="temps" id="temps"></div></div>
+          <div class="card"><div class="chead"><h2>Heads</h2><span class="temps" id="temps"></span></div><div class="slots" id="slots"></div></div>
           <div class="card"><h2>Up next</h2><div id="nextUp" class="note">Nothing queued.</div></div>
           <div class="card" id="partsCard" hidden><h2>Parts on the bed</h2>
             <img id="partsMap" alt="The bed from above with each part's outline" style="width:100%;max-width:320px;border-radius:8px;display:block;margin:0 auto 10px;background:#121316">
             <div class="list" id="partsList"></div>
             <p class="note" style="margin:10px 0 0">One part going wrong? Cancel just that part and the rest keep printing. You see it marked first.</p></div>
           <div class="card" id="alertsCard" hidden><h2>Printer warnings</h2><div id="alerts" class="list"></div></div>
-          <div class="card pushrow" id="pushCard" hidden><div><b>Phone alerts</b><span class="note"> Get a push when a print pauses, finishes or stops (free <b>ntfy</b> app).</span></div>
-            <div class="actions" style="margin:0"><a class="btn sm" id="pushLink" target="_blank" rel="noopener">Subscribe</a><button class="btn sm ghost" id="pushHide" title="Hide on this device">Done</button></div></div>
+          <div class="pushrow" id="pushCard" hidden><span><b>Phone alerts</b> <span class="note">when a print pauses, finishes or stops (free ntfy app)</span></span><span class="pacts"><a class="btn sm" id="pushLink" target="_blank" rel="noopener">Subscribe</a><button class="btn sm ghost" id="pushHide" title="Hide on this device">Hide</button></span></div>
+          <details class="card fold" id="framesCard" hidden><summary><h2>Layer photos</h2></summary>
+            <img id="frImg" alt="" style="width:100%;border-radius:10px;display:block;aspect-ratio:16/9;object-fit:cover;background:#000">
+            <input type="range" id="frRange" min="0" max="0" value="0" aria-label="Scroll through the layer photos" style="width:100%;margin:10px 0 4px">
+            <div class="note" id="frInfo"></div>
+            <div class="note" id="pwInfo" hidden></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><select id="frJob" aria-label="Which print" hidden></select>
+              <button class="btn sm" id="frPlay" hidden>Play timelapse</button><a class="btn sm ghost" id="frSave" hidden download>Download video</a></div></details>
           <div class="card"><h2>Recent activity</h2><div id="activity" class="note">Nothing yet.</div></div>
         </div>
       </div>
     </section>
 
     <section id="tab-queue" hidden>
-      <div class="card" style="margin-bottom:16px"><h2>Print requests</h2>
-        <p class="note">Ask for something to be printed. It waits here with your name until one of you, or Claude, takes it.</p>
-        <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-          <input id="rqWhat" list="rqDesigns" placeholder="What, e.g. a design name" aria-label="What to print" style="flex:1;min-width:200px"><datalist id="rqDesigns"></datalist>
-          <input id="rqQty" type="number" min="1" max="50" value="1" aria-label="How many" style="width:80px">
-          <input id="rqColour" placeholder="Colour" aria-label="Colour" style="width:120px">
-          <input id="rqNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
+      <div class="card qcard">
+        <div class="chead"><h2>Queue</h2><span class="chip" id="qState"></span><span class="spacer"></span>
+          <button class="btn sm" id="qPause">Hold</button><button class="btn sm primary" id="qStart">Start queue</button></div>
+        <p class="note" id="planNote"></p>
+        <div class="list" id="qList"></div>
+        <p class="foot">The next job starts when the printer is free. Starting always asks for an empty bed first.</p>
+      </div>
+      <div class="card rqcard">
+        <div class="chead"><h2>Requests</h2><span class="foot">Waits here with your name until someone takes it</span></div>
+        <div class="rqform">
+          <input id="rqWhat" list="rqDesigns" placeholder="What to print, e.g. a design name" aria-label="What to print"><datalist id="rqDesigns"></datalist>
+          <input id="rqQty" type="number" min="1" max="50" value="1" aria-label="How many">
+          <input id="rqColour" placeholder="Colour" aria-label="Colour">
+          <input id="rqNote" placeholder="Note (optional)" aria-label="Note">
           <button class="btn primary" id="rqAdd">Ask</button></div>
         <div class="list" id="rqList"></div></div>
-      <div class="toolbar"><span class="note" id="qState"></span><span class="spacer"></span>
-        <button class="btn" id="qPause">Hold queue</button><button class="btn primary" id="qStart">Start queue</button></div>
-      <div class="list" id="qList"></div>
-      <p class="note">The queue starts the next job when the printer is free. Starting always asks for an empty bed first.</p>
     </section>
 
     <section id="tab-files" hidden>
-      <label class="drop" id="drop">Drop a sliced .gcode here, or <u>choose a file</u> to send it to the printer
-        <input type="file" id="fileIn" accept=".gcode,.gco,.g" hidden multiple></label>
-      <div class="toolbar"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh">Refresh</button>
+      <label class="drop" id="drop">Drop a sliced .gcode to send it, or an <b>.stl</b> or <b>.3mf</b> to slice it here. Or <u>choose a file</u>.
+        <input type="file" id="fileIn" accept=".gcode,.gco,.g,.stl,.3mf" hidden multiple></label>
+      <div class="toolbar ftools"><input type="search" id="fSearch" placeholder="Search files" aria-label="Search files"><button class="btn" id="fRefresh" aria-label="Refresh the file list" title="Refresh">↻</button>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-fview="list" aria-pressed="true">List</button><button class="btn sm" data-fview="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="fCards"></div>
     </section>
 
     <section id="tab-designs" hidden>
       <p class="note" id="dIntro"></p>
-      <div class="toolbar"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
+      <div class="toolbar dtools"><input type="search" id="dSearch" placeholder="Search designs" aria-label="Search designs"><select id="dBench" aria-label="Which designs"></select>
         <select id="dState" aria-label="Which state"><option value="">Any state</option><option value="ready">Ready</option><option value="check">Check first</option><option value="later">Later</option></select>
-        <select id="dGroup" aria-label="Group by"><option value="use">Group by use</option><option value="state">Group by state</option></select>
+        <select id="dGroup" aria-label="Group by"><option value="use">By use</option><option value="state">By state</option></select>
         <span class="seg" role="group" aria-label="View"><button class="btn sm" data-view="list" aria-pressed="true">List</button><button class="btn sm" data-view="grid" aria-pressed="false">Grid</button></span></div>
       <div class="cards" id="dCards"></div>
     </section>
 
 
-    <section id="tab-history" hidden>
-      <div class="stats" id="hStats"></div>
-      <div class="card" id="accCard" hidden style="margin-bottom:16px"><h2>Slicer against the printer</h2><div class="note" id="accInfo"></div></div>
-      <div class="card" style="margin-bottom:16px"><h2>Calibration</h2>
-        <p class="note">After a test print, record the value you picked from it. A photo of the print is taken with it, and the
-          value goes into the slicing profile next (the print-calibration skill says which setting each test feeds).</p>
+    <section id="tab-printer" hidden>
+      <div class="grid now">
+        <div class="grid" style="align-content:start">
+          <div class="card" id="ctlCard"><div class="chead"><h2>Controls</h2><a class="note" href="http://192.168.1.237/" target="_blank" rel="noopener">Fluidd ↗</a></div>
+            <div class="ctrls">
+              <button class="btn" data-ctl="light">Light</button>
+              <button class="btn mv" data-ctl="heaters">Heaters off</button>
+              <button class="btn mv" data-ctl="home">Home</button>
+              <button class="btn mv" data-ctl="motors">Motors off</button>
+              <button class="btn mv" data-ctl="view">Bed into view</button>
+            </div>
+            <p class="note lockmsg">Moving, heating and homing are hidden while a print runs. The light and the part fan still work.</p>
+            <div class="sub mv">Move <span class="note">(idle and homed; the bed never comes closer than 20 mm over the last print)</span></div>
+            <div class="jog mv">
+              <div class="pad"><span></span><button class="btn" data-jog="y,1" aria-label="Head back">Y+</button><span></span>
+                <button class="btn" data-jog="x,-1" aria-label="Head left">X−</button><button class="btn" data-jog="home" aria-label="Home">⌂</button><button class="btn" data-jog="x,1" aria-label="Head right">X+</button>
+                <span></span><button class="btn" data-jog="y,-1" aria-label="Head forward">Y−</button><span></span></div>
+              <div class="zcol"><button class="btn" data-jog="z,-1" aria-label="Bed up">Bed up</button><button class="btn" data-jog="z,1" aria-label="Bed down">Bed down</button></div>
+              <div class="steps" role="group" aria-label="Step size"></div>
+            </div>
+            <div class="sub mv">Heat</div>
+            <div class="ctrls mv"><select id="hHeater" aria-label="Heater"><option>T0</option><option>T1</option><option>T2</option><option>T3</option><option value="bed">Bed</option></select>
+              <input id="hTemp" type="number" inputmode="numeric" min="0" max="300" placeholder="°C" aria-label="Temperature" style="width:80px">
+              <button class="btn" id="hSet">Set</button><button class="btn" id="hOff">Off</button>
+              <button class="btn sm ghost" data-preset="245">PETG 245</button><button class="btn sm ghost" data-preset="220">PLA 220</button><button class="btn sm ghost" data-preset="80" data-bed="1">Bed 80</button></div>
+            <div class="sub">Fans</div>
+            <div id="fanRow"></div>
+            <p class="foot">Load and unload are on each head in Now.</p></div>
+          <div class="card" id="maintCard"><div class="chead"><h2>Maintenance</h2><span class="foot">Snapmaker&#39;s U1 schedule</span></div><div class="list" id="maintList"></div></div>
+          <div class="card" id="calCard"><h2>Calibrate</h2><div class="ctrls" id="calBtns"></div>
+            <p class="note" style="margin:10px 0 0">Each one homes first if needed, moves the head and bed, and writes its result in the console below. The plate must be clear.</p></div>
+          <div class="card"><h2>Console</h2><pre id="conLog" class="console" aria-live="polite">Loading...</pre>
+            <form id="conForm" class="ctrls" style="margin-top:8px"><input id="conIn" placeholder="One G-code command, e.g. M114" aria-label="G-code command" autocomplete="off" spellcheck="false" style="flex:1;min-width:160px"><button class="btn">Send</button></form></div>
+          <div class="card"><h2>Bed mesh</h2><div id="meshBox" class="note">Loading...</div></div>
+        </div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><h2>Live</h2><div id="liveBox" class="note">Collecting readings: the charts fill while this page is open.</div></div>
+          <div class="card" id="detCard" hidden><div class="chead"><h2>Spaghetti detector</h2><span class="note" id="detState"></span></div>
+            <p class="note" style="margin:0 0 10px">The printer's own camera pauses a print when it sees loose strands. Off for a print it keeps stopping by
+              mistake; it stays as set until changed back.</p>
+            <div class="ctrls"><span class="seg" role="group" aria-label="Detector"><button class="btn sm" data-det="on">On</button><button class="btn sm" data-det="off">Off</button></span>
+              <span class="seg" role="group" aria-label="Sensitivity"><button class="btn sm" data-dets="low">Low</button><button class="btn sm" data-dets="high">High</button></span></div></div>
+          <div class="card"><h2>Watch</h2><div class="ctrls"><button class="btn" id="wCam">Live camera</button><button class="btn" id="wScreen">Printer screen</button><button class="btn" id="wLapse">Timelapses</button></div></div>
+          <div class="card"><h2>Temperatures, last 20 minutes</h2><div id="tempBox" class="note">Loading...</div></div>
+          <div class="card"><h2>Spools</h2><div id="spoolBox" class="note">Loading...</div></div>
+          <details class="card fold" id="calHistCard" open><summary><h2>Calibration</h2></summary>
+        <p class="note">Make a test for one head, print it, then tap the number of the best piece. It is recorded with a photo, and
+          Claude opens the change to that filament's slicing profile as a pull request.</p>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin:12px 0 4px">
+          <select id="ctTest" aria-label="Which test"><option value="pressure-advance">Pressure advance (8 boxes)</option>
+            <option value="flow-ratio">Flow ratio (9 tiles)</option><option value="temperature">Temperature (5 bands)</option></select>
+          <select id="ctHead" aria-label="Which head"></select>
+          <button class="btn primary" id="ctMake">Make test</button></div>
+        <p class="note" id="ctNote" style="margin:4px 0 0">Slicing takes a minute or two. It goes on the printer, not started.</p>
+        <div id="calWizard" style="margin:12px 0 14px"></div>
+        <p class="note" style="margin:0 0 6px">Other tests (max flow, retraction): record the value by hand.</p>
         <div class="toolbar" style="flex-wrap:wrap;gap:8px">
           <select id="calTest" aria-label="Which test"></select>
           <input id="calFil" placeholder="Filament, e.g. SUNLU PETG white" aria-label="Filament" style="min-width:180px">
           <input id="calVal" placeholder="Value picked, e.g. 240" aria-label="Value picked" style="width:150px">
           <input id="calNote" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:160px">
           <button class="btn primary" id="calSave">Record</button></div>
-        <div class="list" id="calList"></div></div>
-      <div class="list" id="hList"></div>
+        <div class="list" id="calList"></div></details>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-history" hidden>
+      <div class="stats" id="hStats"></div>
+      <div class="list" id="hList" style="margin-bottom:16px"></div>
+      <details class="card fold" id="galCard" hidden style="margin-bottom:16px" open><summary><h2>Finished parts</h2></summary><div class="cards gal" id="galBox"></div></details>
+      <details class="card fold" id="tlCard" hidden style="margin-bottom:16px"><summary><h2>Printer timelapses</h2></summary><div id="tlBox"></div></details>
+      <details class="card fold" id="costCard" hidden style="margin-bottom:16px"><summary><h2>Filament and cost</h2></summary><div id="costBox"></div></details>
+      <details class="card fold" id="accCard" hidden style="margin-bottom:16px"><summary><h2>Slicer against the printer</h2></summary><div class="note" id="accInfo"></div></details>
+
     </section>
   </main>
 </div>
@@ -426,7 +575,9 @@ const day = t => new Date(t * 1000).toLocaleString("en-GB", {day: "numeric", mon
 const DEFAULT_COLOURS = ["#e2dedb", "#3a3d44", "#e72f1d", "#f4c032"];
 let S = {status: null, colours: DEFAULT_COLOURS, queue: [], files: [], meta: {}, info: {}};
 
-function toast(t, bad) { const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
+const OFFLINE_SAID = "Can't reach the printer. It may be restarting or updating; Workshop keeps trying.";
+function toast(t, bad) { if (/^printer unreachable/i.test(t)) return;   // the header already says the printer is offline, in words
+  const el = $("#toast"); el.textContent = t; el.className = "show" + (bad ? " bad" : ""); clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", 3800); }
 async function api(path, opts = {}) {
   if (opts.method && opts.method !== "GET") opts.headers = Object.assign({"X-Workshop": "1", "X-Workshop-User": who() || "someone"}, opts.headers || {});   // the server refuses changes without it
   const r = await fetch(path, opts);
@@ -438,13 +589,13 @@ const post = (p, body) => api(p, {method: "POST", headers: body ? {"Content-Type
 const gcode = s => post(M("/printer/gcode/script?script=" + enc(s)));
 
 /* ---------- tabs ---------- */
-const TITLES = {now: "Now", queue: "Queue", files: "Files on the printer", designs: "Designs", history: "History"};
+const TITLES = {now: "Now", queue: "Queue", files: "Files", designs: "Designs", printer: "Printer", history: "History"};
 let tab = "now";
 function go(t) {
   tab = t; document.querySelectorAll(".tabbtn").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
   document.querySelectorAll("main>section").forEach(s => s.hidden = s.id !== "tab-" + t);
   $("#title").textContent = TITLES[t]; history.replaceState(null, "", "#" + t);
-  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, history: loadHistory}[t] || (() => {}))();
+  ({queue: loadQueue, files: loadFiles, designs: loadDesigns, printer: () => { loadPrinter(); loadCalibration(); }, history: loadHistory}[t] || (() => {}))();
 }
 document.querySelectorAll(".tabbtn").forEach(b => b.onclick = () => go(b.dataset.tab));
 
@@ -453,6 +604,7 @@ const focusOn = (t, sel) => { go(t); setTimeout(() => { const el = $(sel); if (e
 const COMMANDS = [
   ["Go to", "Now", "G N", () => go("now")], ["Go to", "Queue", "G Q", () => go("queue")],
   ["Go to", "Files on the printer", "G F", () => go("files")], ["Go to", "Designs", "G D", () => go("designs")],
+  ["Go to", "Printer", "G P", () => go("printer")], ["Do", "Make a calibration test", "", () => focusOn("printer", "#ctTest")], ["Go to", "History", "G H", () => go("history")],
   ["Do", "Ask for a print", "", () => focusOn("queue", "#rqWhat")],
   ["Do", "Search designs", "", () => focusOn("designs", "#dSearch")],
   ["Do", "Search files", "", () => focusOn("files", "#fSearch")],
@@ -490,7 +642,7 @@ $("#jumpBtn").onclick = openCmdk;
 function showKeys() {
   const row = (k, t) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>${t}</span><span>${k.split(" ").map(x => `<kbd>${x}</kbd>`).join(" ")}</span></div>`;
   openSheet("Keyboard shortcuts", row("⌘ K", "Search or jump") + row("/", "Search or jump") + row("G N", "Now") + row("G Q", "Queue") +
-    row("G F", "Files") + row("G D", "Designs") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row's details") + row("Esc", "Close the details") + row("L", "Light on or off") + row("?", "This list"));
+    row("G F", "Files") + row("G D", "Designs") + row("G P", "Printer") + row("G H", "History") + row("↑ ↓", "Move through rows (or J K)") + row("Enter", "Open the row's details") + row("Esc", "Close the details") + row("L", "Light on or off") + row("?", "This list"));
 }
 let gPressed = 0;
 document.addEventListener("keydown", e => {
@@ -514,7 +666,7 @@ document.addEventListener("keydown", e => {
   if (k === "/") { e.preventDefault(); openCmdk(); return; }
   if (k === "?") { showKeys(); return; }
   if (Date.now() - gPressed < 1200) {
-    const t = {n: "now", q: "queue", f: "files", d: "designs", h: "history"}[k]; gPressed = 0;
+    const t = {n: "now", q: "queue", f: "files", d: "designs", p: "printer", h: "history"}[k]; gPressed = 0;
     if (t) { go(t); e.preventDefault(); } return;
   }
   if (k === "g") { gPressed = Date.now(); return; }
@@ -569,20 +721,23 @@ $("#sheetClose").onclick = closeSheet;
 sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
 
 /* ---------- live status ---------- */
-const Q = ["print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move"];
+const Q = ["fan", "fan_generic%20cavity_fan", "fan_generic%20exhaust_fan", "fan_generic%20circulation_fan", "adc_current_sensor%20I_AD", "temperature_sensor%20cavity", "print_stats", "display_status", "heater_bed", "extruder", "extruder1", "extruder2", "extruder3", "print_task_config", "led%20cavity_led", "webhooks", "filament_feed%20left", "filament_feed%20right", "gcode_move", "gcode_macro%20SET_PRINT_STATS_INFO", "virtual_sdcard", "pause_resume", "machine_state_manager", "defect_detection"];
 async function poll() {
   try {
     const r = await api(M("/printer/objects/query?" + Q.join("&")));
     const was = S.status?.print_stats?.filename;
-    S.status = r.status; $("#conn").className = "dot on"; render();
+    S.status = r.status; $("#conn").className = "dot on"; render(); sampleLive(r.status); live3d();
     if (tab === "files" && S.files.length && was !== S.status?.print_stats?.filename) renderFiles();   // the "printing now" mark follows the printer
     $("#updated").textContent = "Live · " + clock(new Date());
     const st = S.status?.print_stats?.state;
+    if (S.lastSt && st !== S.lastSt) stateChanged(S.lastSt, st, S.status.print_stats.filename);
+    S.lastSt = st;
     if ((st === "printing" || st === "paused") && Date.now() - (loadParts.t || 0) > 30000) loadParts();
     else if (st !== "printing" && st !== "paused") $("#partsCard").hidden = true;
   } catch (e) {
     $("#conn").className = "dot off"; $("#statePill").textContent = "Printer offline"; $("#statePill").className = "pill error";
-    $("#updated").textContent = e.message;
+    const off = /^printer unreachable/i.test(e.message);
+    $("#updated").textContent = off ? OFFLINE_SAID : e.message; $("#updated").title = off ? e.message : "";
   }
 }
 /* ---------- cancel one part: marked picture first, then only that part (EXCLUDE_OBJECT) ---------- */
@@ -608,6 +763,7 @@ $("#partsList").addEventListener("click", e => { const b = e.target.closest("[da
   body.querySelector("#cpYes").onclick = async () => { try { await post("/api/parts", {name}); toast("Cancelled: " + partWord(name)); closeSheet(); loadParts(); } catch (err) { toast(err.message, true); } };
 });
 
+const DEFECT = {1: "something left on the bed", 2: "spaghetti (loose strands where the part should be)", 3: "residue on the bed", 4: "a dirty nozzle"};
 const STATE_WORD = {printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error", standby: "Ready"};
 function render() {
   const s = S.status, ps = s.print_stats, ds = s.display_status || {}, info = ps.info || {};
@@ -631,10 +787,24 @@ function render() {
   $("#ringSub").textContent = heating ? "heating" : ps.state === "printing" && info.total_layer && !(info.current_layer > 0) ? "getting ready" : STATE_WORD[ps.state]?.toLowerCase() || ps.state;
   $("#warm").innerHTML = heating ? "Heating " + warm.map(([n, h]) => `${n} <b>${Math.round(h.temperature)}° → ${Math.round(h.target)}°</b>`).join(" · ") : "";
   $("#warm").hidden = !heating;
+  // why it is paused (the printer's own spaghetti detector writes print_stats.exception, see printer.hold) and whether
+  // RESUME will be taken yet: print_stats paused, pause_resume.is_paused, the machine's action code idle
+  const ex = ps.exception || {}, why = ex.id === 532 && DEFECT[ex.code] ? "The printer's camera paused it: " + DEFECT[ex.code] + "." : ex.message || ps.message || "";
+  const canResume = ps.state === "paused" && (s.pause_resume || {}).is_paused !== false && !((s.machine_state_manager || {}).action_code);
+  $("#why").hidden = !(ps.state === "paused" || ex.id);
+  $("#why").innerHTML = `<b>${esc(ps.state === "paused" ? "Paused" : "Pausing")}</b> ${esc(why || "Look at the camera before resuming.")}`
+    + (ps.state === "paused" || ex.id ? `<span class="note">${canResume ? "Look at the camera and the printer's screen, then Continue if the part is fine." : "Continue unlocks once the printer has finished pausing."}</span>` : "");
   if (ps.filename && !S.meta[ps.filename] && S.metaWant !== ps.filename) { S.metaWant = ps.filename; ensureMeta([ps.filename]).then(render); }
   const est = (S.meta[ps.filename] || {}).estimated_time;
-  $("#jobFile").textContent = ps.filename || "Nothing printing";
-  $("#kLayer").textContent = info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "";
+  $("#jobFile").textContent = (ps.filename || "Nothing printing").replace(/\.gcode$/i, ""); $("#jobFile").title = ps.filename || "";
+  const pal = (s["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
+  // tool changes done and left: offsets of each real head change in the file, against how far the printer has read it
+  if (!active) S.tcFor = null;   // a new job reads the offsets again, even for the same file name re-sliced (review, 24 Nov)
+  if (active && ps.filename && S.tcFor !== ps.filename) { S.tcFor = ps.filename; S.tc = null; api("/api/tool-changes?file=" + encodeURIComponent(ps.filename)).then(r => { S.tc = r; render(); }).catch(() => {}); }
+  const tc2 = active && S.tc && S.tc.total ? S.tc : null, pos = (s.virtual_sdcard || {}).file_position || 0;
+  const done = tc2 ? tc2.offsets.filter(o => o < pos).length : 0;
+  $("#kLayer").textContent = [info.total_layer ? `Layer ${info.current_layer} of ${info.total_layer}` : "",
+    tc2 ? `tool change ${done} of ${tc2.total}` : "", active && pal.enable ? `pauses at layer ${pal.layer}` : ""].filter(Boolean).join(" · ");
   let left = null;
   let guess = false;
   if (ps.state === "printing" && ds.progress > 0.02) left = ps.print_duration * (1 - ds.progress) / ds.progress;
@@ -643,15 +813,24 @@ function render() {
     left = Math.max(est * k - ps.print_duration, 0) + prep; guess = true; }
   $("#kLeft").textContent = left != null ? (guess ? "about " : "") + hm(left) : "-";
   $("#kEnd").textContent = left != null ? (guess ? "about " : "") + clock(new Date(Date.now() + left * 1000)) : "-";
+  $("#kLeft").parentElement.hidden = $("#kEnd").parentElement.hidden = left == null;   // no dashes once it ends
+  $("#ctlCard").classList.toggle("busy", active); $("#calCard").hidden = active;   // Printer tab: hide what Workshop refuses mid-print
   $("#kDur").textContent = ps.print_duration ? hm(ps.print_duration) : "-";
   const jm = S.meta[ps.filename] || {}, jobCost = cost(jm.filament_weight_total, jm.filament_type);
-  $("#kFil").textContent = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m" + (jobCost ? ` of ${Math.round(jm.filament_weight_total)} g (${jobCost})` : "") : "-";
-  document.title = (active ? `${p}% · ` : "") + "Workshop";
+  const used = ps.filament_used ? (ps.filament_used / 1000).toFixed(1) + " m used" : "", grams = jm.filament_weight_total ? Math.round(jm.filament_weight_total) + " g" : "";
+  $("#kFilL").textContent = jobCost ? "Cost" : "Filament";   // the print's cost up front: slicer grams at the spool's price (23 Nov)
+  // the prime tower (tool-change purges and the tower itself) from the same read as the tool changes: plastic for the bin
+  const tw = active && S.tc && S.tcFor === ps.filename && S.tc.tower_g >= 1 ? S.tc.tower_g : 0;
+  const twTxt = tw ? `tower and purge ${Math.round(tw)} g${cost(tw, jm.filament_type) ? " (" + cost(tw, jm.filament_type) + ")" : ""}` : "";
+  $("#kFil").innerHTML = jobCost ? `${jobCost}<small>${[grams, used, twTxt].filter(Boolean).join(" · ")}</small>` : esc([[used, grams && "of " + grams].filter(Boolean).join(" "), twTxt].filter(Boolean).join(" · ") || "-");
+  $("#kFil").title = tw ? "Grams going into the prime tower: purging between colours and the tower itself. Included in the cost." : "";
+  document.title = (ps.state === "paused" ? "Paused · " : active ? `${p}% · ` : ps.state === "complete" ? "Finished · " : "") + "Workshop";
   $("#hStat").textContent = active ? `${(ps.filename || "").replace(/\.gcode$/, "")} · ${p}%${$("#kEnd").textContent !== "-" ? " · ends " + $("#kEnd").textContent.replace("about ", "~") : ""}` : "";
   const acts = [];
   if (ps.state === "printing") acts.push(`<button class="btn" data-a="pause">Pause</button>`);
-  if (ps.state === "paused") acts.push(`<button class="btn primary" data-a="resume">Resume</button>`);
+  if (ps.state === "paused" || ex.id === 532) acts.push(`<button class="btn primary" data-a="resume" ${canResume ? "" : "disabled"}>Continue</button>`);
   if (active) acts.push(`<button class="btn danger" data-a="cancel">Cancel print</button>`);
+  if (active) acts.push(`<button class="btn" data-a="pauseat">Pause at layer</button>`);
   const sp = Math.round(100 * ((s.gcode_move || {}).speed_factor || 1));
   if (active) acts.push(`<span class="jspeed"><span class="note">Speed</span><span class="seg"><button class="btn sm" data-a="slower" aria-label="Slower" ${sp <= 50 ? "disabled" : ""}>−</button><b>${sp}%</b><button class="btn sm" data-a="faster" aria-label="Faster" ${sp >= 150 ? "disabled" : ""}>+</button></span></span>`);
   if (!active && ps.filename) acts.push(`<button class="btn" data-a="again">Print again</button>`);
@@ -662,27 +841,61 @@ function render() {
   $("#slots").innerHTML = names.map((n, i) => { const e = s[n] || {}; const on = e.state === "ACTIVATE";
     const fs = feedState(i), loaded = fs ? fs.cls !== "empty" : (!tc.filament_exist || tc.filament_exist[i]);
     const canUnload = !active && (fs ? fs.cls === "in" : loaded && tc.filament_exist) && !(tc.filament_soft || [])[i];
-    return `<div class="slot${on ? " active" : ""}"><div class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></div><b>T${i} · ${loaded ? esc((tc.filament_type || [])[i] || "?") : "empty"}</b><span>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : "&nbsp;"}</span><span>${Math.round(e.temperature || 0)}° / ${Math.round(e.target || 0)}°</span>${(sp => sp ? `<span class="state${sp.start_g - sp.used_g < (S.spools.low_g || 200) ? " warn" : ""}" title="${esc(sp.spool)}">about ${Math.max(0, Math.round(sp.start_g - sp.used_g))} g left</span>` : "")(((S.spools || {}).heads || {})["T" + i])}${fs ? `<span class="state ${fs.cls}">${esc(fs.word)}</span>` : ""}<div style="display:flex;gap:4px;justify-content:center;margin-top:6px;flex-wrap:wrap">${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button><button class="btn sm ghost" data-newspool="${i}">New spool</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}</div></div>`; }).join("");
-  $("#temps").innerHTML = `<div class="temp"><span>Bed</span><b>${Math.round(s.heater_bed.temperature)}° / ${Math.round(s.heater_bed.target)}°</b></div>`;
+    const sp = ((S.spools || {}).heads || {})["T" + i], left = sp ? Math.max(0, Math.round(sp.start_g - sp.used_g)) : null;
+    const acts = `${!active ? `<button class="btn sm ghost" data-setfil="${i}">Set</button><button class="btn sm ghost" data-newspool="${i}">New spool</button>` : ""}${canUnload ? `<button class="btn sm ghost" data-unload="${i}">Unload</button>` : ""}${!active && fs && fs.cls === "parked" ? `<button class="btn sm ghost" data-load="${i}">Load</button>` : ""}`;
+    return `<div class="slot${on ? " active" : ""}"><span class="swatch" style="background:${loaded ? S.colours[i] || "#555" : "transparent"}"></span>
+      <div class="hname"><b>T${i}</b> ${loaded ? esc((tc.filament_type || [])[i] || "?") : "Empty"}<small>${loaded ? esc((tc.filament_sub_type || [])[i] || "") : ""}${fs ? `<span class="state ${fs.cls}">${esc(fs.word)}</span>` : ""}</small></div>
+      <span class="htemp${on ? " hot" : ""}">${Math.round(e.temperature || 0)}°<small>${e.target ? " / " + Math.round(e.target) + "°" : ""}</small></span>
+      <span class="hg${sp && left < (S.spools.low_g || 200) ? " warn" : ""}" title="${sp ? esc(sp.spool) : ""}">${sp ? left + " g" : ""}</span>
+      ${acts ? `<div class="hacts">${acts}</div>` : ""}</div>`; }).join("");
+  $("#temps").innerHTML = `Bed <b>${Math.round(s.heater_bed.temperature)}°</b>${s.heater_bed.target ? " / " + Math.round(s.heater_bed.target) + "°" : ""}`;
   const led = s["led cavity_led"]; const lit = led && led.color_data && led.color_data[0].some(v => v > 0);
   $("#lightBtn").setAttribute("aria-pressed", String(!!lit)); $("#lightBtn").textContent = lit ? "Light on" : "Light off";
-  renderBanner();
+  renderBanner(); renderDetector();
   // queue badge + next up
   const next = S.queue[0];
   const nm = next && (S.meta[next.filename] || {});
-  $("#nextUp").innerHTML = next ? `<div class="list">${issueHtml({icon: "queued", id: "Q-1", title: esc(next.filename),
-      meta: [nm.estimated_time ? hm(nm.estimated_time) : "", nm.filament_weight_total ? Math.round(nm.filament_weight_total) + " g" : "",
-             `<i class="mini" style="background-image:url('${thumbUrl(next.filename, nm)}')"></i>`],
-      acts: `<button class="btn sm" onclick="go('queue')">Queue</button>`})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
+  $("#nextUp").innerHTML = next ? `<div class="list">${issueHtml({icon: "queued", id: "Q-1", title: esc(next.filename.replace(/\.gcode$/i, "")),
+      meta: [nm.estimated_time ? hm(nm.estimated_time) : "", nm.filament_weight_total ? Math.round(nm.filament_weight_total) + " g" : "", cost(nm.filament_weight_total, nm.filament_type),
+             thumbUrl(next.filename, nm) ? `<i class="mini" style="background-image:url('${thumbUrl(next.filename, nm)}')"></i>` : ""],
+      acts: ""})}</div>` + (S.queue.length > 1 ? `<p class="note" style="margin:8px 0 0">and ${S.queue.length - 1} more in the queue</p>` : "")
     : `Nothing queued. <a href="#designs" onclick="go('designs');return false">Pick a design</a> or <a href="#files" onclick="go('files');return false">a file</a>.`;
 }
+// the printer's own spaghetti detector (defect_detection: main_enable, noodle.enable, noodle.sensitivity)
+function renderDetector() {
+  const d = (S.status || {}).defect_detection; $("#detCard").hidden = !d; if (!d) return;
+  const n = d.noodle || {}, on = !!(d.main_enable && n.enable);
+  $("#detState").textContent = on ? `on, ${n.sensitivity || "?"} sensitivity` : "off";
+  document.querySelectorAll("[data-det]").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.det === "on") === on)));
+  document.querySelectorAll("[data-dets]").forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.dets === n.sensitivity)); b.disabled = !on; });
+}
+$("#detCard").addEventListener("click", async e => {
+  const b = e.target.closest("[data-det],[data-dets]"); if (!b || b.getAttribute("aria-pressed") === "true") return;
+  const body = b.dataset.det ? {action: "detector", spaghetti: b.dataset.det === "on"} : {action: "detector", sensitivity: b.dataset.dets};
+  try { const r = await post("/api/control", body); toast(r.done); poll(); } catch (err) { toast(err.message, true); }
+});
 $("#jobActions").addEventListener("click", async e => {
   const a = e.target.closest("button")?.dataset.a; if (!a) return;
   try {
     if (a === "pause") { await post(M("/printer/print/pause")); toast("Pausing"); }
-    if (a === "resume") { await post(M("/printer/print/resume")); toast("Resuming"); }
+    if (a === "resume") {
+      if ((S.status.print_stats.exception || {}).id !== 532) { await post("/api/control", {action: "resume"}); toast("Continuing"); return; }
+      return confirmSheet("Is the part fine?", "The printer's camera paused this print. Look at the camera (or the printer) first: continue only if the part has not come loose and there is no tangle of plastic.",
+        "Continue print", async () => { await post("/api/control", {action: "resume", person_checked: true}); toast("Continuing"); });
+    }
     if (a === "cancel") return confirmSheet("Cancel this print?", "The print stops and cannot be resumed.", "Cancel print", async () => { await post(M("/printer/print/cancel")); toast("Cancelling"); });
     if (a === "again") return bedCheck(S.status.print_stats.filename);
+    if (a === "pauseat") {   // the printer pauses itself at that layer: for magnets, nuts or a colour change by hand
+      const info = S.status.print_stats.info || {}, pal = (S.status["gcode_macro SET_PRINT_STATS_INFO"] || {}).pause_at_layer || {};
+      const body = openSheet("Pause at a layer", `<p class="note">The printer pauses on its own when it reaches that layer, so you can drop in magnets or nuts, then resume. It is on layer ${info.current_layer || 0} of ${info.total_layer || "?"}.</p>
+        <div class="field"><label for="palN">Layer</label><input id="palN" type="number" min="${(info.current_layer || 0) + 1}" max="${info.total_layer || 9999}" value="${pal.enable ? pal.layer : (info.current_layer || 0) + 1}"></div>
+        <div class="actions"><button class="btn primary" id="palSet">Pause there</button>${pal.enable ? `<button class="btn" id="palOff">Don't pause (was layer ${pal.layer})</button>` : ""}</div>`);
+      body.querySelector("#palSet").onclick = async () => { const n = parseInt(body.querySelector("#palN").value, 10);
+        if (!(n > (info.current_layer || 0))) return toast("Pick a layer after the current one", true);
+        try { await gcode(`SET_PAUSE_AT_LAYER LAYER=${n}`); toast(`Pauses at layer ${n}`); closeSheet(); poll(); } catch (err) { toast(err.message, true); } };
+      const off = body.querySelector("#palOff"); if (off) off.onclick = async () => { try { await gcode("SET_PAUSE_AT_LAYER ENABLE=0"); toast("No pause"); closeSheet(); poll(); } catch (err) { toast(err.message, true); } };
+      return;
+    }
     if (a === "cool") { await gcode("TURN_OFF_HEATERS"); toast("Heaters off"); }
     if (a === "slower" || a === "faster") {   // 10% steps, 50-150% (Workshop refuses anything outside)
       const now = Math.round(100 * ((S.status.gcode_move || {}).speed_factor || 1)), to = Math.max(50, Math.min(150, now + (a === "faster" ? 10 : -10)));
@@ -716,7 +929,9 @@ async function setFilament(i) {
     } catch (e) { toast(e.message, true); }
   };
 }
-async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ } }
+async function loadBed() { try { S.bed = await api("/api/bed"); } catch (e) { /* banner falls back to the printer state */ }
+  try { S.plate = (await api("/api/plate")).plate; } catch (e) { /* older Workshop: no plate switch */ }
+  try { S.maint = await api("/api/maintenance"); } catch (e) { S.maint = []; } }
 async function loadSpools() { try { S.spools = await api("/api/spools"); } catch (e) { /* the head cards just leave grams out */ } }
 async function newSpool(i) {
   const tc = (S.status || {}).print_task_config || {};
@@ -734,6 +949,9 @@ async function newSpool(i) {
 $("#slots").addEventListener("click", e => {
   const ns = e.target.closest("[data-newspool]"); if (ns) return newSpool(+ns.dataset.newspool);
   const sf = e.target.closest("[data-setfil]"); if (sf) return setFilament(+sf.dataset.setfil);
+  const ld = e.target.closest("[data-load]");
+  if (ld) { const i = +ld.dataset.load; return confirmSheet(`Load T${i}?`, `The printer heats T${i} to about 270 °C and feeds the filament from the feeder into the head. A few minutes.`, `Load T${i}`, async () => {
+    await post("/api/load", {head: `T${i}`}); toast(`Loading T${i}: a few minutes.`); }); }
   const b = e.target.closest("[data-unload]"); if (!b) return;
   const i = +b.dataset.unload, tc = S.status.print_task_config;
   confirmSheet(`Unload T${i}?`, `The printer heats T${i}, cuts the tip and winds the ${tc.filament_type[i]} ${tc.filament_sub_type[i]} back to its spool. It takes a minute or two.`, `Unload T${i}`, async () => {
@@ -745,7 +963,7 @@ $("#lightBtn").onclick = async () => { const on = $("#lightBtn").getAttribute("a
 
 /* camera */
 let camTimer = null;
-function camTick() { const img = new Image(); img.onload = () => { $("#camImg").src = img.src; $("#camStamp").textContent = "Camera · " + clock(new Date()); }; img.src = "/cam.jpg?t=" + Date.now(); }
+function camTick() { const img = new Image(); img.onload = () => { const el = $("#camImg"); if (!el) return; el.src = img.src; $("#camStamp").textContent = "Camera · " + clock(new Date()); }; img.src = "/cam.jpg?t=" + Date.now(); }
 let camLoop = function () { clearInterval(camTimer); if (document.hidden) return; camTick(); camTimer = setInterval(camTick, 2000); };
 document.addEventListener("visibilitychange", () => camLoop());
 $("#camFull").onclick = () => { const b = openSheet("Camera", `<img id="bigCam" style="width:100%;border-radius:12px" alt="Live camera">`); const t = setInterval(() => { const el = $("#bigCam"); if (el) el.src = "/cam.jpg?t=" + Date.now(); }, 1500); b.querySelector("img").src = "/cam.jpg?t=" + Date.now(); onSheetClose = () => clearInterval(t); };
@@ -761,8 +979,10 @@ function bedCheck(filename, viaQueue) {
     `<img src="/cam.jpg?t=${Date.now()}" alt="The bed right now" style="width:100%;border-radius:12px;max-height:46vh;object-fit:cover">
      <label class="check"><input type="checkbox" id="bedOk"> The bed is empty and the plate is on</label>
      <div class="actions"><button class="btn primary" id="goPrint" disabled>${viaQueue ? "Start queue" : "Start print"}</button><button class="btn" id="noPrint">Not yet</button></div>
-     <p class="note">Starting on top of a finished part can crash the nozzle into it.</p>`);
-  const ok = b.querySelector("#bedOk"), btn = b.querySelector("#goPrint");
+     <p class="note">Starting on top of a finished part can crash the nozzle into it.</p><p class="pnote warnnote" id="filShort" hidden></p>`);
+  const ok = b.querySelector("#bedOk"), btn = b.querySelector("#goPrint"), file = viaQueue ? (S.queue[0] || {}).filename : filename;
+  if (file) api("/api/filament-check?file=" + enc(file)).then(r => { if (r.short && r.short.length) {   // warn, never block: the counts are estimates
+    const w = b.querySelector("#filShort"); w.textContent = "A spool may run out mid-print: " + r.short.join("; ") + ". Load a fuller spool, or start anyway if you know it has more."; w.hidden = false; } }).catch(() => {});
   ok.onchange = () => btn.disabled = !ok.checked;
   b.querySelector("#noPrint").onclick = closeSheet;
   btn.onclick = async () => {
@@ -790,7 +1010,7 @@ async function loadRequests() {
     acts: (r.state === "open" ? `<button class="btn sm" data-rq="${r.id}" data-to="taken">I'll do it</button>` : "") +
       (r.state === "open" || r.state === "taken" ? `<button class="btn sm ghost" data-rq="${r.id}" data-to="done">Done</button><button class="btn sm ghost" data-rq="${r.id}" data-to="dropped">Drop</button>` : "")});
   $("#rqList").innerHTML = RQ_GROUP.map(([k, label, icon]) => { const g = k === "past" ? past : live.filter(r => r.state === k);
-      return g.length ? ghead(icon, label, g.length) + g.map(row).join("") : ""; }).join("") || `<div class="empty">No requests.</div>`;
+      return g.length ? ghead(icon, label, g.length) + g.map(row).join("") : ""; }).join("") || `<div class="empty">No requests yet.</div>`;
 }
 $("#rqAdd").onclick = async () => {
   try { await post("/api/requests", {what: $("#rqWhat").value, qty: +$("#rqQty").value, colour: $("#rqColour").value, note: $("#rqNote").value});
@@ -799,24 +1019,25 @@ $("#rqAdd").onclick = async () => {
 $("#rqList").addEventListener("click", async e => { const b = e.target.closest("[data-rq]"); if (!b) return;
   try { await post("/api/requests", {id: +b.dataset.rq, state: b.dataset.to}); loadRequests(); } catch (err) { toast(err.message, true); } });
 async function loadQueue() {
+  loadPlan();
   loadRequests();
   try {
     const q = await api(M("/server/job_queue/status")); S.queue = q.queued_jobs || [];
     const qc = $("#qCount"); qc.textContent = S.queue.length; qc.hidden = !S.queue.length;
-    $("#qState").textContent = `Queue is ${q.queue_state === "ready" ? "running" : q.queue_state === "paused" ? "on hold" : q.queue_state} · ${S.queue.length} job${S.queue.length === 1 ? "" : "s"}`;
+    $("#qState").textContent = `${q.queue_state === "ready" ? "Running" : q.queue_state === "paused" ? "On hold" : q.queue_state} · ${S.queue.length} job${S.queue.length === 1 ? "" : "s"}`;
     $("#qStart").hidden = q.queue_state === "ready" || !S.queue.length; $("#qPause").hidden = q.queue_state !== "ready";
     if (tab !== "queue") return;
     await ensureMeta(S.queue.map(j => j.filename));
     $("#qList").innerHTML = S.queue.length ? S.queue.map((j, i) => { const m = S.meta[j.filename] || {};
-      return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename),
-        meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", short(j.time_added),
-               `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>`],
-        panel: `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
+      return (i ? "" : ghead("queued", "Up next", S.queue.length)) + issue({icon: "queued", id: "Q-" + (i + 1), title: esc(j.filename.replace(/\.gcode$/i, "")), tip: j.filename,
+        meta: [m.estimated_time ? hm(m.estimated_time) : "time unknown", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", cost(m.filament_weight_total, m.filament_type), short(j.time_added),
+               thumbUrl(j.filename, m) ? `<i class="mini" style="background-image:url('${thumbUrl(j.filename, m)}')"></i>` : ""],
+        panel: (thumbUrl(j.filename, m) ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Position", `${i + 1} of ${S.queue.length}`], ["Slicer time", m.estimated_time ? hm(m.estimated_time) : "unknown"],
           ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : "") : ""],
           ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
           ["Added", day(j.time_added)]]),
         acts: `<button class="btn sm" data-prev="${esc(j.filename)}">Preview</button><button class="btn sm danger" data-rm="${esc(j.job_id)}">Remove</button>`}); }).join("")
-      : `<div class="empty">The queue is empty. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
+      : `<div class="empty">Nothing waiting. Add jobs from <a href="#files" onclick="go('files');return false">Files</a> or <a href="#designs" onclick="go('designs');return false">Designs</a>.</div>`;
   } catch (e) { toast(e.message, true); }
 }
 $("#qList").addEventListener("click", async e => {
@@ -835,8 +1056,16 @@ function thumbUrl(name, m) {
   const dir = name.includes("/") ? name.slice(0, name.lastIndexOf("/") + 1) : "";
   return M("/server/files/gcodes/" + (dir + t.relative_path).split("/").map(enc).join("/")).replace(/[()'"\\]/g, c => "%" + c.charCodeAt(0).toString(16));   // safe inside url('...')
 }
-async function ensureMeta(names) {
-  await Promise.all(names.filter(n => !S.meta[n]).map(async n => { try { S.meta[n] = await api(M("/server/files/metadata?filename=" + enc(n))); } catch (e) { S.meta[n] = {}; } }));
+async function ensureMeta(names) {   // one /api/meta answer for every file still unknown (was one request per file)
+  const want = [...new Set(names.filter(n => !S.meta[n]))]; if (!want.length) return;
+  let got = {}; try { got = await api("/api/meta?" + want.map(n => "f=" + enc(n)).join("&")); } catch (e) {}
+  for (const n of want) S.meta[n] = got[n] || {};
+}
+// The file printing (or paused) now gets Preview only: no second Print, no Delete under a running job (22 Nov audit)
+function fileActs(path) {
+  const st = S.status?.print_stats?.state, busy = (st === "printing" || st === "paused") && S.status?.print_stats?.filename === path;
+  const prev = `<button class="btn sm" data-prev="${esc(path)}">Preview</button>`;
+  return busy ? prev : prev + `<button class="btn sm" data-q="${esc(path)}">Queue</button><button class="btn sm primary" data-print="${esc(path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(path)}" aria-label="Delete ${esc(path)}">Delete</button>`;
 }
 async function loadFiles() {
   try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); }
@@ -855,10 +1084,10 @@ function renderFiles() {
     box.innerHTML = list.map((f, i) => { const m = S.meta[f.path] || {}, d = dayLabel(f.modified), c = cost(m.filament_weight_total, m.filament_type);
       const head = d !== last ? ghead("", d, list.filter(x => dayLabel(x.modified) === d).length) : ""; last = d;
       const icon = f.path === now ? "progress" : queued.has(f.path) ? "queued" : "waiting";
-      const acts = `<button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button>`;
-      return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path), detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
-        meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>`],
-        acts, panel: `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` +
+      const acts = `${fileActs(f.path)}`;
+      return head + issue({icon, id: "F-" + (i + 1), title: esc(f.path.replace(/\.gcode$/i, "")), tip: f.path, detail: f.path === now ? "printing now" : queued.has(f.path) ? "in the queue" : "",
+        meta: [m.estimated_time ? hm(m.estimated_time) : "", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" : "", c, thumbUrl(f.path, m) ? `<i class="mini" style="background-image:url('${thumbUrl(f.path, m)}')"></i>` : ""],
+        acts, panel: (thumbUrl(f.path, m) ? `<div class="pimg" style="background-image:url('${thumbUrl(f.path, m)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") +
           pkv([["Slicer time", m.estimated_time ? hm(m.estimated_time) : ""], ["Filament", m.filament_weight_total ? Math.round(m.filament_weight_total) + " g" + (c ? " · " + c : "") : ""],
                ["Material", esc(mats(m.filament_type))], ["Layer height", m.layer_height ? m.layer_height + " mm" : ""], ["Height", m.object_height ? Math.round(m.object_height) + " mm" : ""],
                ["Sliced with", esc(m.slicer || "")], ["On the printer", day(f.modified)], ["Size", f.size ? (f.size / 1048576).toFixed(1) + " MB" : ""],
@@ -868,10 +1097,10 @@ function renderFiles() {
   }
   box.innerHTML = list.length ? list.map(f => { const m = S.meta[f.path] || {};
     return `<div class="fcard"><div class="img" style="background-image:url('${thumbUrl(f.path, m)}')"></div><div class="body">
-      <div class="t">${esc(f.path)}</div>
+      <div class="t" title="${esc(f.path)}">${esc(f.path.replace(/\.gcode$/i, ""))}</div>
       <div class="s">${m.estimated_time ? hm(m.estimated_time) : ""}${m.filament_weight_total ? " · " + Math.round(m.filament_weight_total) + " g" : ""}${cost(m.filament_weight_total, m.filament_type) ? " · " + cost(m.filament_weight_total, m.filament_type) : ""}${m.filament_type ? " · " + esc(m.filament_type) : ""}</div>
       <div class="s">${day(f.modified)}${m.slicer ? " · " + esc(m.slicer) : ""}</div>
-      <div class="acts"><button class="btn sm" data-prev="${esc(f.path)}">Preview</button><button class="btn sm" data-q="${esc(f.path)}">Queue</button><button class="btn sm primary" data-print="${esc(f.path)}">Print</button><button class="btn sm ghost danger" data-del="${esc(f.path)}" aria-label="Delete ${esc(f.path)}">Delete</button></div>
+      <div class="acts">${fileActs(f.path)}</div>
     </div></div>`; }).join("") : `<div class="empty">No files${q ? " match" : " on the printer yet"}.</div>`;
 }
 const fView = () => { try { return localStorage.getItem("workshop-fview") || "list"; } catch (e) { return "list"; } };
@@ -885,7 +1114,9 @@ $("#fCards").addEventListener("click", e => {
   if (b.dataset.del) confirmSheet("Delete " + b.dataset.del + "?", "It is removed from the printer's storage.", "Delete", async () => { await api(M("/server/files/gcodes/" + b.dataset.del.split("/").map(enc).join("/")), {method: "DELETE"}); toast("Deleted"); loadFiles(); });
 });
 async function uploadFiles(files) {
-  for (const f of files) {
+  const models = [...files].filter(f => /\.(stl|3mf)$/i.test(f.name));
+  if (models.length) sliceModel(models[0]);
+  for (const f of [...files].filter(f => !/\.(stl|3mf)$/i.test(f.name))) {
     const fd = new FormData(); fd.append("file", f, f.name);
     toast("Sending " + f.name + "...");
     try { await api(M("/server/files/upload"), {method: "POST", body: fd}); toast("On the printer: " + f.name); } catch (e) { toast(e.message, true); }
@@ -893,6 +1124,29 @@ async function uploadFiles(files) {
   loadFiles();
 }
 $("#fileIn").onchange = e => uploadFiles(e.target.files);
+// a model from this device: pick the head (by its loaded colour) and a preset, slice it on the Workshop computer, send or queue it
+function sliceModel(file) {
+  const heads = (S.status && S.status.print_task_config) || {}, cols = (heads.filament_color_rgba || []).map(c => c.slice(0, 6));
+  const types = heads.filament_type || [], presets = Object.entries(S.info.presets || {standard: "the printer's own profile"});
+  const is3mf = /\.3mf$/i.test(file.name);
+  const body = openSheet("Slice " + file.name, `
+    ${is3mf ? `<p class="note">A 3MF keeps the parts and heads it was saved with.</p>` : `<div class="field"><label>Print it with</label><div class="ctrls" id="smHeads">${cols.map((c, i) =>
+      `<button class="btn" data-c="${esc(c)}" aria-pressed="${i === 0}"><i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#${esc(c)};margin-right:6px"></i>T${i} ${esc(types[i] || "")}</button>`).join("")}</div></div>`}
+    <div class="field"><label for="smPreset">Preset</label><select id="smPreset">${presets.map(([k, t]) => `<option value="${esc(k)}" ${k === (S.info.presets?.lean ? "lean" : "quality") ? "selected" : ""}>${esc(k)}: ${esc(t)}</option>`).join("")}</select></div>
+    <label class="check"><input type="checkbox" id="smQueue"> Add it to the queue too (it still waits for someone to say the bed is clear)</label>
+    <div class="actions"><button class="btn primary" id="smGo">Slice and send to the printer</button></div><div id="smOut"></div>`);
+  let colour = cols[0] || "888888";
+  body.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { colour = b.dataset.c; body.querySelectorAll("[data-c]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); });
+  body.querySelector("#smGo").onclick = async () => {
+    const go = body.querySelector("#smGo"); go.disabled = true; go.textContent = "Slicing...";
+    const q = new URLSearchParams({name: file.name, colour, preset: body.querySelector("#smPreset").value, queue: body.querySelector("#smQueue").checked ? "1" : "0"});
+    try {
+      const r = await api("/api/upload-model?" + q, {method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: file});
+      body.querySelector("#smOut").innerHTML = `<div class="result"><b>${esc(r.file)}</b> is on the printer: ${esc(r.time)}, ${r.total_g} g${r.queued ? ", and in the queue" : ""}${r.queue_note ? ". " + esc(r.queue_note) : ""}.</div>`;
+      go.textContent = "Sent"; loadFiles();
+    } catch (e) { body.querySelector("#smOut").innerHTML = `<div class="result" style="color:var(--bad)">${esc(e.message)}</div>`; go.disabled = false; go.textContent = "Slice and send to the printer"; }
+  };
+}
 const drop = $("#drop");
 ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
@@ -934,10 +1188,9 @@ async function previewGcode(name) {
   onSheetClose = () => v.dispose();
   ensureMeta([name]).then(() => { const m = S.meta[name] || {};
     body.querySelector("#gvInfo").innerHTML = [m.estimated_time && `About <b>${hm(m.estimated_time)}</b>`, m.filament_weight_total && `<b>${Math.round(m.filament_weight_total)} g</b> of filament`, m.layer_height && `${m.layer_height} mm layers`, m.object_height && `${m.object_height} mm tall`, m.slicer && `sliced in ${esc(m.slicer)}`].filter(Boolean).join(" · ") || "No slicer details in this file."; });
-  let text;
-  try { const r = await fetch(M("/server/files/gcodes/" + name.split("/").map(enc).join("/"))); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text(); }
+  let g;   // Workshop's compact toolpath with every feature (4.3 MB for the ghost cap, not the 38 MB G-code)
+  try { const r = await fetch("/api/toolpath?all=1&file=" + enc(name)); if (!r.ok) throw new Error("HTTP " + r.status); g = decodeToolpath(await r.arrayBuffer()); }
   catch (e) { body.querySelector("#gvMsg").textContent = "Could not load the file: " + e.message; return; }
-  const g = parseGcode(text); text = null;
   if (!g.count) { body.querySelector("#gvMsg").textContent = "No extrusion moves found in this file."; return; }
   body.querySelector("#gvMsg").remove();
   const geo = new THREE.BufferGeometry();
@@ -953,48 +1206,81 @@ async function previewGcode(name) {
   sl.oninput = show; only.onchange = show; show();
   body.querySelector("#gvLegend").innerHTML = [...g.tools].sort().map(t => `<span><i style="background:${S.colours[t] || DEFAULT_COLOURS[t % 4]}"></i>T${t}</span>`).join("");
 }
-function parseGcode(text) {
-  // Extrusion moves only, in file order; a new layer starts when extrusion happens at a new height.
-  const cols = S.colours.map(h => new THREE.Color(h || "#888"));
-  let cap = 1 << 18, pos = new Float32Array(cap * 6), col = new Float32Array(cap * 6), count = 0;
-  let x = 0, y = 0, z = 0, e = 0, absExtrude = true, absXYZ = true, tool = 0, layerZ = -1;
-  const layers = [], tools = new Set();
-  const grow = () => { cap *= 2; const p = new Float32Array(cap * 6); p.set(pos); pos = p; const c = new Float32Array(cap * 6); c.set(col); col = c; };
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    let l = lines[i]; const sc = l.indexOf(";"); if (sc >= 0) l = l.slice(0, sc); l = l.trim(); if (!l) continue;
-    const c0 = l.charCodeAt(0);
-    if (c0 === 84 /* T */) { const t = parseInt(l.slice(1), 10); if (t >= 0 && t < 16) tool = t; continue; }
-    if (c0 !== 71 && c0 !== 77) continue;
-    const w = l.split(/\s+/), cmd = w[0];
-    if (cmd === "M82") { absExtrude = true; continue; } if (cmd === "M83") { absExtrude = false; continue; }
-    if (cmd === "G90") { absXYZ = true; continue; } if (cmd === "G91") { absXYZ = false; continue; }
-    const absE = absXYZ && absExtrude;   // as in Klipper: G91 makes E relative too, G90 leaves M82/M83 alone
-    if (cmd === "G92") { for (const a of w) if (a[0] === "E") e = parseFloat(a.slice(1)); continue; }
-    if (cmd !== "G1" && cmd !== "G0" && cmd !== "G2" && cmd !== "G3") continue;
-    let nx = x, ny = y, nz = z, de = 0;
-    for (let k = 1; k < w.length; k++) { const a = w[k][0], val = parseFloat(w[k].slice(1)); if (isNaN(val)) continue;
-      if (a === "X") nx = absXYZ ? val : x + val; else if (a === "Y") ny = absXYZ ? val : y + val; else if (a === "Z") nz = absXYZ ? val : z + val;
-      else if (a === "E") { if (absE) { de = val - e; e = val; } else de = val; } }
-    if (de > 0 && (nx !== x || ny !== y)) {
-      if (Math.abs(nz - layerZ) > 0.005) { layers.push({z: nz, start: count}); layerZ = nz; }
-      if (count >= cap) grow();
-      const o = count * 6, cc = cols[tool] || cols[0]; tools.add(tool);
-      pos[o] = x; pos[o + 1] = y; pos[o + 2] = z; pos[o + 3] = nx; pos[o + 4] = ny; pos[o + 5] = nz;
-      for (let q = 0; q < 2; q++) { col[o + q * 3] = cc.r; col[o + q * 3 + 1] = cc.g; col[o + q * 3 + 2] = cc.b; }
-      count++;
-    }
-    x = nx; y = ny; z = nz;
+// Workshop's /api/toolpath (int16 polylines, see toolpath() in workshop.py) as the segment arrays the 3D views draw: {pos, col, count, layers: [{z, start}], tools}. 38 MB of G-code became 0.6 MB (24 Nov 2026).
+function decodeToolpath(buf) {
+  const dv = new DataView(buf);
+  if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== "WTP1") throw new Error("not a toolpath");
+  const n = dv.getUint32(4, true), nl = dv.getUint32(8, true);
+  const xyz = new Int16Array(buf.slice(12, 12 + 6 * n)), tl = new Uint8Array(buf, 12 + 6 * n, n), st = new Uint8Array(buf, 12 + 7 * n, n);
+  const lz = new Float32Array(buf.slice(12 + 8 * n, 12 + 8 * n + 4 * nl)), lp = new Uint32Array(buf.slice(12 + 8 * n + 4 * nl, 12 + 8 * n + 8 * nl));
+  const cols = S.colours.map(h => new THREE.Color(h || "#888")), segAt = new Uint32Array(n + 1);
+  let count = 0;
+  for (let i = 0; i < n; i++) { segAt[i] = count; if (i && !st[i]) count++; }
+  segAt[n] = count;
+  const pos = new Float32Array(count * 6), col = new Float32Array(count * 6), tools = new Set();
+  for (let i = 1, k = 0; i < n; i++) {
+    if (st[i]) continue;
+    const o = k * 6, a = (i - 1) * 3, b = i * 3, cc = cols[tl[i]] || cols[0]; tools.add(tl[i]);
+    pos[o] = xyz[a] / 100; pos[o + 1] = xyz[a + 1] / 100; pos[o + 2] = xyz[a + 2] / 100;
+    pos[o + 3] = xyz[b] / 100; pos[o + 4] = xyz[b + 1] / 100; pos[o + 5] = xyz[b + 2] / 100;
+    for (let q = 0; q < 2; q++) { col[o + q * 3] = cc.r; col[o + q * 3 + 1] = cc.g; col[o + q * 3 + 2] = cc.b; }
+    k++;
   }
-  return {pos: pos.subarray(0, count * 6), col: col.subarray(0, count * 6), count, layers, tools};
+  return {pos, col, count, tools, layers: [...lz].map((z, j) => ({z, start: segAt[lp[j]]}))};
+}
+
+/* ---------- live 3D: the running print's toolpath, printed layers solid, the rest a faint ghost ---------- */
+const L3 = {file: null, v: null, g: null, solid: null, ghost: null, head: null, layer: -1, busy: false, box: null};
+async function live3d() {
+  const s = S.status, ps = s?.print_stats, card = $("#l3Card");
+  const active = ps && (ps.state === "printing" || ps.state === "paused") && ps.filename;
+  if (!active) { if (!card.hidden) { card.hidden = true; } return; }
+  card.hidden = false;
+  if (L3.file !== ps.filename && !L3.busy) {
+    L3.busy = true; L3.file = ps.filename; L3.layer = -1; $("#l3Stamp").textContent = "3D: loading the toolpath";
+    if (L3.v) { L3.v.dispose(); $("#l3").innerHTML = ""; L3.v = null; }
+    try {
+      const r = await fetch("/api/toolpath?file=" + enc(ps.filename));   // Workshop's small outline, not the whole G-code
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      L3.g = decodeToolpath(await r.arrayBuffer());
+      const v = L3.v = makeViewer($("#l3")); if (!v) return;
+      const c = L3.g.col.slice();   // black filament on the dark viewer vanishes: lift very dark colours to a readable grey
+      for (let k = 0; k < c.length; k += 3) { const l = 0.2126 * c[k] + 0.7152 * c[k + 1] + 0.0722 * c[k + 2];
+        if (l < 0.22) { const f = 0.42 - l; c[k] += f; c[k + 1] += f; c[k + 2] += f; } }
+      const pos = new THREE.BufferAttribute(L3.g.pos, 3), col = new THREE.BufferAttribute(c, 3);
+      const gs = new THREE.BufferGeometry(); gs.setAttribute("position", pos); gs.setAttribute("color", col);
+      const gg = new THREE.BufferGeometry(); gg.setAttribute("position", pos);   // same points, its own draw range
+      L3.solid = new THREE.LineSegments(gs, new THREE.LineBasicMaterial({vertexColors: true}));
+      L3.ghost = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({color: 0x8a8f99, transparent: true, opacity: 0.14, depthWrite: false}));
+      L3.head = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12), new THREE.MeshBasicMaterial({color: 0xffb347}));
+      v.scene.add(L3.ghost, L3.solid, L3.head);
+      const bedMm = (DESIGNS && DESIGNS.bed) || 270; v.bed(bedMm, bedMm / 2, bedMm / 2);
+      gs.computeBoundingBox(); L3.box = gs.boundingBox; v.frame(L3.box);
+      $("#l3Reset").onclick = () => v.frame(L3.box);
+      $("#l3Swap").onclick = () => { const big = $("#l3Card").classList.toggle("full"); $("#l3Swap").textContent = big ? "Video" : "Large";
+        $("#l3Swap").setAttribute("aria-pressed", String(big)); $("#l3Swap").setAttribute("aria-label", big ? "Back to the live video" : "Show the 3D view large"); };
+    } catch (e) { $("#l3Stamp").textContent = "3D: could not load the toolpath (" + e.message + ")"; L3.g = null; }
+    finally { L3.busy = false; }
+  }
+  if (!L3.g || !L3.v) return;
+  // printed so far: every layer at or below the nozzle's height now
+  const z = s.gcode_move?.gcode_position?.[2] ?? 0, ls = L3.g.layers;
+  let i = -1; for (let k = 0; k < ls.length; k++) { if (ls[k].z <= z + 0.01) i = k; else break; }
+  const end = i < 0 ? 0 : (i + 1 < ls.length ? ls[i + 1].start : L3.g.count);
+  if (i !== L3.layer) {
+    L3.layer = i;
+    L3.solid.geometry.setDrawRange(0, end * 2); L3.ghost.geometry.setDrawRange(end * 2, (L3.g.count - end) * 2);
+    $("#l3Stamp").textContent = `3D: layer ${Math.max(0, i + 1)} of ${ls.length} printed`;
+  }
+  const gp = s.gcode_move?.gcode_position; if (gp) L3.head.position.set(gp[0], gp[1], gp[2]);
 }
 
 /* ---------- designs ---------- */
 let DESIGNS = null;
 async function loadDesigns() {
   if (!DESIGNS) { try { DESIGNS = await api("/api/designs"); S.info = await api("/api/info"); } catch (e) { return toast(e.message, true); } }
-  $("#dIntro").textContent = `${DESIGNS.designs.length} designs. Times and grams are real slicer numbers for the ${DESIGNS.printer_label} where the design has been sliced.`;
-  const sel = $("#dBench"); if (!sel.options.length) sel.innerHTML = `<option value="">All designs</option>` + DESIGNS.benches.map((b, i) => `<option value="${i}">${esc(b)}</option>`).join("");
+  $("#dIntro").textContent = `${DESIGNS.designs.length} designs · times and grams are real ${DESIGNS.printer_label} slicer numbers where sliced`;
+  const sel = $("#dBench"); if (!sel.options.length) sel.innerHTML = `<option value="">All</option>` + DESIGNS.benches.map((b, i) => `<option value="${i}">${esc(b)}</option>`).join("");
   renderDesigns();
 }
 function renderDesigns() {
@@ -1108,8 +1394,8 @@ async function openDesign(key) {
 
 /* ---------- history ---------- */
 async function loadHistory() {
+  loadCosts(); loadTimelapses(); loadGallery();
   try {
-    loadCalibration();
     await loadAccuracy();
     if (!FR.jobs) await loadFrames();
     const [h, tot] = await Promise.all([api(M("/server/history/list?limit=60&order=desc")), api(M("/server/history/totals")).catch(() => null)]);
@@ -1120,12 +1406,12 @@ async function loadHistory() {
     let lastDay = "";
     $("#hList").innerHTML = h.jobs.length ? h.jobs.map(j => { const a = accFor(j), d = dayLabel(j.start_time), photos = (FR.jobs || []).includes(runKey(j));
       const head = d !== lastDay ? ghead("", d, h.jobs.filter(x => dayLabel(x.start_time) === d).length) : ""; lastDay = d;
-      return head + issue({icon: JOB_SI[j.status] || "queued", id: "P-" + parseInt(j.job_id, 16), title: esc(j.filename),
+      return head + issue({icon: JOB_SI[j.status] || "queued", id: "P-" + parseInt(j.job_id, 16), title: esc(j.filename.replace(/\.gcode$/i, "")),
         detail: a ? `slicer ${hm(j.metadata.estimated_time)}, took ${hm(j.total_duration)} · filament ${Math.round(a.filament * 100)}%` : "",
         tip: j.status.replace("_", " "),
         meta: [new Date(j.start_time * 1000).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}), ...(j.status === "in_progress" ? ["printing now"] : [hm(j.print_duration), (j.filament_used / 1000).toFixed(1) + " m", histCost(j)]),
-               `<i class="mini" style="background-image:url('${j.metadata ? thumbUrl(j.filename, j.metadata) : ""}')"></i>`],
-        panel: (j.metadata ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, j.metadata)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Status", esc(j.status.replace("_", " "))], ["Started", day(j.start_time)],
+               j.metadata && thumbUrl(j.filename, j.metadata) ? `<i class="mini" style="background-image:url('${thumbUrl(j.filename, j.metadata)}')"></i>` : ""],
+        panel: (j.metadata && thumbUrl(j.filename, j.metadata) ? `<div class="pimg" style="background-image:url('${thumbUrl(j.filename, j.metadata)}'),radial-gradient(circle at 50% 40%,#25272d,#121316 75%)"></div>` : "") + pkv([["Status", esc(j.status.replace("_", " "))], ["Started", day(j.start_time)],
           ["Finished", j.end_time && j.status !== "in_progress" ? day(j.end_time) : ""], ["Printing time", j.status === "in_progress" ? "printing now" : hm(j.print_duration)],
           ["Overall", j.status === "in_progress" ? "" : hm(j.total_duration)], ["Slicer said", j.metadata?.estimated_time ? hm(j.metadata.estimated_time) : ""],
           ["Filament", (j.filament_used / 1000).toFixed(1) + " m" + (histCost(j) ? " · " + histCost(j) : "")],
@@ -1151,8 +1437,43 @@ async function loadAccuracy() {
     against the slicer (prints with colour changes use more). Finish times on the Now page are corrected by these.`;
 }
 function accFor(j) { return ACC && ACC.jobs.find(a => a.file === j.filename && Math.abs((a.t || 0) - (j.end_time || j.start_time || 0)) < 5); }
+// one-tap tests (tools/caltest.py): each made test with its numbered pieces; a tap on a number records it and saves it to the profile
+const CT_WORD = {"pressure-advance": "Pressure advance", "flow-ratio": "Flow ratio", "temperature": "Temperature"};
+function renderWizard(r) {
+  const made = r.made || [], files = (S.files || []).map(f => f.path);
+  const answered = m => r.results.find(x => (x.note || "").includes(m.file) && x.t > m.t);
+  $("#calWizard").innerHTML = made.length ? `<div class="list">${made.map(m => { const a = answered(m), on = files.includes(m.file);
+    return `<div class="ctrow">${issueHtml({icon: a ? "done" : "progress", id: "T" + m.head, title: `${esc(CT_WORD[m.test] || m.test)} · ${esc(m.material)}`,
+      detail: a ? `picked ${esc(a.value)}${a.saved ? ", profile change waiting for a pull request" : ""}` : `print it, then tap ${esc(m.read)}`,
+      meta: [esc(m.time || ""), m.grams ? m.grams + " g" : "", on ? "" : "not on the printer any more"],
+      acts: on && !a ? `<button class="btn sm" data-calq="${esc(m.file)}">Queue it</button>` : ""})}
+      ${a ? "" : `<div class="pieces" role="group" aria-label="Best piece">${m.pieces.map(p => `<button class="btn sm" data-ctfile="${esc(m.file)}" data-ctn="${p.n}" title="${p.value}"><b>${p.n}</b><small>${p.value}</small></button>`).join("")}</div>`}</div>`; }).join("")}</div>`
+    : `<div class="empty">No tests made yet.</div>`;
+}
+$("#calWizard").addEventListener("click", e => {
+  const q = e.target.closest("[data-calq]"), b = e.target.closest("[data-ctfile]");
+  if (q) addToQueue(q.dataset.calq);
+  if (!b) return;
+  const m = (S.calR.made || []).find(x => x.file === b.dataset.ctfile), p = m.pieces.find(x => x.n === +b.dataset.ctn);
+  confirmSheet(`Piece ${p.n}: ${CT_WORD[m.test]} ${p.value}?`, `Recorded with a photo. Claude then opens a pull request changing the ${m.material} slicing profile from ${m.current}; Workshop slices with it once it is merged.`,
+    "Record", async () => { try { const r = await post("/api/calibration", {file: m.file, piece: p.n, save: true});
+      const sv = r.saved || {};
+      toast(`Recorded. Claude opens the ${sv.material || m.material} profile change for you to merge.`);
+      loadCalibration(); } catch (err) { toast(err.message, true); } });
+});
+function headOptions() {
+  const tc = (S.status || {}).print_task_config || {};
+  $("#ctHead").innerHTML = [0, 1, 2, 3].map(i => `<option value="${i}">T${i} ${esc([(tc.filament_type || [])[i], (tc.filament_sub_type || [])[i]].filter(v => v && v !== "NONE").join(" "))}</option>`).join("");
+}
+$("#ctMake").onclick = async () => {
+  const btn = $("#ctMake"); btn.disabled = true; $("#ctNote").textContent = "Slicing the test…";
+  try { const r = await post("/api/calibration-test", {test: $("#ctTest").value, head: +$("#ctHead").value});
+    $("#ctNote").textContent = `${r.file} is on the printer: ${r.time}, ${r.grams} g. Start it from Files or the queue when the bed is clear.`; S.files = null; loadCalibration();
+  } catch (e) { $("#ctNote").textContent = e.message; toast(e.message, true); } finally { btn.disabled = false; }
+};
 async function loadCalibration() {
   let r; try { r = await api("/api/calibration"); } catch (e) { return; }
+  if (!S.files || !S.files.length) { try { S.files = (await api(M("/server/files/list?root=gcodes"))).sort((a, b) => b.modified - a.modified); } catch (e) {} }
   const sel = $("#calTest"); if (!sel.options.length) sel.innerHTML = Object.keys(r.tests).map(t => `<option value="${t}">${CAL_WORDS[t] || t}</option>`).join("");
   if (!$("#calFil").value && S.status) { const tc = S.status.print_task_config || {}; if (tc.filament_type) $("#calFil").value = [(tc.filament_vendor || [])[0], tc.filament_type[0]].filter(v => v && v !== "NONE").join(" "); }
   $("#calList").innerHTML = r.results.length ? r.results.map((x, i) => issue({icon: "done", id: "C-" + (r.results.length - i),
@@ -1161,6 +1482,7 @@ async function loadCalibration() {
       title: `${esc(CAL_WORDS[x.test] || x.test)}: ${esc(x.value)}`, detail: [x.key, x.note].filter(Boolean).map(esc).join(" · "),
       meta: [esc(x.filament || ""), esc(x.who), short(x.t), x.photo ? `<i class="mini" style="background-image:url('${esc(x.photo)}')"></i>` : ""]})).join("")
     : `<div class="empty">No calibration results yet.</div>`;
+  S.calR = r; renderWizard(r); if (!$("#ctHead").options.length) headOptions();
 }
 $("#calSave").onclick = async () => {
   try { await post("/api/calibration", {test: $("#calTest").value, value: $("#calVal").value, filament: $("#calFil").value, note: $("#calNote").value});
@@ -1202,20 +1524,27 @@ function renderBanner() {
   else if (ps.state === "printing") {
     // a normal print needs no banner: the header line says what is printing and when it ends
     if (s.heater_bed.target === 0 && (ps.info || {}).current_layer > 0) { cls = "bad"; text = "Printing with the bed heater off"; sub = "Pause it and restart: the first layers won't stick."; }
-  } else if (ps.state === "paused") { cls = "warn"; text = `Paused: ${ps.filename}`; sub = fresh[0] ? fresh[0].advice || fresh[0].text : "Check the warning below, then resume on the screen or cancel and start again."; }
+  } else if (ps.state === "paused") { cls = "warn"; text = `Paused: ${ps.filename}`; sub = (ps.exception || {}).id === 532 ? "The printer's camera thinks something went wrong. Look at the camera, then Continue below if the part is fine, or cancel."
+    : fresh[0] ? fresh[0].advice || fresh[0].text : "Look at the camera, then Continue below or cancel."; }
   else {
     const parked = [0, 1, 2, 3].filter(i => { const f = feedState(i); return f && f.cls === "parked"; });
     const waiting = S.bed && S.bed.state === "part waiting";
-    if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${S.bed.file || "A print"} is waiting on the bed` : `Finished ${ps.filename}`;
-      sub = `Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let PETG cool, flex the plate, then tap "I took it off" so the other person knows.`; }
+    if (ps.state === "complete" || waiting) { cls = "warn"; text = waiting ? `${(S.bed.file || "A print").replace(/\.gcode$/i, "")} is waiting on the bed` : `Finished ${ps.filename.replace(/\.gcode$/i, "")}`;
+      const bm = S.meta[(S.bed && S.bed.file) || ps.filename] || {}, bc = cost(bm.filament_weight_total, bm.filament_type);
+      sub = `${bc ? `Cost about ${bc}. ` : ""}Since ${clock(new Date((S.bed && S.bed.t || Date.now() / 1000) * 1000))}. Let it cool, flex the plate, then tap "I took it off" so the other person knows.`; }
     else if (S.bed && S.bed.state === "clear" && S.bed.who) { sub = `Bed cleared by ${S.bed.who} at ${clock(new Date(S.bed.t * 1000))}.`; }
     else if (ps.state === "error") { cls = "bad"; text = "The last print stopped with an error"; sub = ps.message || (fresh[0] && fresh[0].text) || ""; }
     else { cls = ""; text = S.queue.length ? `Ready. Next in the queue: ${S.queue[0].filename}` : "Ready for a print"; }
+    const due = (S.maint || []).filter(m => m.due);   // maintenance only nags when the printer is idle
+    if (due.length && ps.state !== "complete") { sub = (sub ? sub + " " : "") + `Maintenance due: ${due.length} job${due.length > 1 ? "s" : ""} on the Printer tab.`; if (!cls) cls = "warn"; }
+    if (S.plate) sub = (sub ? sub + " " : "") + (S.plate === "smooth" ? "Smooth plate on: PETG needs a thin layer of glue stick first." : "Textured plate on.");
     if (parked.length) { sub = (sub ? sub + " " : "") + `${parked.map(i => "T" + i).join(", ")} ${parked.length > 1 ? "are" : "is"} only parked at the feeder: load from the printer's screen before printing with ${parked.length > 1 ? "them" : "it"}.`; if (!cls) cls = "warn"; }
   }
   const takeOff = S.bed && S.bed.state === "part waiting" && ps.state !== "printing" && ps.state !== "paused";
+  const idle = ps.state !== "printing" && ps.state !== "paused", other = S.plate === "smooth" ? "textured" : "smooth";
   if (!text && !sub) { b.hidden = true; return; }
-  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}`;
+  b.hidden = false; b.className = "banner " + cls; b.innerHTML = `<div>${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>${takeOff ? `<button class="btn sm" id="tookOff">I took it off</button>` : ""}${idle && S.plate ? `<button class="btn sm" id="plateSw">I put the ${other} plate on</button>` : ""}`;
+  if (idle && S.plate) $("#plateSw").onclick = async () => { try { S.plate = (await post("/api/plate", {plate: other})).plate; toast(`The ${S.plate} plate is on`); render(); } catch (e) { toast(e.message, true); } };
   if (takeOff) $("#tookOff").onclick = async () => { try { S.bed = await post("/api/bed"); toast("Bed marked clear"); render(); } catch (e) { toast(e.message, true); } };
 }
 /* ---------- layer photos (saved by printer.py watch) ---------- */
@@ -1226,7 +1555,7 @@ function priceFor(material) { const p = (S.info || {}).prices || {}; const m = S
 function cost(grams, material) { const p = priceFor(material); return p && grams ? "£" + (grams * p / 1000).toFixed(2) : ""; }
 const gramsFromMetres = (m, material) => m * 2.405 * (String(material).toUpperCase().includes("PLA") ? 1.24 : 1.25);   // 1.75 mm filament
 const runName = j => j.replace(/-0*(\d+)$/, " (print $1)");
-function openPhotos(job) { FR.job = job; FR.pinned = true; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => $("#framesCard").scrollIntoView({behavior: "smooth"})); }
+function openPhotos(job) { FR.job = job; FR.pinned = true; FR.list = []; FR.follow = true; go("now"); loadFrames().then(() => { $("#framesCard").open = true; $("#framesCard").scrollIntoView({behavior: "smooth"}); }); }
 function showFrame() {
   const f = FR.list[+$("#frRange").value]; if (!f) return;
   if ($("#frImg").getAttribute("src") !== f.url) $("#frImg").src = f.url;
@@ -1235,9 +1564,10 @@ function showFrame() {
 }
 async function loadPhotoWatch() {
   let r; try { r = await api("/api/photo-checks"); } catch (e) { return; }
-  const el = $("#pwInfo"), c = r.checks.find(x => x.verdict || x.error);
+  const el = $("#pwInfo"), c = r.checks.find(x => x.verdict || x.error || x.quality);
   el.hidden = !r.enabled; if (!r.enabled) return;
   el.textContent = !c ? `Claude checks a photo at layer 2 and every ${r.every} layers.`
+    : c.final && c.quality ? `Claude looked at the finished ${runName(c.file || "print")} at ${clock(new Date(c.t * 1000))}: ${c.quality}${c.flaws.length ? " (" + c.flaws.join(", ").replace(/_/g, " ") + ")" : ""}. ${c.reason} ${c.advice}`
     : c.error ? `Claude's last photo check failed (${c.error}); it tries again at the next check.`
     : `Claude checked layer ${c.layer} at ${clock(new Date(c.t * 1000))}: ${c.verdict === "ok" ? "looks fine" : "PAUSED, " + c.problem.replace("_", " ")}. ${c.reason || ""}`;
 }
@@ -1261,29 +1591,296 @@ $("#frJob").onchange = () => openPhotos($("#frJob").value);
 $("#frPlay").onclick = () => { openSheet(runName(FR.job), `<video src="${esc(FR.video)}" controls autoplay playsinline muted loop style="width:100%;border-radius:12px;background:#000"></video>`); };
 async function loadAlerts() {
   try { ALERTS = await api("/api/alerts"); } catch (e) { return; }
-  const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600).slice(0, 3);   // the last hour only
+  const ps = S.status?.print_stats, since = ps && (ps.state === "printing" || ps.state === "paused") ? Date.now() / 1000 - (ps.total_duration || 0) : 0;
+  const recent = ALERTS.filter(a => Date.now() / 1000 - a.t < 3600 && a.t >= since).slice(0, 3);   // the last hour, and only this print's while one runs
   $("#alertsCard").hidden = !recent.length;
   $("#alerts").innerHTML = recent.map(a => `<div class="alert"><b>${esc(a.text)}</b><span>${clock(new Date(a.t * 1000))}${a.advice ? " · " + esc(a.advice) : ""}</span></div>`).join("");
 }
+/* The feed in plain words: raw printer commands read as what they did, back-to-back light or speed changes by one
+   person fold into the newest one, "via Workshop" (the usual way) is left out, and six rows show until "Show all". */
+let actAll = false;
+function plainActivity(r) {
+  const what = r.what || "", d = r.detail || "";
+  if (what === "sent") {
+    const led = d.match(/^SET_LED\b.*\bWHITE=([\d.]+)/i);
+    if (led) return {what: +led[1] > 0 ? "turned the light on" : "turned the light off", detail: "", fold: "light"};
+    const sp = d.match(/^M220 S(\d+)/i);
+    if (sp) return {what: `set the speed to ${sp[1]}%`, detail: "", fold: "speed"};
+    if (/\.gcode$/i.test(d)) return {what: "sent a file to the printer", detail: d, fold: ""};
+  }
+  const sp = what.match(/^speed set to (\d+)%/);
+  if (sp) return {what: `set the speed to ${sp[1]}%`, detail: d, fold: "speed"};
+  return {what, detail: d, fold: ""};
+}
+const VIA = {"Workshop": "", "printer.py": "from the command line"};
 async function loadActivity() {
   let rows; try { rows = await api("/api/activity"); } catch (e) { return; }
   const name = w => (w || "?").replace(/^./, c => c.toUpperCase()), hue = w => [...name(w)].reduce((h, c) => h + c.charCodeAt(0), 0) % 360;
+  const items = [];
+  for (const r of rows) {   // newest first: a repeat folds into the newer row above it
+    const p = plainActivity(r), last = items[items.length - 1];
+    if (p.fold && last && last.p.fold === p.fold && name(last.r.who) === name(r.who)) { last.more++; continue; }
+    items.push({r, p, more: 0});
+  }
+  const shown = items.slice(0, actAll ? 40 : 6);
   let lastDay = "";
-  $("#activity").innerHTML = rows.length ? `<div class="feed">${rows.slice(0, 12).map(r => { const d = dayLabel(r.t), head = d !== lastDay ? `<div class="fday">${esc(d)}</div>` : ""; lastDay = d;
+  $("#activity").innerHTML = items.length ? `<div class="feed">${shown.map(({r, p, more}) => { const d = dayLabel(r.t), head = d !== lastDay ? `<div class="fday">${esc(d)}</div>` : ""; lastDay = d;
+    const via = r.via in VIA ? VIA[r.via] : `via ${r.via}`;
     return head + `<div class="fitem"><span class="av" style="--h:${hue(r.who)}" aria-hidden="true">${esc(name(r.who)[0])}</span>
-      <div class="ftext"><b>${esc(name(r.who))}</b> ${esc(r.what)}${r.detail ? ` <span class="fdet">${esc(r.detail)}</span>` : ""}<span class="fvia"> via ${esc(r.via)}</span></div>
-      <time>${clock(new Date(r.t * 1000))}</time></div>`; }).join("")}</div>` : "Nothing yet.";
+      <div class="ftext"><b>${esc(name(r.who))}</b> ${esc(p.what)}${p.detail ? ` <span class="fdet">${esc(p.detail)}</span>` : ""}${more ? `<span class="fvia"> (and ${more} more like it)</span>` : ""}${via ? `<span class="fvia"> ${esc(via)}</span>` : ""}</div>
+      <time>${clock(new Date(r.t * 1000))}</time></div>`; }).join("")}</div>`
+    + (items.length > 6 ? `<button class="btn sm ghost" id="actMore" style="margin-top:8px">${actAll ? "Show fewer" : `Show all (${items.length})`}</button>` : "") : "Nothing yet.";
+  const more = $("#actMore");
+  if (more) more.onclick = () => { actAll = !actAll; loadActivity(); };
 }
+
+/* ---------- Printer tab: controls, bed mesh, temperatures, spools ---------- */
+const CTL = {heaters: ["TURN_OFF_HEATERS", "Heaters off"], home: ["G28", "Homing"], motors: ["M84", "Motors off"]};
+$("#tab-printer").addEventListener("click", e => { const b = e.target.closest("[data-ctl]"); if (!b) return;
+  const k = b.dataset.ctl;
+  if (k === "light") return $("#lightBtn").click();
+  if (k === "view") return $("#viewBed").click();
+  const [cmd, word] = CTL[k];
+  if (k === "home") return confirmSheet("Home the printer?", "The head moves to its corners and back. Check nothing is in its way.", "Home", async () => { await gcode(cmd); toast(word); });
+  (async () => { try { await gcode(cmd); toast(word); } catch (err) { toast(err.message, true); } })();
+});
+function renderMaint() {
+  const rows = S.maint || []; $("#maintCard").hidden = !rows.length;
+  $("#maintList").innerHTML = rows.map(m => issueHtml({icon: m.due ? "waiting" : "done", title: esc(m.what),
+    detail: m.due ? `due: ${m.since} ${m.unit} since, every ${m.every}` : `${m.since} of ${m.every} ${m.unit}`,
+    meta: [m.who ? `last by ${esc(m.who)}` : ""], attrs: m.due ? ' style="color:var(--warn)"' : "",
+    acts: `<button class="btn sm${m.due ? " primary" : ""}" data-maint="${esc(m.task)}">Done</button>`})).join("");
+}
+$("#maintList").addEventListener("click", async e => { const b = e.target.closest("[data-maint]"); if (!b) return;
+  try { S.maint = await post("/api/maintenance", {task: b.dataset.maint}); toast("Marked done"); renderMaint(); render(); } catch (err) { toast(err.message, true); } });
+async function loadPrinter() {
+  renderMaint();
+  api("/api/health").then(h => {
+    const m = h.mesh;
+    if (!m.rows.length) $("#meshBox").textContent = "No mesh yet: the printer probes the bed at the start of each print.";
+    else {
+      const span = Math.max(Math.abs(m.min), Math.abs(m.max), 0.05);
+      const cell = v => { const t = v / span, c = t >= 0 ? `rgba(235,93,93,${(0.25 + 0.75 * t).toFixed(2)})` : `rgba(94,158,240,${(0.25 + 0.75 * -t).toFixed(2)})`;
+        return `<i style="background:${c}" title="${v.toFixed(3)} mm">${(v >= 0 ? "+" : "") + v.toFixed(2)}</i>`; };
+      $("#meshBox").innerHTML = `<div class="mesh" style="grid-template-columns:repeat(${m.rows[0].length},1fr)">${m.rows.slice().reverse().map(r => r.map(cell).join("")).join("")}</div>
+        <div class="note">Spread <b>${m.range} mm</b> (lowest ${m.min}, highest ${m.max}): ${esc(m.verdict)}. Back of the bed at the top; red is high, blue is low.
+        The U1 probes only the area it is about to print, so a small part shows a small mesh.</div>`;
+    }
+    const COL = {heater_bed: "#f0bf4c", extruder: "#e2dedb", extruder1: "#8a8d95", extruder2: "#eb5d5d", extruder3: "#5e9ef0", "temperature_sensor cavity": "#4cb782"};
+    const NAME = {heater_bed: "Bed", extruder: "T0", extruder1: "T1", extruder2: "T2", extruder3: "T3", "temperature_sensor cavity": "Chamber"};
+    const series = Object.entries(h.temps).filter(([, v]) => (v.temperatures || []).length);
+    const top = Math.max(60, ...series.flatMap(([, v]) => v.temperatures)) * 1.05, W = 600, H = 150;
+    const line = vals => vals.map((v, i) => `${(i / Math.max(vals.length - 1, 1) * W).toFixed(1)},${(H - v / top * H).toFixed(1)}`).join(" ");
+    $("#tempBox").innerHTML = `<svg class="tchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Temperatures over the last 20 minutes">
+        ${[50, 100, 150, 200, 250].filter(g => g < top).map(g => `<line x1="0" x2="${W}" y1="${H - g / top * H}" y2="${H - g / top * H}" stroke="rgba(255,255,255,.06)"/>`).join("")}
+        ${series.map(([k, v]) => `<polyline fill="none" stroke="${COL[k] || "#aaa"}" stroke-width="1.6" vector-effect="non-scaling-stroke" points="${line(v.temperatures)}"/>`).join("")}</svg>
+      <div class="tlegend">${series.map(([k, v]) => `<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${COL[k] || "#aaa"};margin-right:5px"></i>${NAME[k] || esc(k)} <b>${Math.round(v.temperatures.at(-1))}°</b>${v.targets && v.targets.at(-1) ? ` / ${Math.round(v.targets.at(-1))}°` : ""}</span>`).join("")}</div>`;
+  }).catch(e => { $("#meshBox").textContent = $("#tempBox").textContent = "Could not read the printer: " + e.message; });
+  api("/api/spoolman").then(r => {
+    $("#spoolBox").innerHTML = r.spools.length ? `<div class="list">${r.spools.map(x => issueHtml({icon: x.low ? "error" : "queued", id: x.head || "#" + x.id,
+        title: `<i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${esc(x.colour)};margin-right:6px;vertical-align:-1px"></i>${esc(x.name)}`,
+        meta: [x.left_g != null ? `${x.left_g} g left` : "", `${x.used_g} g used`, x.low ? "reorder" : ""]})).join("")}</div>`
+      : `<p class="note" style="margin:0">${esc(r.note || "No spools in Spoolman yet.")} The heads in Now still show Workshop's own count.</p>`;
+  }).catch(e => { $("#spoolBox").textContent = "Spoolman did not answer: " + e.message; });
+}
+async function loadGallery() {   // one photo per finished part, taken when the bed lifts to the camera
+  let g; try { g = await api("/api/gallery"); } catch (e) { return; }
+  $("#galCard").hidden = !g.length; if (!g.length) return;
+  $("#galBox").innerHTML = g.map(x => `<div class="fcard"><div class="img" style="background-image:url('/gallery-photo/${enc(x.photo)}');background-size:cover"></div><div class="body">
+      <div class="t" title="${esc(x.file || "")}">${esc((x.file || "").replace(/\.gcode$/i, ""))}</div>
+      <div class="s">${day(x.t)}${x.for ? " · for " + esc(x.for) : ""}</div>
+      <div class="acts"><button class="btn sm" data-galfor="${esc(x.photo)}" data-cur="${esc(x.for || "")}">${x.for ? "Change who" : "Who's it for?"}</button></div></div></div>`).join("");
+}
+$("#galBox").addEventListener("click", async e => { const b = e.target.closest("[data-galfor]"); if (!b) return;
+  const who = prompt("Who was this part for?", b.dataset.cur); if (who === null) return;
+  try { await post("/api/gallery", {photo: b.dataset.galfor, for: who.trim()}); loadGallery(); } catch (err) { toast(err.message, true); } });
+async function loadTimelapses() {
+  let t; try { t = await api("/api/timelapses"); } catch (e) { return; }
+  $("#tlCard").hidden = !t.length; if (!t.length) return;
+  const url = f => M("/server/files/timelapse/" + f.split("/").map(enc).join("/"));
+  $("#tlBox").innerHTML = `<div class="list">${t.map((v, i) => issue({icon: "done", id: "T-" + (t.length - i), title: esc(v.print),
+      meta: [day(v.t), (v.size / 1048576).toFixed(0) + " MB", v.cover ? `<i class="mini" style="background-image:url('${url(v.cover)}')"></i>` : ""],
+      acts: `<a class="btn sm" href="${url(v.file)}" download>Download</a>`,
+      panel: `<video controls preload="metadata" playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px" ${v.cover ? `poster="${url(v.cover)}"` : ""} src="${url(v.file)}"></video>` +
+        pkv([["Print", esc(v.print)], ["Made", day(v.t)], ["Size", (v.size / 1048576).toFixed(1) + " MB"], ["File", esc(v.file)]])})).join("")}</div>
+    <p class="note" style="margin:8px 0 0">Made by the printer itself (1080p) for each print. Workshop's layer photos are on Now.</p>`;
+}
+async function loadCosts() {
+  let c; try { c = await api("/api/costs"); } catch (e) { return; }
+  const months = Object.entries(c.months).sort().reverse(), people = Object.entries(c.people).sort((a, b) => b[1].grams - a[1].grams);
+  if (!months.length) return;
+  $("#costCard").hidden = false;
+  const table = (head, rows) => `<table class="ctable"><tr><th>${head}</th><th>Prints</th><th>Filament</th><th>Cost</th></tr>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.prints}</td><td>${v.grams} g</td><td>£${v.cost.toFixed(2)}</td></tr>`).join("")}</table>`;
+  $("#costBox").innerHTML = `<div class="two"><div>${table("Month", months.map(([k, v]) => [new Date(k + "-01").toLocaleDateString("en-GB", {month: "long", year: "numeric"}), v]))}</div><div>${table("Who started it", people)}</div></div>
+    <p class="note" style="margin:10px 0 0">From the printer's own measure of filament used. Cost needs a price in the filament register; "Someone" means the start was not logged with a name.</p>`;
+}
+async function loadPlan() {
+  let p; try { p = await api("/api/plan"); } catch (e) { return; }
+  const t = s => s ? new Date(s).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}) : "";
+  const hh = n => String(n).padStart(2, "0") + ":00";
+  const total = p.jobs.reduce((a, j) => a + (j.seconds || 0), 0), quiet = p.jobs.filter(j => j.quiet_start);
+  $("#planNote").innerHTML = p.jobs.length ? `All ${p.jobs.length} done about <b>${t(p.jobs.at(-1).end)}</b> (${hm(total)} of printing${p.busy_until ? ", after the current print ends about " + t(p.busy_until) : ""}).`
+      + (quiet.length ? ` <span style="color:var(--warn)">${quiet.map(j => esc(j.file)).join(", ")} would start in the quiet hours (${hh(p.quiet[0])} to ${hh(p.quiet[1])}): no new print starts then; a running one may finish.</span>` : "")
+    : (p.busy_until ? `The printer is busy until about ${t(p.busy_until)}.` : "");
+  p.jobs.forEach((j, i) => { const row = document.querySelector(`#qList .issue[data-pid="Q-${i + 1}"] .meta`); if (row) row.insertAdjacentHTML("afterbegin", `<span>${t(j.start)} to ${t(j.end)}</span>`); });
+}
+
+/* ---------- camera: live video (WebRTC from the printer) or stills; video can come up white in some browsers and panes ---------- */
+const camPref = () => { try { return localStorage.getItem("workshop-cam") || "video"; } catch (e) { return "video"; } };
+function camSet(mode) {
+  try { localStorage.setItem("workshop-cam", mode); } catch (e) {}
+  const box = $("#camImg") || $("#camVideo"), live = S.info.live_camera;
+  if (mode === "video") {
+    clearInterval(camTimer); camLoop = () => {};
+    const f = document.createElement("iframe"); f.id = "camVideo"; f.src = live; f.title = "Live camera"; f.allow = "autoplay; fullscreen"; f.style.cssText = "width:100%;height:100%;border:0;display:block";
+    box.replaceWith(f); $("#camStamp").textContent = "Live video"; $("#camMode").textContent = "Stills";
+    // The printer serves very few live viewers. When it is full its page says "max clients reached" (behind Caddy it is
+    // same-origin, so readable): fall back to stills for this viewer instead of a red error loop (22 Nov).
+    let looks = 0; const busy = setInterval(() => {
+      let t = "", v = null; try { t = f.contentDocument?.body?.innerText || ""; v = f.contentDocument?.querySelector("video"); } catch (e) { clearInterval(busy); return; }
+      if (v && v.readyState >= 2) { clearInterval(busy); return; }   // playing: leave it
+      if (/max clients|retrying in|SessionDescription/i.test(t)) { clearInterval(busy); camSet("stills"); try { localStorage.setItem("workshop-cam", "video"); } catch (e) {}
+        toast("Live video is busy (the printer allows only a few viewers at once), so this shows a photo every 2 seconds."); }
+      if (++looks > 10 || !document.contains(f)) clearInterval(busy);
+    }, 1500);
+    $("#camFull").onclick = () => window.open(live, "_blank");
+  } else {
+    const img = document.createElement("img"); img.id = "camImg"; img.alt = "Live camera inside the printer";
+    box.replaceWith(img); $("#camMode").textContent = "Video"; $("#camFull").onclick = stillsFull;
+    camLoop = function () { clearInterval(camTimer); if (document.hidden) return; camTick(); camTimer = setInterval(camTick, 2000); }; camLoop();
+  }
+}
+const stillsFull = $("#camFull").onclick;
+$("#viewBed").onclick = () => { const st = S.status?.print_stats?.state; if (st === "printing" || st === "paused") return toast("A print is running: the bed is already in view.", true);
+  confirmSheet("Bring the bed into view?", "The printer homes if its motors are off (the bed goes down first, away from the head), then raises the bed so the head stays 20 mm above the last print's height. If something taller is on the plate, take it off first.", "Raise the bed", async () => {
+    const v = await post("/api/view-bed", {}); toast(`Bed at Z ${v.z} mm` + (v.homed ? " (homed first)" : "")); camTick(); }); };
+$("#camMode").onclick = () => camSet(camPref() === "video" ? "stills" : "video");
+// The printer's camera serves only a few live viewers ("max clients reached"), and every open tab held one even when
+// nobody was looking (22 Nov: a phone could not get live video). Hidden page: close the stream; back: reconnect.
+document.addEventListener("visibilitychange", () => {
+  if (camPref() !== "video" || !(S.info || {}).live_camera) return;
+  const f = $("#camVideo");
+  if (document.hidden) { if (f) f.src = "about:blank"; }
+  else if (f) f.src = S.info.live_camera;
+});
+
+/* ---------- last print: real time against the estimate, grams, cost, timelapse ---------- */
+async function loadLast() {
+  let h, t = [];
+  try { h = await api(M("/server/history/list?limit=3&order=desc")); } catch (e) { return; }
+  try { t = await api("/api/timelapses"); } catch (e) {}
+  let looks = []; try { looks = (await api("/api/photo-checks")).checks.filter(x => x.final && x.quality); } catch (e) {}
+  const j = (h.result || h).jobs.find(x => x.status !== "in_progress");
+  const st = S.status?.print_stats?.state;
+  $("#lastCard").hidden = !j || st === "printing" || st === "paused"; if (!j) return;
+  const m = j.metadata || {}, stem = j.filename.replace(/\.gcode$/, "");
+  const grams = m.filament_weight_total && m.filament_total ? m.filament_weight_total * Math.min(1, j.filament_used / m.filament_total) : null;
+  const est = m.estimated_time, took = j.print_duration;
+  const vs = est && took && j.status === "completed" ? ` (${took > est ? Math.round(100 * (took - est) / est) + "% slower" : Math.round(100 * (est - took) / est) + "% faster"} than the slicer said)` : "";
+  const tl = t.find(v => v.print === stem), url = f => M("/server/files/timelapse/" + f.split("/").map(enc).join("/"));
+  const WORD = {completed: "Finished", cancelled: "Cancelled", error: "Failed", klippy_shutdown: "Printer stopped", interrupted: "Interrupted"};
+  $("#lastBox").innerHTML = (tl ? `<video controls preload="metadata" playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px" ${tl.cover ? `poster="${url(tl.cover)}"` : ""} src="${url(tl.file)}"></video>` : "")
+    + pkv([["Print", esc(stem)], ["Result", (WORD[j.status] || esc(j.status)) + (j.end_time ? " " + day(j.end_time) : "")],
+      ["Printing time", took ? hm(took) + vs : ""], ["Start to finish", j.total_duration ? hm(j.total_duration) : ""],
+      ["Claude's look", (lk => lk ? `${lk.quality}${lk.flaws.length ? " (" + lk.flaws.join(", ").replace(/_/g, " ") + ")" : ""}: ${esc(lk.reason)} ${esc(lk.advice)}` : "")(looks.find(x => x.file === j.filename))],
+      ["Cost", cost(grams, m.filament_type)], ["Filament", grams ? Math.round(grams) + " g" : ""]]);
+}
+
+/* ---------- alerts on this computer: a chime, and a pop-up where the browser allows it (https or localhost only) ---------- */
+const alertsOn = () => { try { return localStorage.getItem("workshop-alerts") === "1"; } catch (e) { return false; } };
+const showAlertBtn = () => { $("#alertBtn").textContent = alertsOn() ? "Alerts on" : "Alerts off"; $("#alertBtn").setAttribute("aria-pressed", alertsOn()); };
+let audio = null;
+function chime() {
+  try { audio = audio || new AudioContext(); const t = audio.currentTime;
+    [660, 880].forEach((f, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = f; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.0001, t + i * 0.18); g.gain.exponentialRampToValueAtTime(0.2, t + i * 0.18 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.18 + 0.3);
+      o.start(t + i * 0.18); o.stop(t + i * 0.18 + 0.32); }); } catch (e) {}
+}
+$("#alertBtn").onclick = async () => {
+  const on = !alertsOn(); try { localStorage.setItem("workshop-alerts", on ? "1" : "0"); } catch (e) {}
+  if (on) { chime(); if (window.Notification && isSecureContext && Notification.permission === "default") await Notification.requestPermission(); }
+  showAlertBtn(); toast(on ? "Alerts on: a chime here when a print finishes or pauses" + (window.Notification && isSecureContext ? "." : ". Pop-ups need the https address; the phone push still covers you.") : "Alerts off on this computer.");
+};
+showAlertBtn();
+function stateChanged(from, to, file) {
+  if (["complete", "cancelled", "error", "standby"].includes(to)) loadLast();
+  if (to === "printing" || to === "paused") $("#lastCard").hidden = true;
+  const said = {paused: "paused", complete: "finished", error: "stopped with an error", cancelled: "was cancelled"}[to];
+  if (!said || !alertsOn()) return;
+  chime();
+  const text = `${(file || "The print").replace(/\.gcode$/, "")} ${said}`;
+  if (window.Notification && isSecureContext && Notification.permission === "granted") new Notification("Workshop", {body: text, tag: "workshop"});
+  toast(text);
+}
+
+/* ---------- full control: jog, heat, fans, calibrate, console, live charts, watch ---------- */
+let jogStep = 10;
+$(".jog .steps").innerHTML = [1, 10, 50].map(n => `<button class="btn sm" data-step="${n}" aria-pressed="${n === jogStep}">${n} mm</button>`).join("");
+const ctl = async (body, ok) => { try { const r = await post("/api/control", body); toast(ok || r.done); poll(); return r; } catch (e) { toast(e.message, true); } };
+$(".jog").addEventListener("click", e => {
+  const st = e.target.closest("[data-step]");
+  if (st) { jogStep = +st.dataset.step; $(".jog .steps").querySelectorAll("[data-step]").forEach(b => b.setAttribute("aria-pressed", +b.dataset.step === jogStep)); return; }
+  const b = e.target.closest("[data-jog]"); if (!b) return;
+  if (b.dataset.jog === "home") return confirmSheet("Home the printer?", "The head moves to its corner and the bed goes down first, away from the head.", "Home", () => gcode("G28"));
+  const [ax, dir] = b.dataset.jog.split(",");
+  ctl({action: "move", relative: true, [ax]: jogStep * +dir});
+});
+$("#hSet").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, celsius: +$("#hTemp").value});
+$("#hOff").onclick = () => ctl({action: "heat", heater: $("#hHeater").value, celsius: 0});
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => { if (b.dataset.bed) $("#hHeater").value = "bed"; $("#hTemp").value = b.dataset.preset; });
+const FAN_NAMES = {part: "Part", cavity: "Cavity", exhaust: "Exhaust", circulation: "Circulation"};
+$("#fanRow").innerHTML = Object.entries(FAN_NAMES).map(([k, n]) => `<div class="fanline"><span>${n}</span><span class="seg" role="group" aria-label="${n} fan">` + [0, 50, 100].map(p => `<button class="btn sm" data-fan="${k}" data-pct="${p}" aria-label="${n} fan ${p}%">${p}%</button>`).join("") + `</span></div>`).join("");
+$("#fanRow").addEventListener("click", e => { const b = e.target.closest("[data-fan]"); if (b) ctl({action: "fan", fan: b.dataset.fan, percent: +b.dataset.pct}); });
+const CAL = {shaper: ["Input shaping", "The head shakes in X and Y for a few minutes to measure vibration."], offsets: ["Head offsets", "Each head touches the calibration point so the four line up."],
+             mesh: ["Bed mesh", "The probe touches the whole bed."], screws: ["Bed tilt", "Probes the screw corners and says how far to turn each."]};
+$("#calBtns").innerHTML = Object.entries(CAL).map(([k, [n]]) => `<button class="btn" data-cal="${k}">${n}</button>`).join("");
+$("#calBtns").addEventListener("click", e => { const b = e.target.closest("[data-cal]"); if (!b) return; const [n, what] = CAL[b.dataset.cal];
+  confirmSheet(n + "?", what + " Take everything off the plate first. It runs to the end; watch the console.", "Start " + n.toLowerCase(), () => ctl({action: "calibrate", which: b.dataset.cal, nothing_in_the_way: true}, n + " finished: see the console")); });
+$("#wCam").onclick = () => (S.info || {}).live_camera ? window.open(S.info.live_camera, "_blank") : $("#camFull").click();
+$("#wScreen").onclick = () => (S.info || {}).printer_screen ? $("#screenBtn").click() : toast("The printer's screen isn't available", true);
+$("#wLapse").onclick = () => { go("history"); setTimeout(() => { $("#tlCard").open = true; $("#tlCard").scrollIntoView({behavior: "smooth"}); }, 200); };
+// console: the printer's own messages, newest last; one command at a time through the guard
+let conSeen = 0;
+async function loadConsole() {
+  let r; try { r = await api(M("/server/gcode_store?count=80")); } catch (e) { return; }
+  const rows = (r.gcode_store || r.result?.gcode_store || []).filter(g => !/^B:|^T\d|^ok$/.test(g.message));
+  const el = $("#conLog"), atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent = rows.map(g => (g.type === "command" ? "> " : "") + g.message).join("\n") || "Nothing yet.";
+  if (atEnd || !conSeen) el.scrollTop = el.scrollHeight; conSeen = 1;
+}
+$("#conForm").onsubmit = async e => { e.preventDefault(); const c = $("#conIn").value.trim(); if (!c) return;
+  try { await post("/api/control", {action: "gcode", command: c}); $("#conIn").value = ""; loadConsole(); } catch (err) { toast(err.message, true); } };
+// live charts: readings sampled with each poll while the page is open (the firmware's exporter has no printer data)
+const LIVE = {}, LIVE_MAX = 240;
+const LIVE_KEYS = [["Chamber °C", s => s["temperature_sensor cavity"]?.temperature], ["Bed °C", s => s.heater_bed?.temperature],
+  ["Part fan %", s => (s.fan?.speed ?? 0) * 100], ["Cavity fan %", s => (s["fan_generic cavity_fan"]?.speed ?? 0) * 100],
+  ["Exhaust fan %", s => (s["fan_generic exhaust_fan"]?.speed ?? 0) * 100], ["Current A", s => s["adc_current_sensor I_AD"]?.current]];
+function sampleLive(s) {
+  for (const [k, f] of LIVE_KEYS) { const v = f(s); if (v == null || isNaN(v)) continue; (LIVE[k] = LIVE[k] || []).push(+v); if (LIVE[k].length > LIVE_MAX) LIVE[k].shift(); }
+  if (tab !== "printer") return;
+  const rows = Object.entries(LIVE).filter(([, a]) => a.length > 1);
+  if (!rows.length) return;
+  $("#liveBox").innerHTML = rows.map(([k, a]) => { const lo = Math.min(...a), hi = Math.max(...a), span = hi - lo || 1;
+    const pts = a.map((v, i) => `${(i / (LIVE_MAX - 1) * 300).toFixed(1)},${(26 - (v - lo) / span * 24).toFixed(1)}`).join(" ");
+    return `<div class="spark"><span>${k}</span><svg viewBox="0 0 300 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--accent,#5e6ad2)" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${pts}"/></svg><b>${a.at(-1).toFixed(k.includes("°") ? 0 : 1)}</b></div>`; }).join("")
+    + `<p class="note" style="margin:6px 0 0">The last ${Math.round(Math.min(...rows.map(([, a]) => a.length)) * 2.5 / 60)} min while this page was open.</p>`;
+}
+setInterval(() => { if (!document.hidden && tab === "printer") loadConsole(); }, 3000);
 
 /* ---------- start ---------- */
 api("/api/info").then(i => { S.info = i;
+  if (location.protocol === "https:") for (const k of ["live_camera", "printer_screen"])   // behind Caddy: the same https name serves /webcam and /screen
+    if (i[k] && i[k].startsWith("http:")) { const u = new URL(i[k]); i[k] = u.pathname + u.search; }
+  if (location.protocol === "https:" && i.live_relay) i.live_camera = i.live_relay;   // the relay serves many viewers; the printer itself serves one
   let pushDone = false; try { pushDone = localStorage.getItem("workshop-push-done") === "1"; } catch (e) {}
   if (i.push && !pushDone) { $("#pushCard").hidden = false; $("#pushLink").href = i.push; }
-  if (i.live_camera) {   // real video (WebRTC) instead of stills
-    clearInterval(camTimer); camLoop = () => {};
-    const f = document.createElement("iframe"); f.src = i.live_camera; f.title = "Live camera"; f.allow = "autoplay; fullscreen"; f.style.cssText = "width:100%;height:100%;border:0;display:block";
-    $("#camImg").replaceWith(f); $("#camStamp").textContent = "Live video";
-    $("#camFull").onclick = () => window.open(i.live_camera, "_blank");
+  S.boot = i.boot;
+  if (i.live_camera) { $("#camMode").hidden = false; camSet(camPref()); }
+  if (i.printer_screen) {   // the U1's touchscreen, shown read-only: a tap there could start or change a print
+    $("#screenBtn").hidden = false;
+    $("#screenBtn").onclick = () => openSheet("Printer screen", `<div style="position:relative;aspect-ratio:16/10;border-radius:10px;overflow:hidden;background:#000">
+        <iframe src="${esc(i.printer_screen)}" title="The printer's touchscreen" style="width:100%;height:100%;border:0;pointer-events:none"></iframe></div>
+      <p class="note" style="margin:10px 0 0">What the printer's own screen shows right now. View only: use the printer itself to tap.</p>`);
   } }).catch(() => {});
 poll(); setInterval(() => { if (!document.hidden) poll(); }, 2500);
 loadQueue(); setInterval(() => { if (!document.hidden) loadQueue(); }, 15000);
@@ -1291,7 +1888,8 @@ loadAlerts(); loadActivity(); setInterval(() => { if (!document.hidden) { loadAl
 loadSpools(); loadBed(); setInterval(() => { if (!document.hidden) { loadSpools(); loadBed(); } }, 15000);
 loadAccuracy(); loadFrames(); setInterval(() => { if (!document.hidden && !$("#tab-now").hidden) loadFrames(); }, 30000);
 askWho(false);
-camLoop();
+camLoop(); loadLast();
+setInterval(() => api("/api/boot").then(b => { if (S.boot && b.boot !== S.boot) location.reload(); }).catch(() => {}), 30000);   // Workshop restarted: start clean
 go(location.hash.slice(1) in TITLES ? location.hash.slice(1) : "now");
 addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t in TITLES && t !== tab) go(t); });
 </script>
