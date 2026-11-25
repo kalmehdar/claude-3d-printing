@@ -185,7 +185,7 @@ with tempfile.TemporaryDirectory() as d:
     assert os.path.isfile(os.path.join(workshop.CAL_PHOTOS, row["photo"].rsplit("/", 1)[1]))
 # photo watch: pauses only when two looks agree on a clear failure with high confidence; cosmetic faults never pause
 with tempfile.TemporaryDirectory() as d:
-    workshop.PHOTO_LOG = os.path.join(d, "checks.jsonl")
+    workshop.PHOTO_LOG = os.path.join(d, "checks.jsonl"); workshop.WATCH_PAUSED_FILE = os.path.join(d, "watch-paused.json")
     workshop.time.sleep = lambda s: None
     printer.snap = fake_snap
     printer.status = lambda: {"state": "printing"}

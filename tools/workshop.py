@@ -382,6 +382,8 @@ def watch_alerts():
                 alert_change(prev, s, was)
             if prev is None:
                 bed_after_restart(s)
+            if s["state"] in ("complete", "cancelled", "error", "standby") and _WATCH_PAUSED:
+                watch_paused(None, drop=True)   # no run is going: a pause left from a restart mid-pause can't gate the next one
             prev = s["state"]
             if s["state"] == "printing" and s.get("active_head") and head and s["active_head"] != head:
                 head_check = True
@@ -430,7 +432,15 @@ _unload_lock = _threading.Lock()
 _look_slots = _threading.BoundedSemaphore(2)
 # multipart upload fields Workshop never sends and refuses in any quoting: print (Moonraker starts the file the moment it
 # lands) and root (a form field root=config would write printer.cfg; the address's ?root= is checked separately)
-UPLOAD_FIELDS = re.compile(rb'content-disposition:[^\r\n]*;\s*name\s*=\s*["\']?(print|root)["\';\s]', re.I)
+# An allowlist (#54 review: name*=utf-8''print and folded headers got past a denylist): every part header is one plain
+# line naming the part "file", which is all the page sends.
+UPLOAD_PART = re.compile(rb'(?im)^content-disposition:([^\r\n]*(?:\r?\n[ \t][^\r\n]*)*)')
+
+
+def upload_ok(body):
+    heads = UPLOAD_PART.findall(body or b"")
+    return bool(heads) and all(b"\n" not in h and b"name*" not in h.lower()
+                               and re.search(rb';\s*name="file"\s*(;|$)', h) for h in heads)
 
 
 def start_unload(head, action="unload"):
@@ -1044,25 +1054,36 @@ _LAST_OK = {}   # run folder -> (photo, layer) the watch last passed: the "befor
 # Kept on disk (round review, 25 Nov: a restart forgot it and with it the resume check). Each entry also says whether a
 # person has answered that pause; only an unanswered one makes a resume need person_checked.
 WATCH_PAUSED_FILE = os.path.join(os.path.expanduser("~"), ".config", "claude-3d-printing", "watch-paused.json")
-try:
-    _WATCH_PAUSED = {k: tuple(v) for k, v in json.load(open(WATCH_PAUSED_FILE, encoding="utf-8")).items()}
-except (OSError, ValueError, AttributeError):
-    _WATCH_PAUSED = {}
+def _load_watch_paused(path):
+    try:
+        d = json.load(open(path, encoding="utf-8"))
+        return {str(k): tuple(v) for k, v in d.items() if isinstance(v, list) and len(v) == 3}
+    except Exception:   # missing or damaged: start empty rather than stop Workshop starting
+        return {}
+
+
+_WATCH_PAUSED = _load_watch_paused(WATCH_PAUSED_FILE)
+_watch_lock = _threading.Lock()
 REPAUSE_GAP = 50
 
 
 def watch_paused(run, entry=None, drop=False):
     """Set (problem, layer, answered) for a run, or drop it; saved at once."""
-    if drop:
-        _WATCH_PAUSED.pop(run, None)
-    elif entry is not None:
-        _WATCH_PAUSED[run] = tuple(entry)
-    try:
-        os.makedirs(os.path.dirname(WATCH_PAUSED_FILE), exist_ok=True)
-        json.dump(_WATCH_PAUSED, open(WATCH_PAUSED_FILE + ".part", "w"))
-        os.replace(WATCH_PAUSED_FILE + ".part", WATCH_PAUSED_FILE)
-    except OSError as e:
-        print("watch pause not saved:", e, flush=True)
+    with _watch_lock:
+        if drop is True and run is None:
+            _WATCH_PAUSED.clear()
+        elif drop:
+            _WATCH_PAUSED.pop(run, None)
+        elif entry is not None:
+            _WATCH_PAUSED[run] = tuple(entry)
+        try:
+            os.makedirs(os.path.dirname(WATCH_PAUSED_FILE), exist_ok=True)
+            tmp = f"{WATCH_PAUSED_FILE}.{os.getpid()}.{_threading.get_ident()}.part"
+            with open(tmp, "w") as f:
+                json.dump(_WATCH_PAUSED, f)
+            os.replace(tmp, WATCH_PAUSED_FILE)
+        except OSError as e:
+            print("watch pause not saved:", e, flush=True)
 WATCH_WORD = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}
 
 
@@ -1352,7 +1373,7 @@ def bed(state=None, who="", file=""):
 def bed_after_restart(s):
     """At Workshop's start: a print that ended while nobody watched (a restart, an outage) left its part on the bed, so a
     finished, cancelled or failed last job newer than the bed's own record makes it "part waiting" (round review, 25 Nov)."""
-    if s.get("state") not in ("complete", "cancelled", "error"):
+    if s.get("state") in ("printing", "paused"):   # standby too: a power cycle after the end still leaves the part
         return
     try:
         jobs = _get("/server/history/list?limit=1&order=desc", timeout=10)["jobs"]
@@ -2067,6 +2088,28 @@ RAW_START = re.compile(r"^(SDCARD_PRINT_FILE|M23|M24|M32)\b", re.I)
 RAW_START_WHY = "start prints from Files or the queue, after the bed check, not as a G-code command"
 
 
+def gcode_name(line):
+    """The command Klipper will run, read the way its gcode.py does (upper case, the first run of letters plus what
+    follows up to the next letter): "M 24", "0M24" and "1M23 a.gcode" all run M24/M23 (#54 review). None when anything
+    but spaces comes before the first letter (line numbers included): refused rather than guessed."""
+    p = re.split(r"([A-Z_]+|[A-Z*/])", line.strip().upper())
+    if len(p) < 3 or p[0].strip() or (p[1] == "N" and p[2].strip().isdigit()):   # Klipper skips a leading N5 line number
+        return None
+    return p[1] + p[2].strip()
+
+
+def raw_refusal(line):
+    """Why a raw G-code line is never sent through Workshop, or None."""
+    name = gcode_name(line)
+    if name is None:
+        return "start the command with its name (no line number or other prefix)"
+    if RAW_NEVER.match(name):
+        return "that rewrites the printer's setup or forces a motor: do it on the printer itself"
+    if RAW_START.match(name):
+        return RAW_START_WHY
+    return None
+
+
 def control(req):
     """One printer action from the page or Claude, with the same rules for both. Returns (status, dict).
     Idle only (light and part fan excepted); moves need the printer homed and keep Z VIEW_GAP over the tallest thing."""
@@ -2092,7 +2135,9 @@ def control(req):
                                   "says carry on first (person_checked).", "why": h["why"]}
         g("RESUME", timeout=120)
         for k in waiting:
-            watch_paused(k, (*_WATCH_PAUSED[k][:2], True))
+            e = _WATCH_PAUSED.get(k)
+            if e:
+                watch_paused(k, (*e[:2], True))
         return 200, {"done": "resumed" + (" after: " + h["why"] if h["why"] else "")}
     if act == "detector":   # the printer's own camera checks; saved on the printer, so it stays until changed back
         on, sens = req.get("spaghetti"), req.get("sensitivity")
@@ -2173,12 +2218,9 @@ def control(req):
         cmd = str(req.get("command", "")).strip()
         if not cmd or "\n" in cmd or "\r" in cmd or len(cmd) > 200:
             return 400, {"error": "one command, under 200 characters"}
-        if re.match(r"N\d", cmd, re.I):   # Klipper skips a leading line number, which hid SAVE_CONFIG from RAW_NEVER
-            return 400, {"error": "no line numbers: send the command itself"}
-        if RAW_NEVER.match(cmd):
-            return 400, {"error": "that rewrites the printer's setup or forces a motor: do it on the printer itself"}
-        if RAW_START.match(cmd):
-            return 400, {"error": RAW_START_WHY}
+        why = raw_refusal(cmd)
+        if why:
+            return 400, {"error": why}
         g(cmd, timeout=600)
         return 200, {"done": f"sent {cmd}"}
     return 400, {"error": "action is heat, move, fan, calibrate, gcode, resume or detector"}
@@ -2488,7 +2530,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 and self.body():
             return "send the command in the address, not in a body"
         if self.command == "POST" and p.startswith("/server/files/upload"):
-            if "print=true" in p.lower() or UPLOAD_FIELDS.search(self.body() or b""):
+            if "print" in urllib.parse.parse_qs(urllib.parse.urlparse(p).query, keep_blank_values=True) or not upload_ok(self.body()):
                 return "upload only the file (no print or root fields), then start it from Files or the queue, after the bed check"
         if self.command == "POST" and p.startswith(("/printer/print/start", "/server/job_queue/start")) and bed().get("state") == "part waiting":
             return "the last print is still on the bed: mark it clear first (Took it off in Workshop, or tell Claude it is clear)"
@@ -2497,18 +2539,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if len(qs.get("script", [])) != 1 or set(qs) - {"script"}:
                 return "one G-code command, as ?script=... and nothing else"   # ?xscript=&script= slipped past (review P1)
             script = qs["script"][0]
-            if re.match(r"\s*N\d", script, re.I):
-                return "no line numbers: send the command itself"   # Klipper skips a leading N1, which hid SAVE_CONFIG
+            why = raw_refusal(script)
+            if why:
+                return why
             if "\n" in script or "\r" in script:
                 return "one G-code command at a time"
             speed = re.fullmatch(r"M220 S(\d{1,3})", script.strip().upper())
             if speed and not 50 <= int(speed.group(1)) <= 150:
                 return "speed is 50 to 150 percent"
             pause_at = re.fullmatch(r"SET_PAUSE_AT_LAYER (LAYER=\d{1,4}|ENABLE=0)", script.strip().upper())   # never MACRO=: it would run any command
-            if RAW_NEVER.match(script.strip()):
-                return "that rewrites the printer's setup or forces a motor: do it on the printer itself"
-            if RAW_START.match(script.strip()):
-                return RAW_START_WHY
+
             if script.strip().upper().startswith("SET_PAUSE_AT_LAYER") and not pause_at:
                 return "pause at layer takes LAYER=<number> or ENABLE=0 only"
             if not (script.upper().startswith("SET_LED ") or speed or pause_at) and self.printer_busy():   # light, speed and pause-at-layer are fine mid-print
@@ -2583,10 +2623,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return self.send(409, {"error": "the queue is empty"})
                     job = jobs[0]
                     moonraker("POST", "/printer/print/start?filename=" + urllib.parse.quote(job["filename"]), timeout=30).read()
-                    moonraker("DELETE", "/server/job_queue/job?job_ids=" + urllib.parse.quote(job["job_id"]), timeout=10).read()   # after: a failed start keeps the job
-                except (OSError, ValueError, KeyError) as e:
+                except (OSError, ValueError, KeyError) as e:   # a failed start keeps the job in the queue
                     return self.send(502, {"error": f"could not start the next job: {e}"})
                 record("started the next queued job", job["filename"], who=actor(self))
+                try:   # after the start, so a printing job is never reported as failed (#54 review)
+                    moonraker("DELETE", "/server/job_queue/job?job_ids=" + urllib.parse.quote(job["job_id"]), timeout=10).read()
+                except (OSError, ValueError) as e:
+                    return self.send(200, {"result": "ok", "started": job["filename"],
+                                           "warning": f"started, but it is still in the queue ({e}): remove it before the next start"})
                 return self.send(200, {"result": "ok", "started": job["filename"]})
             what = self.describe(path)
             if what:

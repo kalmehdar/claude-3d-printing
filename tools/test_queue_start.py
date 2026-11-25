@@ -47,5 +47,14 @@ def failing(method, path, **k):
 w.moonraker = failing
 h.route()
 assert sent[0][0] == 502 and not any(m == "DELETE" for m, _ in calls), (sent, calls)
+# started, but taking it off the queue failed: still a success, logged, with a warning (#54 review)
+def no_delete(method, path, **k):
+    if method == "DELETE":
+        raise OSError("timed out")
+    return ok(method, path, **k)
+w.moonraker = no_delete
+sent.clear()
+h.route()
+assert sent[0][0] == 200 and "still in the queue" in sent[0][1]["warning"], sent
 w.moonraker = ok
 print("queue start check passed")

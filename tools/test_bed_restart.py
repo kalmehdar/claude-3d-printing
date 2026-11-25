@@ -21,8 +21,11 @@ json.dump({"state": "clear", "t": time.time()}, open(w.BED, "w"))          # cle
 w.bed_after_restart({"state": "cancelled", "file": "a.gcode"})
 assert w.bed()["state"] == "clear"
 
-w.bed_after_restart({"state": "standby"})                                   # nothing ended: untouched
+w.bed_after_restart({"state": "printing"})                                  # a print is running: untouched
 assert w.bed()["state"] == "clear"
+json.dump({"state": "clear", "t": time.time() - 3600}, open(w.BED, "w"))
+w.bed_after_restart({"state": "standby"})                                   # power-cycled after the end: the part is there
+assert w.bed()["state"] == "part waiting"
 
 def down(path, timeout=15):
     raise OSError("no history")

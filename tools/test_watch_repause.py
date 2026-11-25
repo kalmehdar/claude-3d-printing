@@ -81,4 +81,17 @@ assert json.load(open(w.WATCH_PAUSED_FILE))["run-x"][2] is True     # answered
 assert w.control({"action": "resume"})[0] == 200                     # a later pause in the run (magnets) resumes plainly
 w.watch_paused("run-x", drop=True)
 assert json.load(open(w.WATCH_PAUSED_FILE)) == {}
+w.watch_paused("run-y", ("spaghetti", 9, False))
+w.watch_paused(None, drop=True)                                       # the print ended: everything goes
+assert json.load(open(w.WATCH_PAUSED_FILE)) == {} and not w._WATCH_PAUSED
+# a damaged or old file never stops Workshop starting; only whole entries are kept
+open(w.WATCH_PAUSED_FILE, "w").write('{"a": 5, "b": null, "c": ["spaghetti", 300], "d": ["spaghetti", 1, false]}')
+assert w._load_watch_paused(w.WATCH_PAUSED_FILE) == {"d": ("spaghetti", 1, False)}
+open(w.WATCH_PAUSED_FILE, "w").write("[1, 2")
+assert w._load_watch_paused(w.WATCH_PAUSED_FILE) == {}
+# many threads writing at once: no crash, a readable file
+import threading  # noqa: E402
+ts = [threading.Thread(target=lambda i=i: [w.watch_paused(f"r{i}", ("spaghetti", n, False)) for n in range(30)]) for i in range(8)]
+[t.start() for t in ts]; [t.join() for t in ts]
+assert len(json.load(open(w.WATCH_PAUSED_FILE))) == 8
 print("watch repause: ok")

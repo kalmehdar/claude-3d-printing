@@ -35,8 +35,14 @@ assert "address" in guard(Req("POST", b'{"x": 1}'), "/server/job_queue/start")
 # an upload that would start itself is refused; a plain upload passes this check
 assert "start it" in guard(Req("POST", upload_print), "/server/files/upload")
 # a raw start command skips the bed, snapshot and heads checks: refused even on an idle printer
-for cmd in ("SDCARD_PRINT_FILE%20FILENAME%3Da.gcode", "M23%20a.gcode", "M24", "m32%20a.gcode"):
-    assert "Files or the queue" in guard(Req("POST"), "/printer/gcode/script?script=" + cmd), cmd
+import urllib.parse  # noqa: E402
+for cmd in ("SDCARD_PRINT_FILE FILENAME=a.gcode", "M23 a.gcode", "M24", "m32 a.gcode", "M 24", " m 23 a.gcode"):
+    assert "Files or the queue" in guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote(cmd)), cmd
+# Klipper drops anything before the first letter ("0M24" runs M24, "N5 SAVE_CONFIG" saves): refused outright (#54 review)
+for cmd in ("0M24", "-m24", "1M23 a.gcode", "N5 SAVE_CONFIG", "5SAVE_CONFIG"):
+    assert "prefix" in guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote(cmd)), cmd
+assert w.gcode_name("M 24") == "M24" and w.gcode_name("SET_LED LED=x WHITE=1") == "SET_LED" and w.gcode_name("g1 x5") == "G1"
+assert guard(Req("POST"), "/printer/gcode/script?script=" + urllib.parse.quote("M500")) and guard(Req("POST"), "/printer/gcode/script?script=M%20500")
 import io  # noqa: E402
 real_mr, sent = w.moonraker, []
 w.moonraker = lambda m, path, **k: sent.append(path) or io.BytesIO(json.dumps({"result": {"status": {
@@ -55,6 +61,14 @@ for field in (b'name="root"', b"name=root", b"name='root'", b"name=print", b"nam
     assert "no print or root" in guard(Req("POST", body), "/server/files/upload"), field
 plain = b'--x\r\nContent-Disposition: form-data; name="file"; filename="root.gcode"\r\n\r\nG1 ; name=print\r\n--x--\r\n'
 assert guard(Req("POST", plain), "/server/files/upload") is None
+# an allowlist: RFC 2231 names, folded headers, any second part, no part at all; print in the address in any encoding
+for bad in (plain.replace(b'name="file"', b"name*=utf-8''print"),
+            plain.replace(b'form-data; name="file"', b'form-data\r\n ; name="print"'),
+            plain.replace(b'--x--', b'--x\r\nContent-Disposition: form-data; name="path"\r\n\r\nsub\r\n--x--'),
+            b"just bytes"):
+    assert "no print or root" in guard(Req("POST", bad), "/server/files/upload"), bad
+for q in ("?print=%74rue", "?%70rint=true", "?print=false", "?print"):
+    assert "no print or root" in guard(Req("POST", plain), "/server/files/upload" + q), q
 
 # no start while the last print is still on the bed
 json.dump({"state": "part waiting", "file": "a.gcode"}, open(w.BED, "w"))

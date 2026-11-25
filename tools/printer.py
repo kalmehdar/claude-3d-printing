@@ -871,6 +871,13 @@ def main():
                 sys.exit("not resumed: " + h["waiting"])
             if ((query("print_stats")["print_stats"].get("exception") or {}).get("id") == 532 and not a.person_checked):
                 sys.exit("not resumed: the printer's detector paused it. Look at the part, then: resume --person-checked")
+            try:   # Workshop's photo watch pauses without a detector code; it keeps its unanswered pauses here
+                waiting = [v for v in json.load(open(os.path.join(os.path.dirname(CONF), "watch-paused.json"))).values()
+                           if isinstance(v, list) and len(v) == 3 and not v[2]]
+            except (OSError, ValueError, AttributeError):
+                waiting = []
+            if waiting and not a.person_checked:
+                sys.exit("not resumed: Workshop's photo watch paused it. Look at the part, then: resume --person-checked")
         print(call(f"/printer/print/{c}", "POST"))
         record({"pause": "paused", "resume": "resumed", "cancel": "cancelled"}[c], status().get("file") or "")
     elif c == "speed":   # the screen's speed override (M220): safe mid-print, bounded so a typo can't wreck a job
