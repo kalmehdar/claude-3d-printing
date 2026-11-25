@@ -71,6 +71,29 @@
       "source": "models/test-card.scad"
     },
     {
+      "id": "calkit",
+      "group": "Test prints",
+      "name": "Calibration kit: pick a number",
+      "for": "Tune a filament without measuring anything. Eight numbered chevrons for pressure advance (pick the crispest V tip), nine numbered tiles for flow (pick the smoothest top), a five-band temperature tower (pick the cleanest bridge), and a half-black, half-white block that swaps heads every layer with no prime tower, to see whether a tool changer needs one. Ask Claude to calibrate a filament and tools/caltest.py prints the real tests, each piece at its own setting; you tell Claude the numbers and it updates the profile.",
+      "status": "Check first: the layout is for looking at; caltest.py builds the printable tests",
+      "state": "check",
+      "material": "Any; PETG shown. The kit uses two heads: black and white",
+      "credit": "Designed with Claude in OpenSCAD (models/calibration-kit.scad); the tests themselves come from tools/caltest.py",
+      "parts": [
+        [
+          "Black",
+          "stl/calibration-kit-black.stl",
+          "#1f1f22"
+        ],
+        [
+          "White",
+          "stl/calibration-kit-white.stl",
+          "#ecebe6"
+        ]
+      ],
+      "source": "models/calibration-kit.scad"
+    },
+    {
       "id": "fitcard",
       "group": "Test prints",
       "name": "Fit card",
