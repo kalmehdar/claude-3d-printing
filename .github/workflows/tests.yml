@@ -1,0 +1,17 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: every tools/test_*.py (no printer or OrcaSlicer needed)
+        run: for t in tools/test_*.py; do echo "== $t"; python "$t" || exit 1; done
+      - name: every tool parses
+        run: python -c "import ast, glob; [ast.parse(open(f).read(), f) for f in glob.glob('tools/*.py')]"

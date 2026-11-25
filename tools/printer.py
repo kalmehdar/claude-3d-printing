@@ -6,10 +6,10 @@
     python printer.py send part.gcode [--queue]   upload (and add to the job queue); never starts anything
     python printer.py start part.gcode --bed-clear   start now; the flag says the bed was seen empty (camera or a person)
     python printer.py queue [add FILE | remove ID | start --bed-clear | hold]
-    python printer.py pause | resume | cancel
-    python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
+    python printer.py pause | resume [--person-checked] | cancel
     python printer.py speed [50-150]              the speed override (as on the screen), safe mid-print; no number shows it
     python printer.py light on|off                chamber light (Snapmaker U1: cavity_led)
+    python printer.py load T2 | all               Snapmaker U1: load a head parked at its feeder into the head
     python printer.py unload T2 | all             Snapmaker U1: unload a head's filament back to the spool (its own feeder routine)
     python printer.py filament T2 PETG --vendor Polymaker --sub generic --colour 1f1f22
                                                   Snapmaker U1: tell the printer what was loaded on a head (as its screen does)
@@ -20,6 +20,10 @@
     python printer.py timelapse [FOLDER]          a short video from a print's layer photos (default the newest print; needs ffmpeg)
     python printer.py log [FILE]                  add finished jobs not yet in FILE (a markdown print log; default "log_file" in printer.json)
     python printer.py notify "Title" ["text"] [--level good|warn|bad]   phone push (ntfy) and/or Discord, whichever is set up
+    python printer.py backup FOLDER               copy the printer's own setup (printer.cfg, moonraker.conf, Extended Firmware configs,
+                                                  calibration data) into FOLDER; only changed files are rewritten, so git shows what moved
+    python printer.py logcheck [MB]               restarts, MCU shutdowns, timer and heater faults in the last MB (default 3) of klippy.log;
+                                                  exits 1 when it finds a fault
 
 The printer: --printer ADDRESS, or PRINTER_HOST, or {"host": ...} in ~/.config/claude-3d-printing/printer.json.
 The camera: whatever Moonraker lists (stock U1: /server/files/camera/monitor.jpg; Extended Firmware: /webcam/snapshot.jpg), or --camera PATH|URL.
@@ -113,6 +117,77 @@ def call(path, method="GET", body=None, timeout=15, raw=False):
     return data if raw else json.loads(data).get("result")
 
 
+def fetch(path, tail=None, timeout=30):
+    """Raw bytes of a printer file; tail=N asks for only its last N bytes (HTTP Range)."""
+    req = urllib.request.Request(BASE + path, headers={"Range": f"bytes=-{tail}"} if tail else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+# ---------- config backup and log check (Extended Firmware or stock; read-only, through Moonraker's file API) ----------
+BACKUP_FILES = ("printer.cfg", "printer_v2.cfg", "moonraker.conf", "gui_config.json")   # not fluidd.cfg: stock macros with an author's email
+BACKUP_DIRS = ("extended/", "snapmaker/", "persistent/")
+# left out: the stock factory copies and dated backups (vendor files), the serial number and the cloud agent's identity
+BACKUP_SKIP = re.compile(r"(^|/)(agent\.json|product_info\.json|[^/]*secret[^/]*)$|^factory|^printer-\d|^\.")
+
+
+def backup(folder):
+    """Copy the printer's own setup into folder, keeping its paths. Only files whose bytes changed are rewritten.
+    Returns {"changed": [...], "same": n, "skipped": [...]}."""
+    out = {"changed": [], "same": 0, "skipped": []}
+    for f in call("/server/files/list?root=config"):
+        p = f["path"]
+        if not (p in BACKUP_FILES or p.startswith(BACKUP_DIRS)) or BACKUP_SKIP.search(p) or f.get("size", 0) > 2_000_000:
+            out["skipped"].append(p)
+            continue
+        data = fetch("/server/files/config/" + "/".join(urllib.parse.quote(x) for x in p.split("/")))
+        dest = os.path.join(folder, *p.split("/"))
+        try:
+            same = open(dest, "rb").read() == data
+        except OSError:
+            same = False
+        if same:
+            out["same"] += 1
+            continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as w:
+            w.write(data)
+        out["changed"].append(p)
+    return out
+
+
+LOG_EVENTS = [   # (name, pattern, serious): serious ones make logcheck exit 1 and are worth a phone push
+    ("restart", r"^Start printer at ", False),
+    ("mcu shutdown", r"MCU '[^']+' shutdown|Transition to shutdown state", True),
+    ("lost communication", r"Lost communication with MCU", True),
+    ("timer too close", r"Timer too close", True),
+    ("heater fault", r"not heating at expected rate|ADC out of range|Heater \S+ not heating", True),
+    ("internal error", r"Internal error|Traceback \(most recent call last\)", True),
+]
+
+
+def scan_log(lines):
+    """Count klippy.log events. Each gets its count, its last line and the restart it happened after."""
+    found, since = {}, None
+    for line in lines:
+        line = line.rstrip("\n")
+        for name, pat, serious in LOG_EVENTS:
+            if re.search(pat, line):
+                if name == "restart":
+                    since = line[len("Start printer at "):].strip()
+                e = found.setdefault(name, {"count": 0, "serious": serious})
+                e["count"] += 1
+                e["last"], e["after_restart"] = line[:200], since
+    return found
+
+
+def logcheck(mb=3):
+    files = {f["path"]: f for f in call("/server/files/list?root=logs")}
+    path = "klippylogs/klippy.log" if "klippylogs/klippy.log" in files else "klippy.log"
+    text = fetch("/server/files/logs/" + path, tail=int(mb * 1_000_000)).decode("utf-8", "replace")
+    return path, scan_log(text.splitlines()[1:])   # the first line of a tail is usually cut in half
+
+
 def query(*objs):
     return call("/printer/objects/query?" + "&".join(urllib.parse.quote(o) for o in objs))["status"]
 
@@ -124,8 +199,8 @@ def state():
 def status():
     names = call("/printer/objects/list")["objects"]
     heads = [o for o in names if o == "extruder" or (o.startswith("extruder") and o[8:].isdigit())]
-    s = query("print_stats", "display_status", "heater_bed", "webhooks", *heads,
-              *(["print_task_config"] if "print_task_config" in names else []))
+    s = query("print_stats", "display_status", "heater_bed", "webhooks", "toolhead", *heads,
+              *[o for o in ("print_task_config", "pause_resume", "machine_state_manager") if o in names])
     ps, ds = s["print_stats"], s.get("display_status", {})
     info, p = ps.get("info") or {}, ds.get("progress") or 0
     out = {"klippy": s["webhooks"]["state"], "state": ps["state"], "file": ps.get("filename") or None,
@@ -134,7 +209,8 @@ def status():
            "printing_min": round(ps.get("print_duration", 0) / 60, 1),
            "filament_used_m": round(ps.get("filament_used", 0) / 1000, 2),
            "bed": f'{s["heater_bed"]["temperature"]:.0f}/{s["heater_bed"]["target"]:.0f}',
-           "heads": {h: f'{s[h]["temperature"]:.0f}/{s[h]["target"]:.0f} {s[h].get("state", "")}'.strip() for h in heads}}
+           "heads": {h: f'{s[h]["temperature"]:.0f}/{s[h]["target"]:.0f} {s[h].get("state", "")}'.strip() for h in heads},
+           "active_head": (s.get("toolhead") or {}).get("extruder")}
     if ps["state"] == "printing" and p > 0.02:
         left = ps["print_duration"] * (1 - p) / p
         out["left_min"] = round(left / 60)
@@ -143,9 +219,43 @@ def status():
     if t:   # Snapmaker U1: what is loaded on each head
         out["slots"] = [f"T{i} {ty} {sub} #{c[:6]}" for i, (ty, sub, c) in enumerate(zip(
             t.get("filament_type", []), t.get("filament_sub_type", []), t.get("filament_color_rgba", [])))]
-    if ps.get("message"):
-        out["message"] = ps["message"]
+    h = hold(s)
+    if h["why"]:
+        out["message"] = h["why"]
+    if ps["state"] == "paused":
+        out["can_resume"] = h["can_resume"]
     return out
+
+
+# Snapmaker U1 defect detection (klippy/extras/defect_detection.py in Snapmaker/u1-klipper): module 532 writes its finding
+# into print_stats.exception, then sends the normal PAUSE. Codes from defect_event_handler.
+DEFECT = {1: "the camera saw something left on the bed", 2: "the camera saw spaghetti (loose strands where the part should be)",
+          3: "the camera saw residue on the bed", 4: "the camera saw a dirty nozzle"}
+
+
+def hold(s):
+    """Why a print is held and whether RESUME will be accepted, from print_stats, pause_resume and machine_state_manager.
+    RESUME (pause_resume.py) needs print_stats paused, is_paused true and the machine's action code idle (0); during a
+    detector pause print_stats can still read printing for a moment (24 Nov 2026: two resumes refused)."""
+    ps = s.get("print_stats") or {}
+    ex = ps.get("exception") or {}
+    if ex.get("id") == 532 and ex.get("code") in DEFECT:
+        why = "Paused by the printer's own detector: " + DEFECT[ex["code"]] + "."
+    elif ex.get("message"):
+        why = "The printer says: " + str(ex["message"]) + "."
+    else:
+        why = (ps.get("message") or "").strip()
+    paused_flag = (s.get("pause_resume") or {}).get("is_paused")
+    action = (s.get("machine_state_manager") or {}).get("action_code", 0)
+    if ps.get("state") != "paused":
+        wait = "the printer has not finished pausing yet" if paused_flag or ex else "the print is not paused"
+    elif paused_flag is False:
+        wait = "the printer does not count itself as paused yet"
+    elif action:
+        wait = f"the printer is still busy with something (action {action}); wait a few seconds"
+    else:
+        wait = ""
+    return {"why": why, "can_resume": not wait, "waiting": wait}
 
 
 def record(what, detail="", who=None, via="printer.py"):
@@ -403,6 +513,16 @@ def run_waiting(cmd, done, limit):
     raise SystemExit(f"{cmd}: the printer did not finish in {limit} s; check it")
 
 
+def wait_until(done, limit):
+    """True once done() is, False after limit seconds; polls every 2 s like run_waiting."""
+    end = time.time() + limit
+    while time.time() < end:
+        if done():
+            return True
+        time.sleep(2)
+    return False
+
+
 def unload(which):
     """Snapmaker U1: unload heads exactly as its screen's Unload all does (recorded 21 Nov 2026): AUTO_FEEDING_BATCH
     ACTION=START; per head DOING STAGE=prepare (pick the head, heat it, preheat the next) then DOING STAGE=doing
@@ -436,16 +556,82 @@ def unload(which):
         h = query(head_obj(i))[head_obj(i)]
         return h["target"] > 0 and h["temperature"] >= h["target"] - 5
 
-    call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=START"), "POST")
+    # START homes first (a minute or more): a 15 s call timed out, the thread died and its STOP landed mid-homing
+    # (22 Nov 2026), so it waits like the other steps, judged by the printer being idle again
+    run_waiting("AUTO_FEEDING_BATCH ACTION=START", idle, 240)
     try:
         for k, (i, name) in enumerate(todo):
             nxt = f" NEXT_EXTRUDER={todo[k + 1][0]}" if k + 1 < len(todo) else ""
             print(f"{name}: heating...", flush=True)
-            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} UNLOAD=1", lambda: hot(i), 240)
-            print(f"{name}: unloading...", flush=True)
-            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} UNLOAD=1",
-                        lambda: idle() and channel_state(i) == "unload_finish", 300)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} UNLOAD=1",
+                        lambda: hot(i) or channel_state(i) != "load_finish", 240)
+            # Stock 2.1.2 sometimes finishes the whole unload in prepare (21 Nov, twice on T2): a doing sent then is
+            # refused as state_mismatch and the head is marked unload_fail. So after prepare, wait until the head
+            # settles: unloaded (done), or still loaded with the printer idle (then doing). Anything else is mid-unload.
+            if not wait_until(lambda: channel_state(i) == "unload_finish" or (channel_state(i) == "load_finish" and idle()), 120):
+                sys.exit(f"{name}: the feeder still reports {channel_state(i)} two minutes after prepare; check that head on the printer's screen")
+            if channel_state(i) == "load_finish":
+                print(f"{name}: unloading...", flush=True)
+                run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} UNLOAD=1",
+                            lambda: idle() and channel_state(i) == "unload_finish", 300)
+            if channel_state(i) != "unload_finish":
+                sys.exit(f"{name}: the feeder reports {channel_state(i)}, not unloaded; check that head on the printer's screen")
             print(f"{name}: unloaded")
+    finally:
+        call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
+
+
+def load(which):
+    """Snapmaker U1: load a head whose filament is parked at the feeder (preload_finish) into the head, the same feed
+    sequence as unload with LOAD=1 in place of UNLOAD=1 (the firmware's own SM_PRINT_AUTO_FEED feeds with LOAD=1):
+    AUTO_FEEDING_BATCH START, DOING STAGE=prepare (pick and heat the head), DOING STAGE=doing (feed it to the nozzle),
+    STOP (heaters off). Done when the feeder reports load_finish."""
+    if state() in RUNNING:
+        sys.exit("refused: a job is running; load after it ends")
+    t = query("print_task_config").get("print_task_config")
+    if not t or "filament_exist" not in t:
+        sys.exit("this printer does not report its heads' filament (load is for the Snapmaker U1)")
+    n = len(t["filament_exist"])
+    heads = [i for i in range(n) if channel_state(i) == "preload_finish"] if which == "all" else [int(which.upper().lstrip("T"))]
+    for i in heads:
+        if not 0 <= i < n:
+            sys.exit(f"no head T{i}: this printer has T0 to T{n - 1}")
+    todo = []
+    for i in heads:
+        st = channel_state(i)
+        if st == "load_finish":
+            print(f"T{i}: already in the head")
+        elif st != "preload_finish":
+            print(f"T{i}: no filament parked at the feeder ({st}); put the spool's end into the feeder first")
+        elif t["filament_soft"][i]:
+            print(f"T{i}: soft filament, load it from the printer's screen")
+        else:
+            todo.append(i)
+    if not todo:
+        return
+
+    def idle():
+        return query("machine_state_manager")["machine_state_manager"]["main_state"] == 0
+
+    def hot(i):
+        h = query(head_obj(i))[head_obj(i)]
+        return h["target"] > 0 and h["temperature"] >= h["target"] - 5
+
+    run_waiting("AUTO_FEEDING_BATCH ACTION=START", idle, 240)   # homes first: see unload()
+    try:
+        for k, i in enumerate(todo):
+            nxt = f" NEXT_EXTRUDER={todo[k + 1]}" if k + 1 < len(todo) else ""
+            print(f"T{i}: heating...", flush=True)
+            # the U1 often does the whole load in the prepare stage (seen 22 Nov 2026: heat to 270, feed, load_finish, cool)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=prepare EXTRUDER={i}{nxt} LOAD=1",
+                        lambda: hot(i) or channel_state(i) == "load_finish", 300)
+            if channel_state(i) == "load_finish":
+                print(f"T{i}: loaded")
+                continue
+            print(f"T{i}: loading...", flush=True)
+            run_waiting(f"AUTO_FEEDING_BATCH ACTION=DOING STAGE=doing EXTRUDER={i} LOAD=1",
+                        lambda: idle() and channel_state(i) == "load_finish", 300)
+            print(f"T{i}: loaded")
     finally:
         call("/printer/gcode/script?script=" + urllib.parse.quote("AUTO_FEEDING_BATCH ACTION=STOP"), "POST")
 
@@ -594,6 +780,7 @@ def main():
     ap.add_argument("--bed-clear", action="store_true")
     ap.add_argument("--queue", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--person-checked", action="store_true", help="resume: a person looked at the part after a detector pause")
     ap.add_argument("--frames", default=FRAMES)
     ap.add_argument("--quiet", action="store_true", help="watch: no phone or Discord alerts (Workshop already sends them)")
     ap.add_argument("--level", default="info", choices=list(LEVEL))
@@ -625,6 +812,20 @@ def main():
 
     if c == "status":
         print(json.dumps(status(), indent=1))
+    elif c == "backup":
+        if not x:
+            sys.exit("say where: printer.py backup FOLDER")
+        r = backup(x[0])
+        print(f'{len(r["changed"])} changed, {r["same"]} unchanged, {len(r["skipped"])} left out')
+        for p in r["changed"]:
+            print("  changed:", p)
+    elif c == "logcheck":
+        path, found = logcheck(float(x[0]) if x else 3)
+        if not found:
+            print(f"{path}: nothing to report")
+        for name, e in sorted(found.items(), key=lambda kv: (not kv[1]["serious"], kv[0])):
+            print(f'{"FAULT" if e["serious"] else "note "} {name}: {e["count"]}x, last after the restart at {e["after_restart"] or "?"}: {e["last"]}')
+        sys.exit(1 if any(e["serious"] for e in found.values()) else 0)
     elif c == "snap":
         print(snap(x[0] if x else "printer-snap.jpg"))
     elif c == "files":
@@ -664,6 +865,19 @@ def main():
         else:
             sys.exit("queue: list, add FILE, remove ID, start --bed-clear, hold")
     elif c in ("pause", "resume", "cancel"):
+        if c == "resume":   # the same rule as Workshop's Continue (round review, 25 Nov: this skipped it)
+            h = hold(query("print_stats", "pause_resume", "machine_state_manager"))
+            if not h["can_resume"]:
+                sys.exit("not resumed: " + h["waiting"])
+            if ((query("print_stats")["print_stats"].get("exception") or {}).get("id") == 532 and not a.person_checked):
+                sys.exit("not resumed: the printer's detector paused it. Look at the part, then: resume --person-checked")
+            try:   # Workshop's photo watch pauses without a detector code; it keeps its unanswered pauses here
+                waiting = [v for v in json.load(open(os.path.join(os.path.dirname(CONF), "watch-paused.json"))).values()
+                           if isinstance(v, list) and len(v) == 3 and not v[2]]
+            except (OSError, ValueError, AttributeError):
+                waiting = []
+            if waiting and not a.person_checked:
+                sys.exit("not resumed: Workshop's photo watch paused it. Look at the part, then: resume --person-checked")
         print(call(f"/printer/print/{c}", "POST"))
         record({"pause": "paused", "resume": "resumed", "cancel": "cancelled"}[c], status().get("file") or "")
     elif c == "speed":   # the screen's speed override (M220): safe mid-print, bounded so a typo can't wreck a job
@@ -679,6 +893,11 @@ def main():
             print(f"speed {pct}%")
     elif c == "light":
         print(gcode(f"SET_LED LED={conf.get('light', 'cavity_led')} WHITE={1 if x and x[0] == 'on' else 0}", force=True))
+    elif c == "load":
+        if not x:
+            sys.exit("load T0..T3, or load all (every head parked at its feeder)")
+        record("load requested", x[0])
+        load(x[0])
     elif c == "unload":
         if not x:
             sys.exit("unload T0..T3, or unload all")

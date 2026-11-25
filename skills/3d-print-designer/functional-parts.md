@@ -38,6 +38,8 @@ Horizontal holes: a teardrop top (BOSL2 `teardrop`) prints without supports.
 
 - Avoid printed threads below M5; M8 and up with a pitch of 1.25 or more prints reliably. [sourced] Hubs (the M8 figure is [start])
 - Libraries: **BOSL2** `threading.scad` (`threaded_rod`, `threaded_nut`, trapezoidal, ACME, NPT; `$slop` for printer clearance; blunt starts by default; BSD 2-Clause) and **threadlib** (metric, UNC/UNF, BSP, bottle threads; BSD 3-Clause). [sourced] their repos
+- BOSL2 adds `4 * $slop` to an internal thread's diameter, so `$slop = slide_fit / 4` gives exactly the measured slide fit as play. [sourced] BOSL2 threading.scad docs
+- Upright threads print cleanly at a 90 degree included angle (45 degree flanks); a 60 degree V thread leaves its flanks 30 degrees off horizontal, a steep overhang. `examples/models/threaded-jar.scad` is a screw-top jar and lid built this way. [start]
 - Prefer an insert or a nut trap for anything under M8.
 
 ## Snap fits (cantilever)
@@ -46,6 +48,7 @@ Horizontal holes: a teardrop top (BOSL2 `teardrop`) prints without supports.
 - Design strain: about 1.5 to 2% for PLA, about 3% for PETG (PLA is brittle; published PLA limits of 4 to 8% are too high for repeated use). [start]
 - Print the arm flat in X and Y; an arm bending across layers takes about half the strain. [sourced] core77
 - Lead angle about 30°; a return angle equal to the lead gives equal on and off force, 90° makes it permanent. Taper the arm to spread strain. [sourced concept] core77; angles [start]
+- In OpenSCAD: `use <examples/models/snap-fit.scad>` then `snap_clip(...)` and `snap_slot(...)`: the arm length comes from the strain limit above (the arm roots inside the head when the plate is thin), and the model refuses an arm over the limit; `living_hinge(...)` refuses PLA and sizes outside 0.3 to 0.8 mm. Print `snap-fit.scad` itself as the test card. [start]
 
 ## Hinges and fits
 
