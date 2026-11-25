@@ -27,6 +27,7 @@ import ipaddress
 import shutil
 import http.server
 import datetime
+import collections
 import json
 import os
 import re
@@ -401,7 +402,7 @@ def watch_alerts():
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
-                checked.pop(was, None); _LAST_OK.pop(was, None); head_check = False   # the run is over: nothing carries into the next
+                checked.pop(was, None); _LAST_OK.pop(was, None); _WATCH_PAUSED.pop(was, None); head_check = False   # the run is over: nothing carries into the next
                 was = None
         except Exception as e:
             print("layer photo failed:", e, flush=True)
@@ -1032,6 +1033,14 @@ def checked_block(file, run=None):
 
 
 _LAST_OK = {}   # run folder -> (photo, layer) the watch last passed: the "before" picture for its next look
+# run folder -> (problem, layer) of the watch's last pause. It only checks while the print runs, so a later finding
+# means a person looked and resumed (/api/control insists on person_checked): the same problem then warns, every time,
+# instead of pausing again for REPAUSE_GAP layers
+# (24 Nov 2026: a tangle on the prime tower paused the hoodie at 419 and again at 421, the figure itself fine).
+# ponytail: in memory, a Workshop restart forgets it and the watch may pause once more
+_WATCH_PAUSED = {}
+REPAUSE_GAP = 50
+WATCH_WORD = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}
 
 
 def photo_watch(file, layer, photo, first=None, head_change=False):
@@ -1064,6 +1073,19 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
             if v["verdict"] == "ok" and v["problem"] == "none":
                 _LAST_OK[os.path.dirname(photo)] = (photo, layer)
             return
+        run = os.path.dirname(photo)
+        was = _WATCH_PAUSED.get(run)
+        if was and was[0] == v["problem"] and layer - was[1] < REPAUSE_GAP:
+            # not paused again, but every such finding reaches a person (review 24 Nov: once only let a worse failure of
+            # the same kind go quiet); if neither phone nor Discord takes it, the watch pauses as before
+            what = WATCH_WORD[v["problem"]]
+            if printer.notify(f"Still seeing {what}, not pausing again",
+                      f"{os.path.basename(file)} at layer {layer}. {v['reason']} A person resumed after this at layer {was[1]}, "
+                      f"so the watch keeps printing until layer {was[1] + REPAUSE_GAP}. Cancel from Workshop if it gets worse.",
+                      "warn", click=CFG.get("url")):
+                log({"not_paused": f"a person resumed after the same finding at layer {was[1]}"})
+                record(f"still sees {what} at layer {layer}, not paused again (a person resumed at layer {was[1]})", file, who="photo watch")
+                return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
@@ -1074,7 +1096,8 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         if printer.status()["state"] != "printing":
             return
         moonraker("POST", "/printer/print/pause", timeout=10).read()
-        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}[v2["problem"]]
+        _WATCH_PAUSED[run] = (v2["problem"], layer)
+        what = WATCH_WORD[v2["problem"]]
         record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
         printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
@@ -1146,6 +1169,56 @@ OUTCOME = {"complete": "Completed", "cancelled": "Cancelled", "error": "Stopped 
 PRESET_IN_NAME = re.compile(r"-(draft|standard|strong|solid|fine|quality|polished|low-waste)\.gcode$")
 
 
+_outbox_lock = _threading.Lock()   # the print-end row and a laptop taking rows never interleave
+
+
+def table_rows(text):
+    """The data rows of the first markdown table that starts with '| Date |' (same rule as Almehdar's workshop-outbox.py)."""
+    out, inside = [], False
+    for line in text.split("\n"):
+        if line.startswith("| Date |"):
+            inside = True
+        elif inside and line.startswith("| ---"):
+            continue
+        elif inside and line.startswith("|"):
+            out.append(line)
+        elif inside:
+            break
+    return out
+
+
+def outbox(done=None):
+    """The print-register rows waiting in --print-log; with done (rows), take exactly those out once they are committed
+    elsewhere (Almehdar's register). Lets a laptop or Claude collect them over Workshop's API instead of root SSH."""
+    path = CFG.get("print_log")
+    if not path or not os.path.exists(path):
+        return {"rows": [], "note": "no print register is set (--print-log)"}
+    with _outbox_lock:
+        text = open(path, encoding="utf-8").read()
+        rows = table_rows(text)
+        if done is None:
+            return {"rows": rows}
+        # as many copies as were committed, oldest first: two identical rows (the same file failing twice in a day)
+        # where only one was read keep the other (review, 25 Nov)
+        take = collections.Counter(r for r in done if isinstance(r, str) and r in rows)
+        lines, removed = [], 0
+        for l in text.split("\n"):
+            if take[l] > 0 and l in rows:
+                take[l] -= 1
+                removed += 1
+            else:
+                lines.append(l)
+        write_atomic(path, "\n".join(lines))
+        return {"removed": removed, "rows": table_rows("\n".join(lines))}
+
+
+def write_atomic(path, text):
+    """Write a whole file so a reader (the SSH outbox reader, a cat) never sees it half written."""
+    with open(path + ".part", "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(path + ".part", path)
+
+
 def log_print(s, meta, use, folder=None):
     """Append a row to the print register (--print-log, a markdown table like the Almehdar repo's registers/prints.md).
     Columns: Date | Model (file) | For | Material and heads | Settings | Grams | Time | Cost | Outcome | KeyProof?
@@ -1176,9 +1249,16 @@ def log_print(s, meta, use, folder=None):
     row = "| " + " | ".join(cell(v) for v in [time.strftime("%Y-%m-%d"), file, "?", ", ".join(heads) or "?",
                                                (m.group(1) if m else "?"), f"{sum(use.values()):.1f} (measured)" if use else "?",
                                                f'{s.get("printing_min") or 0:.0f} min', f"£{cost:.2f}" if cost else "?", outcome, "?"]) + " |"
-    lines.insert(end + 1, row)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines))
+    with _outbox_lock:   # read again under the lock: a laptop may have taken rows meanwhile
+        lines = open(path, encoding="utf-8").read().split("\n")
+        head = next((i for i, l in enumerate(lines) if l.startswith("| Date |")), None)
+        if head is None:
+            return None
+        end = head
+        while end + 1 < len(lines) and lines[end + 1].startswith("|"):
+            end += 1
+        lines.insert(end + 1, row)
+        write_atomic(path, "\n".join(lines))
     record("logged in the print register", file, who="Workshop")
     return row
 
@@ -1539,6 +1619,7 @@ def tool_changes(file, read=None):
     else:
         stamp = None
     offsets, head, at, tower, mm, conf = [], None, 0, False, {}, {}
+    remain = []   # [offset, slicer minutes left] from Orca's M73 P.. R.. lines: time left goes by these, not by bytes
     rel = False   # only relative extrusion (M83) is counted; Klipper starts absolute, and an M82 file would read as hundreds of grams
     with read as f:
         for line in f:
@@ -1554,6 +1635,10 @@ def tool_changes(file, read=None):
                 elif line.startswith((b"; filament_density", b"; filament_diameter")):
                     k, _, v = line[2:].decode("ascii", "replace").replace("=", ":").partition(":")
                     conf.setdefault(k.strip(), [float(x) for x in re.findall(r"[\d.]+", v)])
+            elif c == b"M" and line.startswith(b"M73 ") and b" R" in line:   # the slicer's minutes left from this point
+                m = re.search(rb" R(\d+)", line)
+                if m and (not remain or remain[-1][1] != int(m.group(1))):
+                    remain.append([at, int(m.group(1))])
             elif c == b"M" and line[:3] in (b"M82", b"M83") and not line[3:4].isdigit():
                 rel = line[:3] == b"M83"
             elif tower and rel and c == b"G" and b" E" in line:   # relative extrusion: a retract and its unretract cancel
@@ -1570,11 +1655,27 @@ def tool_changes(file, read=None):
         g = max(v, 0.0) * 3.14159265 * (dia / 2) ** 2 * dens / 1000
         if g >= 0.05:
             waste[k] = round(g, 1)
-    out = {"total": len(offsets), "offsets": offsets, "tower_g": round(sum(waste.values()), 1), "tower_by_head": waste}
+    out = {"total": len(offsets), "offsets": offsets, "tower_g": round(sum(waste.values()), 1), "tower_by_head": waste, "remain": remain}
     if stamp is not None:
         _changes.clear()   # ponytail: one file kept, the one printing; a dict per file if the queue view wants them too
         _changes[file] = (stamp, out)
     return out
+
+
+def time_left(tc, pos, duration):
+    """Seconds left, from the slicer's M73 minutes-left at the printer's file position, scaled by how much slower than
+    the slicer this print has really run so far. Bytes are not time: on the 24 Nov hoodie, 79% of the file was read but
+    the slicer had 28% of its time still to go. None until 15 slicer minutes are done (too early to scale)."""
+    r = (tc or {}).get("remain") or []
+    if not r or not duration:
+        return None
+    now = r[0][1]
+    for at, m in r:
+        if at > pos:
+            break
+        now = m
+    done = r[0][1] - now
+    return now * duration / done if done >= 15 else None
 
 
 _toolpath = {}
@@ -1938,6 +2039,9 @@ def control(req):
         h = printer.hold(s0)
         if not h["can_resume"]:
             return 409, {"error": "Not resumed: " + h["waiting"] + ".", "why": h["why"]}
+        if _WATCH_PAUSED and req.get("person_checked") is not True:   # the photo watch paused this run: it trusts the resume
+            return 409, {"error": "Not resumed: the photo watch paused it. A person looks at the part (camera or in person) and "
+                                  "says carry on first (person_checked).", "why": h["why"]}
         if ((s0.get("print_stats") or {}).get("exception") or {}).get("id") == 532 and req.get("person_checked") is not True:
             return 409, {"error": "Not resumed: the printer's detector paused it. A person looks at the part (camera or in person) and "
                                   "says carry on first (person_checked).", "why": h["why"]}
@@ -2539,6 +2643,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 bed("clear", who=actor(self), file=b.get("file", ""))
                 record("took the part off the bed", b.get("file", ""), who=actor(self))
             return self.send(200, bed())
+        if p == "/api/outbox":   # GET the print-register rows waiting; POST {rows} takes exactly those out once committed
+            try:
+                if self.command == "POST":
+                    r = json.loads(self.body() or b"{}")
+                    out = outbox(done=(r.get("rows") if isinstance(r, dict) else None) or [])
+                    if out.get("removed"):
+                        record(f"took {out['removed']} print-register row{'s' if out['removed'] > 1 else ''} into the register", "", who=actor(self))
+                    return self.send(200, out)
+                return self.send(200, outbox())
+            except (ValueError, OSError) as e:
+                return self.send(400, {"error": str(e)})
         if p == "/api/plate":
             if self.command == "POST":   # {"plate": "smooth" | "textured"}: who swapped it is logged
                 try:

@@ -1,7 +1,7 @@
 {
   "name": "print-bench",
-  "version": "1.0.0",
-  "description": "Design and upgrade 3D prints with Claude Code: OpenSCAD parts one STL per colour, mesh checks, a Print Bench preview page with sizes and a measure tool, studio renders, colour-assigned 3MF projects for Bambu Studio and OrcaSlicer, 3D modelling skills and agents, and MCP servers that let Claude design, slice and drive a printer.",
+  "version": "1.1.0",
+  "description": "Design, slice, print and fix 3D prints with Claude Code: OpenSCAD parts one STL per colour, mesh checks, a Print Bench preview page, colour 3MF projects, plain-words slicing presets, numbered calibration tests, Workshop for Klipper printers, skills, agents and MCP servers that let Claude design, slice and drive a printer.",
   "author": {
     "name": "Khalid Mohamed",
     "url": "https://github.com/kalmehdar"

@@ -74,17 +74,22 @@ def t_status(_):
              + (f' - {ps["filename"]}' if ps.get("filename") else "")]
     if info.get("total_layer"):
         lines.append(f'Layer {info["current_layer"]} of {info["total_layer"]}, {round(p * 100)}%')
+    left = None
     if ps["state"] in ("printing", "paused") and ps.get("filename"):
         try:   # Workshop reads the file once and keeps it: tool changes so far, and plastic for the prime tower
             tc = http("GET", "/api/tool-changes?file=" + q(ps["filename"]), timeout=10)   # never stall the status on a first read
             pos = (mr("GET", "/printer/objects/query?virtual_sdcard=file_position")["status"].get("virtual_sdcard") or {}).get("file_position") or 0
+            if ps["state"] == "printing":
+                import workshop
+                left = workshop.time_left(tc, pos, ps.get("print_duration"))
             if tc.get("total"):
                 lines.append(f'Tool change {sum(o < pos for o in tc["offsets"])} of {tc["total"]}'
                              + (f'; about {tc["tower_g"]:g} g into the prime tower (purges and tower)' if tc.get("tower_g") else ""))
         except (RuntimeError, OSError, ValueError, KeyError):
             pass
-    if ps["state"] == "printing" and p > 0.02:
+    if left is None and ps["state"] == "printing" and p > 0.02:
         left = ps["print_duration"] * (1 - p) / p
+    if left is not None:
         lines.append(f"About {round(left / 60)} min left, finishes {time.strftime('%H:%M', time.localtime(time.time() + left))}")
     if ps["state"] == "paused" or (ps.get("exception") or {}).get("id"):
         import printer
@@ -660,7 +665,7 @@ TOOLS = [
       "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
     ("printer_resume", "Resume a paused print, including one the printer's spaghetti detector paused. Refused, with the reason, "
-     "until the printer will really take it. After the printer's own detector paused it, Workshop refuses unless person_checked: "
+     "until the printer will really take it. After the printer's own detector or the photo watch paused it, Workshop refuses unless person_checked: "
      "look at printer_snapshot, ask the person, and pass person_checked=true only when they say the part is fine.",
      {"person_checked": {"type": "boolean", "description": "the person looked at the part after a detector pause and said carry on"}}, t_resume),
     ("printer_detector", "The printer's own spaghetti detector (its camera pauses the print when it sees loose strands). Turn it on or "
