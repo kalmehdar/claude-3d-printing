@@ -27,6 +27,7 @@ import ipaddress
 import shutil
 import http.server
 import datetime
+import collections
 import json
 import os
 import re
@@ -1132,12 +1133,25 @@ def outbox(done=None):
         rows = table_rows(text)
         if done is None:
             return {"rows": rows}
-        gone = set(r for r in done if isinstance(r, str)) & set(rows)
-        lines = [l for l in text.split("\n") if l not in gone]
-        with open(path + ".part", "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines))
-        os.replace(path + ".part", path)
-        return {"removed": len(gone), "rows": [r for r in rows if r not in gone]}
+        # as many copies as were committed, oldest first: two identical rows (the same file failing twice in a day)
+        # where only one was read keep the other (review, 25 Nov)
+        take = collections.Counter(r for r in done if isinstance(r, str) and r in rows)
+        lines, removed = [], 0
+        for l in text.split("\n"):
+            if take[l] > 0 and l in rows:
+                take[l] -= 1
+                removed += 1
+            else:
+                lines.append(l)
+        write_atomic(path, "\n".join(lines))
+        return {"removed": removed, "rows": table_rows("\n".join(lines))}
+
+
+def write_atomic(path, text):
+    """Write a whole file so a reader (the SSH outbox reader, a cat) never sees it half written."""
+    with open(path + ".part", "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    os.replace(path + ".part", path)
 
 
 def log_print(s, meta, use, folder=None):
@@ -1179,8 +1193,7 @@ def log_print(s, meta, use, folder=None):
         while end + 1 < len(lines) and lines[end + 1].startswith("|"):
             end += 1
         lines.insert(end + 1, row)
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines))
+        write_atomic(path, "\n".join(lines))
     record("logged in the print register", file, who="Workshop")
     return row
 
