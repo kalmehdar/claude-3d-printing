@@ -879,8 +879,11 @@ $("#jobActions").addEventListener("click", async e => {
   try {
     if (a === "pause") { await post(M("/printer/print/pause")); toast("Pausing"); }
     if (a === "resume") {
-      if ((S.status.print_stats.exception || {}).id !== 532) { await post("/api/control", {action: "resume"}); toast("Continuing"); return; }
-      return confirmSheet("Is the part fine?", "The printer's camera paused this print. Look at the camera (or the printer) first: continue only if the part has not come loose and there is no tangle of plastic.",
+      if ((S.status.print_stats.exception || {}).id !== 532) {
+        try { await post("/api/control", {action: "resume"}); toast("Continuing"); return; }
+        catch (err) { if (!/photo watch/.test(err.message)) throw err; }   // the photo watch paused it: the same check below
+      }
+      return confirmSheet("Is the part fine?", "A camera paused this print. Look at the camera (or the printer) first: continue only if the part has not come loose and there is no tangle of plastic.",
         "Continue print", async () => { await post("/api/control", {action: "resume", person_checked: true}); toast("Continuing"); });
     }
     if (a === "cancel") return confirmSheet("Cancel this print?", "The print stops and cannot be resumed.", "Cancel print", async () => { await post(M("/printer/print/cancel")); toast("Cancelling"); });

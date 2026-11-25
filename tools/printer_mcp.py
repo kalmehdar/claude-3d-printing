@@ -660,7 +660,7 @@ TOOLS = [
       "filament_ok": {"type": "boolean", "description": "true only if the person said to start although a spool looks short"}}, t_start, ["filename", "bed_clear"]),
     ("printer_pause", "Pause the current print.", {}, t_simple("pause")),
     ("printer_resume", "Resume a paused print, including one the printer's spaghetti detector paused. Refused, with the reason, "
-     "until the printer will really take it. After the printer's own detector paused it, Workshop refuses unless person_checked: "
+     "until the printer will really take it. After the printer's own detector or the photo watch paused it, Workshop refuses unless person_checked: "
      "look at printer_snapshot, ask the person, and pass person_checked=true only when they say the part is fine.",
      {"person_checked": {"type": "boolean", "description": "the person looked at the part after a detector pause and said carry on"}}, t_resume),
     ("printer_detector", "The printer's own spaghetti detector (its camera pauses the print when it sees loose strands). Turn it on or "

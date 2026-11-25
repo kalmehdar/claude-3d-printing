@@ -402,7 +402,7 @@ def watch_alerts():
             if was and s["state"] in ("complete", "cancelled", "error", "standby"):
                 # the print ended: a timelapse of its photos, in the background (Khalid, 21 Nov 2026: one per print)
                 threading.Thread(target=make_timelapse, args=(was,), daemon=True).start()
-                checked.pop(was, None); _LAST_OK.pop(was, None); head_check = False   # the run is over: nothing carries into the next
+                checked.pop(was, None); _LAST_OK.pop(was, None); _WATCH_PAUSED.pop(was, None); head_check = False   # the run is over: nothing carries into the next
                 was = None
         except Exception as e:
             print("layer photo failed:", e, flush=True)
@@ -1030,6 +1030,14 @@ def checked_block(file, run=None):
 
 
 _LAST_OK = {}   # run folder -> (photo, layer) the watch last passed: the "before" picture for its next look
+# run folder -> (problem, layer) of the watch's last pause. It only checks while the print runs, so a later finding
+# means a person looked and resumed (/api/control insists on person_checked): the same problem then warns, every time,
+# instead of pausing again for REPAUSE_GAP layers
+# (24 Nov 2026: a tangle on the prime tower paused the hoodie at 419 and again at 421, the figure itself fine).
+# ponytail: in memory, a Workshop restart forgets it and the watch may pause once more
+_WATCH_PAUSED = {}
+REPAUSE_GAP = 50
+WATCH_WORD = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}
 
 
 def photo_watch(file, layer, photo, first=None, head_change=False):
@@ -1062,6 +1070,19 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
             if v["verdict"] == "ok" and v["problem"] == "none":
                 _LAST_OK[os.path.dirname(photo)] = (photo, layer)
             return
+        run = os.path.dirname(photo)
+        was = _WATCH_PAUSED.get(run)
+        if was and was[0] == v["problem"] and layer - was[1] < REPAUSE_GAP:
+            # not paused again, but every such finding reaches a person (review 24 Nov: once only let a worse failure of
+            # the same kind go quiet); if neither phone nor Discord takes it, the watch pauses as before
+            what = WATCH_WORD[v["problem"]]
+            if printer.notify(f"Still seeing {what}, not pausing again",
+                      f"{os.path.basename(file)} at layer {layer}. {v['reason']} A person resumed after this at layer {was[1]}, "
+                      f"so the watch keeps printing until layer {was[1] + REPAUSE_GAP}. Cancel from Workshop if it gets worse.",
+                      "warn", click=CFG.get("url")):
+                log({"not_paused": f"a person resumed after the same finding at layer {was[1]}"})
+                record(f"still sees {what} at layer {layer}, not paused again (a person resumed at layer {was[1]})", file, who="photo watch")
+                return
         time.sleep(8)   # a second, fresh frame must agree before Claude pauses anything on its own
         second = os.path.join(os.path.dirname(photo), time.strftime("%Y%m%d-%H%M%S") + f"-check{layer}.jpg")
         printer.snap(second)
@@ -1072,7 +1093,8 @@ def photo_watch(file, layer, photo, first=None, head_change=False):
         if printer.status()["state"] != "printing":
             return
         moonraker("POST", "/printer/print/pause", timeout=10).read()
-        what = {"spaghetti": "spaghetti", "detached": "the part has come off the plate", "nozzle_blob": "a blob round the nozzle"}[v2["problem"]]
+        _WATCH_PAUSED[run] = (v2["problem"], layer)
+        what = WATCH_WORD[v2["problem"]]
         record(f"paused: Claude saw {what} at layer {layer}", file, who="photo watch")
         printer.push(f"Paused: {what}", f"{os.path.basename(file)} at layer {layer}. {v2['reason']} The print waits for you: "
                      "look at the printer, then resume or cancel.", "bad", click=CFG.get("url"))
@@ -1993,6 +2015,9 @@ def control(req):
         h = printer.hold(s0)
         if not h["can_resume"]:
             return 409, {"error": "Not resumed: " + h["waiting"] + ".", "why": h["why"]}
+        if _WATCH_PAUSED and req.get("person_checked") is not True:   # the photo watch paused this run: it trusts the resume
+            return 409, {"error": "Not resumed: the photo watch paused it. A person looks at the part (camera or in person) and "
+                                  "says carry on first (person_checked).", "why": h["why"]}
         if ((s0.get("print_stats") or {}).get("exception") or {}).get("id") == 532 and req.get("person_checked") is not True:
             return 409, {"error": "Not resumed: the printer's detector paused it. A person looks at the part (camera or in person) and "
                                   "says carry on first (person_checked).", "why": h["why"]}
