@@ -52,6 +52,9 @@ Then build the Print Bench page (`tools/print_bench.py`) and send them its path.
 | "design me a...", "here's an STL, add...", "make this two colours" | `print-workflow` (and `3d-print-designer` for the design rules) |
 | "it's stringing", "the first layer won't stick", "the prime tower fell" | `print-troubleshooting` |
 | "tune this filament", "flow", "pressure advance", "temperature" | `print-calibration`: numbered pieces the person picks by eye, no measuring |
+| "dry this spool", "is it wet", "how much is left" | `filament-care` |
+| "get the supports off", "paint it", "glue these", "put inserts in" | `print-postprocess` |
+| "clean the plate", "grease the rods", "what maintenance is due" | `print-maintenance` |
 | "a board for...", "a PCB", "a case for this board" | `electronics-design`, `pcb-layout`, `enclosure-from-pcb` |
 
 Presets for `orca.py`: `draft`, `standard`, `strong`, `solid`, `fine`, `quality`, `figure` (figurines: 0.16 mm and a gentle

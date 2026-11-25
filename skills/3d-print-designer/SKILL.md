@@ -38,8 +38,12 @@ Pick the material **within the printer's capabilities**. Warn if the printer can
 | Impact-resistant parts | **ABS** | 3-5x impact strength of PLA |
 | Smooth surface finish (vapor smoothing) | **ABS** | Acetone vapor smoothing eliminates layer lines |
 | Multi-part solvent-welded assemblies | **ABS** | Acetone welding creates near-bulk-strength bonds |
+| Outdoor parts in direct sun | **ASA** | ABS-like, but holds colour and strength under UV for years |
+| Flexible: seals, feet, grips, bumpers | **TPU** | Rubbery (95A), 300-600% elongation; check the printer can feed it |
+| Gears, bushings, wear and repeated flexing | **Nylon** | Low friction, very tough; must be printed dry |
+| Stiff brackets, frames, jigs | **CF-filled** (PLA-CF, PETG-CF, PA-CF) | Much stiffer, less warping; needs a hardened nozzle, more brittle |
 
-Then read **only** the chosen material's file: [material-pla.md](material-pla.md), [material-petg.md](material-petg.md) or [material-abs.md](material-abs.md).
+Then read **only** the chosen material's file: [material-pla.md](material-pla.md), [material-petg.md](material-petg.md), [material-abs.md](material-abs.md), [material-asa.md](material-asa.md), [material-tpu.md](material-tpu.md), [material-nylon.md](material-nylon.md), or [material-cf.md](material-cf.md) plus its base material's file.
 
 ## Step 2: Support Strategy
 
@@ -267,7 +271,7 @@ Hand off the `.scad`, the STLs (and 3MF) saved in Workflow step 7, and any rende
 | File | Load when |
 |---|---|
 | [printer-configuration.md](printer-configuration.md) | Step 0, always |
-| [material-pla.md](material-pla.md) / [material-petg.md](material-petg.md) / [material-abs.md](material-abs.md) | Step 1, the chosen material only |
+| [material-pla.md](material-pla.md) / [material-petg.md](material-petg.md) / [material-abs.md](material-abs.md) / [material-asa.md](material-asa.md) / [material-tpu.md](material-tpu.md) / [material-nylon.md](material-nylon.md) / [material-cf.md](material-cf.md) | Step 1, the chosen material only (CF: plus its base) |
 | [openscad-reference.md](openscad-reference.md) | Before writing code: language gotchas, FDM module patterns (teardrop, chamfered shelf, EF base) |
 | [verification.md](verification.md) | Before running the gate |
 | [design-review.md](design-review.md) | Never yourself: it's the review sub-agent's brief |

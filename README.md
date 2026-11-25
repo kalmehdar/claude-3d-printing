@@ -21,6 +21,7 @@ something goes wrong.
 | Run and watch a Klipper printer from your phone or the Claude app | Workshop and the `printer` MCP server |
 | Tune a filament without measuring anything | Numbered calibration tests: you tap the best piece |
 | Fix a print that went wrong | The `print-troubleshooting` skill |
+| Dry, store and track filament; finish, glue and paint a print; keep the printer maintained | The `filament-care`, `print-postprocess` and `print-maintenance` skills |
 | Design the electronics inside a print | The `electronics-design`, `pcb-layout` and `enclosure-from-pcb` skills |
 
 ## Start in a minute
@@ -98,7 +99,7 @@ These pictures come from `tools/render.py`, from the same files you can download
 | `examples/models/` | Five designs (a four-colour test card, colour-coded Gridfinity bins, clip-on cable tags sized per cable, a filament swatch card, a desk cable clip) and `upgrade-bin.scad`, which upgrades an existing STL |
 | `examples/before/` | The plain STL that `upgrade-bin.scad` starts from |
 | `examples/stl/`, `examples/bench.json` | Their exported parts and the demo page's list |
-| `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `electronics-design`, `pcb-layout` and `enclosure-from-pcb` (circuits to boards to cases), `3d-print-designer` (FDM design rules, materials, verification) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
+| `skills/` | Claude Code skills: `print-workflow` (drives these tools from idea or STL to checked, previewed print files), `electronics-design`, `pcb-layout` and `enclosure-from-pcb` (circuits to boards to cases), `3d-print-designer` (FDM design rules, verification, and material guides for PLA, PETG, ABS, ASA, TPU, nylon and carbon-fibre fills), `print-calibration`, `print-troubleshooting`, `filament-care` (drying, storage, Spoolman), `print-postprocess` (supports, sanding, painting, annealing, gluing, inserts), `print-maintenance` (intervals, plate care) plus `modeling`, `blender`, `blender-3d-modeling`, `texturing`, `asset-optimization`, `animation`, `rigging`, `unity`, `vroid`, `omniverse` |
 | `tools/pcb.py` and friends | Circuit to orderable PCB: ERC, KiCad board from code, autorouting, DRC, JLCPCB files, 3D models (`pcb_kicad.py`, `kicad_env.py`, `trace_width.py`) |
 | `hardware/` | Electronics projects, each with specs, circuit, board, fab files and a printed case. First one: `hardware/led-bar` |
 | `agents/` | Seven 3D subagents (analyst, modeler, texturer, rigger, animator, asset optimiser, VTuber specialist) |
