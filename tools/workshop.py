@@ -491,6 +491,10 @@ def alert_change(prev, s, folder=None):
             import threading
             threading.Thread(target=print_doctor, args=(s["file"], "the printer paused it itself (" + s["message"] + "); it is still paused. The last picture is the camera right now. "
                                                                 "Say in next_step whether it looks safe to continue or should be cancelled"), kwargs={"now": True}, daemon=True).start()
+        if s["state"] in ("complete", "cancelled", "error"):   # the run is over: a reprint of this file starts fresh
+            # (the key's folder is None before the first layer photo, so without this a reprint's pause could be skipped)
+            for k in [k for k in _doctored if k[0] == s.get("file")]:
+                _doctored.discard(k)
         # what went wrong, while the photos are fresh; not after a cancel before anything printed (24 Nov: two cancels
         # during heating each cost a Claude call and a phone push diagnosing an empty plate)
         printed = (s.get("printing_min") or 0) >= 1 or (s.get("filament_used_m") or 0) >= 0.2
