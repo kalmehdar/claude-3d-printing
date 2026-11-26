@@ -223,7 +223,9 @@ def _slice_into(out, d, parts, heads, material, head_note, preset, sets, req, ma
         return 422, {"error": s.get("error", "no G-code")}
     if heads and len(parts) == 1 and parts[0][1].lower().endswith(".3mf") and not req.get("glue") and plate()["plate"] == "smooth":
         # the heads this 3MF really uses (review, 24 Nov: every loaded head used to count); all of them when it kept its own
-        used = [heads[int(m["head"][1:])] for m in s.get("model_colours") or []] or heads
+        # a 3MF built with parts on set heads reports no model_colours: the per-head grams say which heads print (26 Nov)
+        used = ([heads[int(m["head"][1:])] for m in s.get("model_colours") or []]
+                or [h for h, g in zip(heads, s.get("grams") or []) if g > 0] or heads)
         if any("petg" in (h.get("material") or "").lower() for h in used):
             return 409, {"error": GLUE, "plate": "smooth"}
     name = f"{safe_name(d['id'])}-{preset}.gcode"
@@ -1991,7 +1993,7 @@ def view_bed(tallest=None):
         return {"z": z, "homed": False}
     if not homed:
         moonraker("POST", "/printer/gcode/script?script=G28", timeout=180).read()
-    for cmd in ("G90", f"G1 Z{z} F900"):
+    for cmd in ("G90", f"G1 Z{z} F900", "M400"):   # M400: the caller's photo waits for the bed (26 Nov: from Z200 it took ~12 s)
         moonraker("POST", "/printer/gcode/script?script=" + urllib.parse.quote(cmd), timeout=120).read()
     remember_z(z)
     return {"z": z, "homed": not homed}

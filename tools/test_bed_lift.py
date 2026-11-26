@@ -61,7 +61,7 @@ v = w.view_bed()
 assert v == {"z": 45.0, "homed": False} and s == ["SET_KINEMATIC_POSITION Z=200.0", "G90", "G1 Z45.0 F600", "M400", "M84"], (v, s)
 assert w.known_z() == 45.0
 s = fake_view()   # already at the view height: raising is not possible, so it homes as before (never moves down blind)
-assert w.view_bed()["homed"] is True and s[0] == "G28", s
+assert w.view_bed()["homed"] is True and s[0] == "G28" and s[-1] == "M400", s   # the photo waits for the bed
 os.remove(w.LAST_Z)
 s = fake_view()   # nothing remembered: homes
 assert s == [] and w.view_bed()["homed"] is True and s[0] == "G28", s
