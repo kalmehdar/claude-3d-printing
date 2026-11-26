@@ -5,12 +5,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import make_3mf  # noqa: E402
 
 # Khalid's 22 Nov seam test picked a plain seam at the back over scarf seams; this round goes after the zits that remain.
-VARIANTS = {
+ROUND1 = {
     1: {},                                                                    # baseline: quality as it is (back, no scarf)
     2: {"seam_gap": "15%", "wipe_on_loops": "1"},                             # stop a little short of the start, wipe inward
     3: {"seam_position": "aligned", "seam_gap": "10%", "wipe_before_external_loop": "1"},
     4: {"seam_slope_type": "external", "seam_slope_conditional": "0", "seam_slope_steps": "10", "seam_slope_start_height": "0"},
 }
+# 26 Nov round 1 (white PETG, quality): Khalid, "between 3 and 4 would be perfect", then "more 3 than 4".
+# Round 2 keeps 3 and adds a little of 4's scarf.
+SCARF = {"seam_slope_type": "external", "seam_slope_conditional": "0", "seam_slope_start_height": "0"}
+ROUND2 = {
+    1: ROUND1[3],                                                             # round 1's 3 again, as the reference
+    2: {**ROUND1[3], **SCARF, "seam_slope_steps": "5"},                       # 3 with a short scarf
+    3: {**ROUND1[3], **SCARF, "seam_slope_steps": "10"},                      # 3 with 4's scarf
+    4: {**ROUND1[3], "seam_gap": "15%", "wipe_on_loops": "1"},                # 3 with a longer gap and an inward wipe
+}
+VARIANTS = ROUND2
 
 
 def build(out, stl_dir, extruder=1):
