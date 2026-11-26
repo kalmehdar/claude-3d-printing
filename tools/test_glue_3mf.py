@@ -12,12 +12,14 @@ heads = [{"colour": "#f2f2f0", "material": "petg"}, {"colour": "#1c1c1c", "mater
          {"colour": "#1e4fa0", "material": "petg"}, {"colour": "#080a0d", "material": "pla-snapspeed"}]
 w.loaded_heads = lambda: heads
 w.upload_gcode = lambda *a: None
-for plate_on, head, glue, want in (("smooth", "T3", False, 200), ("smooth", "T1", False, 409), ("smooth", "T1", True, 200),
-                                   ("textured", "T1", False, 200), ("smooth", None, False, 409)):   # None: kept its own heads, all count
+for plate_on, head, glue, want, grams in (("smooth", "T3", False, 200, [1.0]), ("smooth", "T1", False, 409, [1.0]),
+                                          ("smooth", "T1", True, 200, [1.0]), ("textured", "T1", False, 200, [1.0]),
+                                          ("smooth", None, False, 409, [1.0]),               # None: no colours, T0 (PETG) prints
+                                          ("smooth", None, False, 200, [0, 0, 0, 3.3])):     # parts on set heads: only T3 (PLA) prints
     w.plate = lambda *a, p=plate_on, **k: {"plate": p}
     mc = [{"colour": "#000000", "head": head}] if head else []
-    orca.slice_ = lambda models, prof, mc=mc, **kw: {"time": "1h", "grams": [1.0], "total_g": 1.0, "changes": 0, "settings": {},
+    orca.slice_ = lambda models, prof, mc=mc, g=grams, **kw: {"time": "1h", "grams": g, "total_g": 1.0, "changes": 0, "settings": {},
                                                     "gcode": os.devnull, "model_colours": mc}
     code, out = w.slice_parts({"id": "x", "name": "x"}, [("x", "/tmp/x.3mf", "#888888")], {"upload": False, "glue": glue})
-    assert code == want, (plate_on, head, glue, code, out)
+    assert code == want, (plate_on, head, glue, grams, code, out)
 print("3MF glue check passed")
