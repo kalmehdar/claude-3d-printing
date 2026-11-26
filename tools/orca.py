@@ -55,6 +55,7 @@ ALIASES = {
     "prime-volume": ("prime_volume", "mm3 purged into the tower at each colour change"),
     "tower-width": ("prime_tower_width", "mm"),
 }
+ONOFF = {"brim_type": ("auto_brim", "no_brim"), "ironing_type": ("top", "no ironing")}
 INSIDE_FLOW = {"set_other_flow_ratios": "1", "inner_wall_flow_ratio": "1.05", "sparse_infill_flow_ratio": "1.05",
                "internal_solid_infill_flow_ratio": "1.05"}
 PRESETS = {
@@ -265,10 +266,11 @@ def parse_sets(pairs, keys):
         if key not in keys:
             near = difflib.get_close_matches(key, list(keys) + list(ALIASES), n=4)
             sys.exit(f"unknown setting {k!r}" + (f"; did you mean {', '.join(near)}?" if near else "; see `orca.py settings`"))
+        on, off = ONOFF.get(key, ("1", "0"))   # brim=off must become no_brim, not 0 (OrcaSlicer ignores 0)
         if v.lower() in ("on", "yes", "true"):
-            v = "1"
+            v = on
         elif v.lower() in ("off", "no", "false"):
-            v = "0"
+            v = off
         if key.endswith("_density") and not v.endswith("%"):
             v += "%"
         out[key] = v
