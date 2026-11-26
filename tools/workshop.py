@@ -282,8 +282,9 @@ def loaded_heads():
         if not here:   # an empty head still reports its last colour: never send a part to it
             heads.append({"colour": None, "material": have[0] if have else "", "label": "empty"})
             continue
-        exact = f"{ty}-{sub}".lower().replace(" ", "-") if sub and sub.lower() != "generic" else ty.lower()
-        words = [w.lower().replace(" ", "-") for w in (sub, ty) if w and w.lower() != "generic"]
+        plain = ("generic", "basic")   # "PLA Basic" is the type's own profile (pla), not the nearest-coloured PLA variant
+        exact = f"{ty}-{sub}".lower().replace(" ", "-") if sub and sub.lower() not in plain else ty.lower()
+        words = [w.lower().replace(" ", "-") for w in (sub, ty) if w and w.lower() not in plain]
         same = [n for w in words for n in have if w in n.split("-")]
         if len(same) > 1 and colours:   # one profile per colour (petg-black, petg-white...): the nearest colour to the head's
             same.sort(key=lambda n: rgb_gap(colours.get(n), c[:6]))
