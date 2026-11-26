@@ -10,6 +10,7 @@ import orca  # noqa: E402
 keys = {"sparse_infill_density", "enable_support", "wall_loops", "layer_height"}
 assert orca.parse_sets(["infill=30", "supports=on", "walls=4"], keys) == {"sparse_infill_density": "30%", "enable_support": "1", "wall_loops": "4"}
 assert orca.parse_sets(["layer_height=0.16", "supports=off"], keys) == {"layer_height": "0.16", "enable_support": "0"}
+assert orca.parse_sets(["brim=off", "ironing=on"], {"brim_type", "ironing_type"}) == {"brim_type": "no_brim", "ironing_type": "top"}
 try:
     orca.parse_sets(["infil=5"], keys)
     raise AssertionError("a misspelt setting must be refused")
