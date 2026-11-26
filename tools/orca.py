@@ -56,6 +56,11 @@ ALIASES = {
     "tower-width": ("prime_tower_width", "mm"),
 }
 ONOFF = {"brim_type": ("auto_brim", "no_brim"), "ironing_type": ("top", "no ironing")}
+# The seam (Khalid, 26 Nov 2026, seam test round 2, cylinder 3, white PETG): aligned, stopping 10% short, a wipe before
+# the outer wall, and a 10-step scarf on the outer wall only. Round 1 picked "between 3 and 4, more 3"; round 2's 3 won.
+SEAM = {"seam_position": "aligned", "seam_gap": "10%", "wipe_before_external_loop": "1", "seam_slope_type": "external",
+        "seam_slope_conditional": "0", "seam_slope_start_height": "0", "seam_slope_steps": "10",
+        "seam_slope_entire_loop": "1", "seam_slope_inner_walls": "1"}
 INSIDE_FLOW = {"set_other_flow_ratios": "1", "inner_wall_flow_ratio": "1.05", "sparse_infill_flow_ratio": "1.05",
                "internal_solid_infill_flow_ratio": "1.05"}
 PRESETS = {
@@ -135,11 +140,13 @@ PRESETS = {
                   "outer_wall_speed": "60", "inner_wall_speed": "90", "top_surface_speed": "60", "detect_thin_wall": "1"},
     "grip": {"fuzzy_skin": "external", "fuzzy_skin_thickness": "0.2", "fuzzy_skin_point_distance": "0.4", "wall_loops": "3"},
 }
+for _p in ("quality", "smooth", "figure", "polished"):   # every preset that cares how the outside looks
+    PRESETS[_p].update(SEAM)
 PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
-                "quality": "clean walls and parts that fit for some more time: a gentle outer wall (45 mm/s, 1500 accel, tested 23 Nov), 3 walls, Arachne, precise outer wall, seam at the back",
+                "quality": "clean walls and parts that fit for some more time: a gentle outer wall (45 mm/s, 1500 accel, tested 23 Nov), 3 walls, Arachne, precise outer wall, the 26 Nov seam (aligned, short scarf)",
                 "smooth": "the smoothest walls: quality's clean outside on 0.08 mm layers and a gentler outer wall (tested 23 Nov); about half again slower than 0.12; not for parts with supports",
                 "polished": "quality plus ironed flat tops (20% flow, the best of our test) (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
