@@ -82,8 +82,8 @@ Checked on 25 Nov 2026: `standard`, `strong` and `quality` all sliced on the COR
 
 What to keep in mind:
 
-- **Speeds and accelerations** in `quality`, `smooth`, `figure` and `fine-text` (for example an 80 mm/s outer wall at
-  3000 mm/s²) are asked for, not forced: the printer's firmware limits still apply (Klipper's `max_velocity` and `max_accel`,
+- **Speeds and accelerations** in `quality`, `smooth`, `figure` and `fine-text` (for example a 45 mm/s outer wall at
+  1500 mm/s²) are asked for, not forced: the printer's firmware limits still apply (Klipper's `max_velocity` and `max_accel`,
   Marlin's M201/M203), so a slower printer prints them slower.
   The numbers were tested on a Snapmaker U1; check the first print's outer wall and seam.
 - **`low-waste` and `lean`** cut the prime tower and the prime at each head change: only meaningful on a multi-head printer

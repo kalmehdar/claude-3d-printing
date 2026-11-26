@@ -74,7 +74,9 @@ PRESETS = {
     # Measured 21 Nov on the U1 profile (fit card, gridfinity bin): slower outer walls, Arachne, precise outer wall, seam at the
     # back and a third wall each cost 0-6%; ironing alone cost 12-37%, so it lives in "polished".
     # ponytail: 80 mm/s and 3000 mm/s2 are common PETG starting values, not measured on the U1; tune after a seam/corner test.
-    "quality": {"outer_wall_speed": "80", "outer_wall_acceleration": "3000", "top_surface_speed": "100",
+    # 26 Nov: the outer wall from the 23 Nov wall test (45 mm/s, 1500 mm/s2), after the All in One test in quality still
+    # showed lines on the walls (Khalid: "Quality uses the tested wall").
+    "quality": {"outer_wall_speed": "45", "outer_wall_acceleration": "1500", "top_surface_speed": "100",
                 "wall_loops": "3", "wall_generator": "arachne", "precise_outer_wall": "1", "seam_position": "back",
                 # scarf seam (the seam ramps in over 20 mm instead of a bump), staggered inner seams and the outer wall printed
                 # between two inner walls: four of ten videos found scarf works, none against (22 Nov, youtube-smooth-surfaces.md)
@@ -136,7 +138,7 @@ PRESET_KEYS = {k for p in PRESETS.values() for k in p}
 PRESET_WORDS = {"draft": "fast and rough: 0.28 mm, 2 walls, 10% infill", "standard": "the printer's own profile, unchanged",
                 "strong": "for parts that take load: 4 walls plus an extra one every other layer, 40% gyroid, thick top and bottom, inside walls and infill fused harder",
                 "solid": "the strongest: like strong, but 100% concentric infill (slow and heavy; brackets, hooks, clamps)", "fine": "smooth: 0.12 mm layers, 3 walls",
-                "quality": "clean walls and parts that fit for 3-12% more time: gentle outer walls, 3 walls, Arachne, precise outer wall, seam at the back",
+                "quality": "clean walls and parts that fit for some more time: a gentle outer wall (45 mm/s, 1500 accel, tested 23 Nov), 3 walls, Arachne, precise outer wall, seam at the back",
                 "smooth": "the smoothest walls: quality's clean outside on 0.08 mm layers and a gentler outer wall (tested 23 Nov); about half again slower than 0.12; not for parts with supports",
                 "polished": "quality plus ironed flat tops (20% flow, the best of our test) (plaques, tags, lids): 12-40% more time",
                 "lean": "clean outside, light inside: about standard's time and 11-30% less filament (covers, labels, cases; not load-bearing parts)",
